@@ -1,0 +1,8 @@
+sqlalchemy>=1.4,<2.0
+sentence-transformers>=2.2.0
+numpy>=1.18.0
+typing-extensions>=4.0.0
+pydantic>=1.9.0,<2.0.0
+tqdm>=4.62.0
+scikit-learn>=1.0.0
+# Add other direct dependencies if identified, e.g., specific DB drivers are NOT included here. 

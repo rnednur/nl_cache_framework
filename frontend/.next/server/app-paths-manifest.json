@@ -1,0 +1,5 @@
+{
+  "/(dashboard)/dashboard/page": "app/(dashboard)/dashboard/page.js",
+  "/(dashboard)/cache-entries/create/page": "app/(dashboard)/cache-entries/create/page.js",
+  "/(dashboard)/cache-entries/page": "app/(dashboard)/cache-entries/page.js"
+}
