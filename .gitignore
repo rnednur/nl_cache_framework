@@ -94,7 +94,12 @@ frontend/node_modules/
 # SQLite
 *.sqlite3
 *.sqlite3-journal
+mcp_cache.db
 
 # Miscellaneous
 *.log
-.DS_Store 
+.DS_Store
+
+# Large binary files
+frontend/node_modules/@next/swc-darwin-arm64/next-swc.darwin-arm64.node
+venv/lib/python3.11/site-packages/torch/lib/libtorch_cpu.dylib 
