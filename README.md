@@ -205,6 +205,26 @@ Each cache entry contains:
 
 The application uses SQLAlchemy with fallback to an in-memory SQLite database if no external database is configured. 
 
+### Handling Large Files
+
+Several large binary files are used in this project but are excluded from version control to keep the repository size manageable. These files include:
+
+- `frontend/node_modules/@next/swc-darwin-arm64/next-swc.darwin-arm64.node`
+- `venv/lib/python3.11/site-packages/torch/lib/libtorch_cpu.dylib`
+- `venv/lib/python3.11/site-packages/torch/lib/libtorch_python.dylib`
+- `venv/lib/python3.11/site-packages/cryptography/hazmat/bindings/_rust.abi3.so`
+
+These files are automatically generated when setting up the development environment and should not be committed to the repository. The `.gitignore` file has been configured to exclude these files.
+
+When setting up a new development environment, follow these steps:
+
+1. Clone the repository
+2. Create and activate a virtual environment: `python -m venv venv && source venv/bin/activate`
+3. Install the dependencies: `pip install -r requirements.txt`
+4. Set up the frontend: `cd frontend && npm install`
+
+This will generate all necessary binary files that are excluded from version control.
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details. 
