@@ -365,7 +365,7 @@ async def list_cache_entries(
             "id": entry.id,
             "nl_query": entry.nl_query,
             "template": entry.template,
-            "template_type": entry.template_type.value if entry.template_type else None,
+            "template_type": entry.template_type,  # template_type is already a string
             "is_template": entry.is_template,
             "entity_replacements": entry.entity_replacements,
             "tags": entry.tags,
@@ -411,19 +411,8 @@ async def create_cache_entry(entry: CacheEntryCreate, db: Session = Depends(get_
             schema_name=entry.schema_name,
         )
 
-        # Return the created entry
-        return {
-            "id": new_entry_data.id,
-            "nl_query": new_entry_data.nl_query,
-            "template": new_entry_data.template,
-            "template_type": new_entry_data.template_type.value,
-            "is_template": new_entry_data.is_template,
-            "entity_replacements": new_entry_data.entity_replacements,
-            "tags": new_entry_data.tags,
-            "created_at": new_entry_data.created_at.isoformat() if new_entry_data.created_at else None,
-            "updated_at": new_entry_data.updated_at.isoformat() if new_entry_data.updated_at else None,
-            "is_valid": new_entry_data.is_valid
-        }
+        # Return the created entry - new_entry_data is already a dictionary
+        return new_entry_data
 
     except HTTPException:
         raise

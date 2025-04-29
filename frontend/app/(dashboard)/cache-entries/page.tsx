@@ -7,6 +7,8 @@ import { Button } from "../../components/ui/button"
 import { Input } from "../../components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card"
+import { Switch } from "../../components/ui/switch"
+import { Label } from "../../components/ui/label"
 import api, { CacheItem } from "../../services/api"
 
 export default function CacheEntries() {
@@ -18,19 +20,31 @@ export default function CacheEntries() {
   const [templateType, setTemplateType] = useState<string>("all")
   const [searchQuery, setSearchQuery] = useState("")
   const [searchInputValue, setSearchInputValue] = useState("")
+  const [useSimilaritySearch, setUseSimilaritySearch] = useState(false)
   
   useEffect(() => {
     const fetchEntries = async () => {
       setLoading(true)
       try {
-        const data = await api.getCacheEntries(
-          currentPage, 
-          pageSize,
-          templateType === "all" ? undefined : templateType,
-          searchQuery || undefined
-        )
-        setEntries(data.items)
-        setTotalEntries(data.total)
+        if (useSimilaritySearch && searchQuery) {
+          // Use similarity search
+          const results = await api.searchCacheEntries(
+            searchQuery,
+            templateType === "all" ? undefined : templateType
+          )
+          setEntries(results)
+          setTotalEntries(results.length)
+        } else {
+          // Use regular search
+          const data = await api.getCacheEntries(
+            currentPage, 
+            pageSize,
+            templateType === "all" ? undefined : templateType,
+            searchQuery || undefined
+          )
+          setEntries(data.items)
+          setTotalEntries(data.total)
+        }
       } catch (error) {
         console.error("Failed to fetch cache entries:", error)
       } finally {
@@ -39,7 +53,7 @@ export default function CacheEntries() {
     }
     
     fetchEntries()
-  }, [currentPage, pageSize, templateType, searchQuery])
+  }, [currentPage, pageSize, templateType, searchQuery, useSimilaritySearch])
   
   const totalPages = Math.ceil(totalEntries / pageSize)
   
@@ -135,6 +149,15 @@ export default function CacheEntries() {
               <Button type="submit">Search</Button>
             </form>
           </div>
+          
+          <div className="flex items-center space-x-2 mt-4">
+            <Switch
+              id="similarity-search"
+              checked={useSimilaritySearch}
+              onCheckedChange={setUseSimilaritySearch}
+            />
+            <Label htmlFor="similarity-search">Use similarity search</Label>
+          </div>
         </CardContent>
       </Card>
       
@@ -145,6 +168,7 @@ export default function CacheEntries() {
               <tr>
                 <th className="h-10 px-4 text-left font-medium">Query</th>
                 <th className="h-10 px-4 text-left font-medium">Template Type</th>
+                <th className="h-10 px-4 text-left font-medium">Visualization</th>
                 <th className="h-10 px-4 text-left font-medium">Tags</th>
                 <th className="h-10 px-4 text-left font-medium">Usage Count</th>
                 <th className="h-10 px-4 text-left font-medium">Actions</th>
@@ -153,13 +177,13 @@ export default function CacheEntries() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="h-24 text-center">
+                  <td colSpan={6} className="h-24 text-center">
                     Loading cache entries...
                   </td>
                 </tr>
               ) : entries.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="h-24 text-center">
+                  <td colSpan={6} className="h-24 text-center">
                     No cache entries found.
                   </td>
                 </tr>
@@ -178,6 +202,13 @@ export default function CacheEntries() {
                     </td>
                     <td className="p-4 align-middle">
                       <span className="capitalize">{entry.template_type}</span>
+                    </td>
+                    <td className="p-4 align-middle">
+                      {entry.suggested_visualization ? (
+                        <span className="capitalize">{entry.suggested_visualization}</span>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">None</span>
+                      )}
                     </td>
                     <td className="p-4 align-middle">
                       <div className="flex flex-wrap gap-1">

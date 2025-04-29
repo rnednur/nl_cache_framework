@@ -20,6 +20,7 @@ export default function CreateCacheEntry() {
   const [nlQuery, setNlQuery] = useState("")
   const [template, setTemplate] = useState("")
   const [templateType, setTemplateType] = useState("sql")
+  const [visualization, setVisualization] = useState("")
   const [reasoningTrace, setReasoningTrace] = useState("")
   const [databaseName, setDatabaseName] = useState("")
   const [schemaName, setSchemaName] = useState("")
@@ -64,6 +65,7 @@ export default function CreateCacheEntry() {
         template_type: templateType,
         is_template: true,
         tags: tags.length > 0 ? tags : undefined,
+        suggested_visualization: visualization || undefined,
         reasoning_trace: reasoningTrace || undefined,
         database_name: databaseName || undefined,
         schema_name: schemaName || undefined
@@ -152,6 +154,32 @@ export default function CreateCacheEntry() {
                   <SelectItem value="api">API</SelectItem>
                   <SelectItem value="url">URL</SelectItem>
                   <SelectItem value="workflow">Workflow</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <label
+                htmlFor="visualization"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              >
+                Suggested Visualization
+              </label>
+              <Select 
+                value={visualization}
+                onValueChange={setVisualization}
+              >
+                <SelectTrigger id="visualization">
+                  <SelectValue placeholder="Select visualization type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="table">Table</SelectItem>
+                  <SelectItem value="bar">Bar Chart</SelectItem>
+                  <SelectItem value="line">Line Chart</SelectItem>
+                  <SelectItem value="pie">Pie Chart</SelectItem>
+                  <SelectItem value="scatter">Scatter Plot</SelectItem>
+                  <SelectItem value="map">Map</SelectItem>
+                  <SelectItem value="custom">Custom</SelectItem>
                 </SelectContent>
               </Select>
             </div>

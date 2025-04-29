@@ -11,6 +11,7 @@ export interface CacheItem {
   reasoning_trace?: string;
   entity_replacements?: Record<string, any>;
   tags?: string[];
+  suggested_visualization?: string;
   database_name?: string;
   schema_name?: string;
   usage_count: number;
@@ -42,6 +43,7 @@ export interface CacheEntryCreate {
   is_template: boolean;
   entity_replacements?: Record<string, any>;
   tags?: string[];
+  suggested_visualization?: string;
   database_name?: string;
   schema_name?: string;
 }
@@ -243,7 +245,36 @@ const api = {
       console.error(`Error applying entity substitution to cache entry with ID ${id}:`, error);
       throw error;
     }
-  }
+  },
+
+  // Search cache entries with similarity search
+  async searchCacheEntries(
+    nl_query: string,
+    template_type?: string,
+    threshold: number = 0.7,
+    limit: number = 5
+  ): Promise<CacheItem[]> {
+    try {
+      let url = `${API_BASE}/v1/cache/search?nl_query=${encodeURIComponent(nl_query)}`;
+      
+      if (template_type) {
+        url += `&template_type=${encodeURIComponent(template_type)}`;
+      }
+      
+      url += `&threshold=${threshold}&limit=${limit}`;
+      
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error searching cache entries:', error);
+      throw error;
+    }
+  },
 };
 
 export default api; 

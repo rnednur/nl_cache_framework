@@ -106,31 +106,27 @@ class Text2SQLController:
         Add a new query to the cache.
 
         Args:
-            nl_query: Natural language query.
-            template: Template (SQL query, URL, API call, or workflow).
-            template_type: Type of template (sql, url, api, workflow).
-            entity_replacements: Dictionary of entity replacements.
-            reasoning_trace: Reasoning trace for the query.
-            tags: List of tags for the query.
-            suggested_visualization: Suggested visualization type.
-            database_name: Database name.
-            schema_name: Schema name.
-            catalog_id: Catalog ID.
-            is_template: Whether this entry has entity substitutions (if None, determined automatically).
+            nl_query: The natural language query.
+            template: The template (SQL, URL, API spec, etc.).
+            template_type: Type of the template (sql, url, api, workflow).
+            entity_replacements: Optional dictionary of entity replacements.
+            reasoning_trace: Optional explanation of the template.
+            tags: Optional list of tags for categorization.
+            suggested_visualization: Optional hint for visualization.
+            database_name: Optional target database identifier.
+            schema_name: Optional target schema identifier.
+            catalog_id: Optional catalog identifier.
+            is_template: Flag indicating if this entry contains placeholders.
 
         Returns:
             Dictionary representation of the created cache entry.
 
         Raises:
-            ValueError: If nl_query or template is empty/invalid.
-            SQLAlchemyError: If a database error occurs during insertion or commit.
-            Exception: If embedding generation fails unexpectedly (logged).
+            SQLAlchemyError: If a database error occurs.
+            ValueError: If required fields are missing or invalid.
         """
-        if not nl_query or not nl_query.strip():
-            raise ValueError("nl_query cannot be empty")
-
-        if not template or not template.strip():
-            raise ValueError("template cannot be empty")
+        if not nl_query or not template:
+            raise ValueError("nl_query and template are required")
 
         try:
             # Create and get embedding
@@ -162,6 +158,7 @@ class Text2SQLController:
             self.session.flush()  # Assign ID before commit/return
             self.session.commit()
 
+            # Convert to dictionary before returning
             result = cache_entry.to_dict()
             logger.info(f"Added new cache entry with ID {result.get('id')}")
             return result
@@ -175,7 +172,7 @@ class Text2SQLController:
         except Exception as e:
             logger.error(f"Failed to add query to cache: {str(e)}", exc_info=True)
             self.session.rollback()
-            raise
+            raise ValueError(f"Error creating cache entry: {str(e)}")
 
     def search_query(
         self,
