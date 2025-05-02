@@ -46,6 +46,7 @@ export interface CacheEntryCreate {
   suggested_visualization?: string;
   database_name?: string;
   schema_name?: string;
+  catalog_id?: number;
 }
 
 // API service for cache management
@@ -252,13 +253,18 @@ const api = {
     nl_query: string,
     template_type?: string,
     threshold: number = 0.7,
-    limit: number = 5
+    limit: number = 5,
+    catalog_id?: number
   ): Promise<CacheItem[]> {
     try {
       let url = `${API_BASE}/v1/cache/search?nl_query=${encodeURIComponent(nl_query)}`;
       
       if (template_type) {
         url += `&template_type=${encodeURIComponent(template_type)}`;
+      }
+      
+      if (catalog_id) {
+        url += `&catalog_id=${catalog_id}`;
       }
       
       url += `&threshold=${threshold}&limit=${limit}`;

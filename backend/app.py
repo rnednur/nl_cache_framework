@@ -62,6 +62,7 @@ class CacheEntryCreate(BaseModel):
     tags: Optional[List[str]] = Field(None, description="List of tags for categorization")
     database_name: Optional[str] = Field(None, description="Target database identifier")
     schema_name: Optional[str] = Field(None, description="Target schema identifier")
+    catalog_id: Optional[int] = Field(None, description="Catalog identifier")
 
 class CompleteRequest(BaseModel):
     prompt: str = Field(..., description="The natural language prompt to complete")
@@ -267,6 +268,7 @@ async def search_cache(
     template_type: Optional[str] = None,
     threshold: float = 0.7,
     limit: int = 5,
+    catalog_id: Optional[int] = None,
     db: Session = Depends(get_db),
 ):
     """Search the cache for similar queries"""
@@ -281,6 +283,7 @@ async def search_cache(
             template_type=template_type,
             similarity_threshold=threshold,
             limit=limit,
+            catalog_id=catalog_id,
         )
 
         logger.info(
@@ -409,6 +412,7 @@ async def create_cache_entry(entry: CacheEntryCreate, db: Session = Depends(get_
             tags=entry.tags,
             database_name=entry.database_name,
             schema_name=entry.schema_name,
+            catalog_id=entry.catalog_id,
         )
 
         # Return the created entry - new_entry_data is already a dictionary

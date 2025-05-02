@@ -10,6 +10,7 @@ import { Textarea } from "../../../components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../components/ui/select"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../../../components/ui/card"
 import api, { CacheEntryCreate } from "../../../services/api"
+import { Label } from "../../../components/ui/label"
 
 export default function CreateCacheEntry() {
   const router = useRouter()
@@ -24,6 +25,7 @@ export default function CreateCacheEntry() {
   const [reasoningTrace, setReasoningTrace] = useState("")
   const [databaseName, setDatabaseName] = useState("")
   const [schemaName, setSchemaName] = useState("")
+  const [catalogId, setCatalogId] = useState<number | undefined>()
   
   // Tags handling
   const [tags, setTags] = useState<string[]>([])
@@ -68,7 +70,8 @@ export default function CreateCacheEntry() {
         suggested_visualization: visualization || undefined,
         reasoning_trace: reasoningTrace || undefined,
         database_name: databaseName || undefined,
-        schema_name: schemaName || undefined
+        schema_name: schemaName || undefined,
+        catalog_id: catalogId
       }
       
       await api.createCacheEntry(entry)
@@ -241,33 +244,35 @@ export default function CreateCacheEntry() {
               />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label
-                  htmlFor="database"
-                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                >
-                  Database Name
-                </label>
-                <Input 
-                  id="database" 
-                  placeholder="Enter database name" 
+            <div className="grid gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="database">Database Name</Label>
+                <Input
+                  id="database"
+                  placeholder="Enter database name"
                   value={databaseName}
                   onChange={(e) => setDatabaseName(e.target.value)}
                 />
               </div>
-              <div className="space-y-2">
-                <label
-                  htmlFor="schema"
-                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                >
-                  Schema Name
-                </label>
-                <Input 
-                  id="schema" 
-                  placeholder="Enter schema name" 
+              
+              <div className="grid gap-2">
+                <Label htmlFor="schema">Schema Name</Label>
+                <Input
+                  id="schema"
+                  placeholder="Enter schema name"
                   value={schemaName}
                   onChange={(e) => setSchemaName(e.target.value)}
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="catalog">Catalog ID</Label>
+                <Input
+                  id="catalog"
+                  type="number"
+                  placeholder="Enter catalog ID"
+                  value={catalogId || ""}
+                  onChange={(e) => setCatalogId(e.target.value ? parseInt(e.target.value) : undefined)}
                 />
               </div>
             </div>
