@@ -91,19 +91,49 @@ class Text2SQLSimilarity:
             return None
 
     def compute_string_similarity(self, s1: str, s2: str) -> float:
-        """Compute similarity between two strings using SequenceMatcher.
+        """Compute similarity between two strings using SequenceMatcher with word coverage.
 
         Args:
             s1: First string.
             s2: Second string.
 
         Returns:
-            Similarity score between 0.0 and 1.0.
+            Similarity score between 0.0 and 1.0, combining word coverage and sequence similarity.
         """
         # Ensure inputs are strings
         s1 = str(s1) if s1 is not None else ""
         s2 = str(s2) if s2 is not None else ""
-        return SequenceMatcher(None, s1, s2).ratio()
+        
+        # Get word sets
+        words1 = set(s1.lower().split())
+        words2 = set(s2.lower().split())
+        
+        # Minimum word length requirement (reduced to 2 to include more words)
+        MIN_WORD_LENGTH = 2
+        words1 = {w for w in words1 if len(w) >= MIN_WORD_LENGTH}
+        words2 = {w for w in words2 if len(w) >= MIN_WORD_LENGTH}
+        
+        if not words1 or not words2:
+            return 0.0
+        
+        # Calculate word coverage using a more lenient approach
+        common_words = words1.intersection(words2)
+        # Use min instead of max to be more lenient with partial matches
+        word_coverage = len(common_words) / min(len(words1), len(words2))
+        
+        # Calculate sequence similarity
+        sequence_score = SequenceMatcher(None, s1, s2).ratio()
+        
+        # Minimum thresholds (reduced to be more lenient)
+        MIN_WORD_COVERAGE = 0.2  # At least 20% of words must match
+        MIN_SEQUENCE_SIMILARITY = 0.3  # At least 30% sequence similarity
+        
+        if word_coverage < MIN_WORD_COVERAGE or sequence_score < MIN_SEQUENCE_SIMILARITY:
+            return 0.0
+        
+        # Weight the scores (60% word coverage, 40% sequence similarity)
+        # This gives more weight to sequence similarity to catch similar words
+        return 0.6 * word_coverage + 0.4 * sequence_score
 
     def compute_cosine_similarity(self, emb1: np.ndarray, emb2: np.ndarray) -> float:
         """Compute cosine similarity between two vector embeddings.
@@ -127,12 +157,23 @@ class Text2SQLSimilarity:
                 logger.warning(f"Embedding shape mismatch: {emb1.shape} vs {emb2.shape}")
                 return 0.0
             if np.all(emb1 == 0) or np.all(emb2 == 0):
-                return 0.0 # Or handle as appropriate
+                return 0.0
 
             # Compute cosine similarity
             similarity = util.cos_sim(emb1, emb2)
             # util.cos_sim returns a tensor; extract the scalar value
-            return float(similarity.item())
+            score = float(similarity.item())
+            
+            # Apply stricter scoring
+            # 1. Normalize to 0-1 range (cosine similarity is -1 to 1)
+            score = (score + 1) / 2
+            
+            # 2. Apply non-linear scaling to make the scoring more strict
+            # This will make scores below 0.7 much lower
+            if score < 0.7:
+                score = score * 0.5  # Halve the score for low similarities
+            
+            return score
         except Exception as e:
             logger.error(f"Error computing cosine similarity: {e}")
             return 0.0
@@ -276,6 +317,13 @@ class Text2SQLSimilarity:
 
         if similarities is None:
             return []  # Should only happen if vector embedding failed
+
+        # Log top 5 similarity scores for debugging
+        top_scores = sorted(enumerate(similarities), key=lambda x: x[1], reverse=True)[:5]
+        logger.info(f"Query: {query}")
+        logger.info("Top 5 similarity scores:")
+        for idx, score in top_scores:
+            logger.info(f"Score: {score:.4f} - Candidate: {candidates[idx]}")
 
         # Filter and sort by similarity
         similar_indices = [
