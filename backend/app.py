@@ -266,7 +266,7 @@ async def complete(request: CompleteRequest, db: Session = Depends(get_db)):
 async def search_cache(
     nl_query: str,
     template_type: Optional[str] = None,
-    threshold: float = 0.7,
+    threshold: float = 0.8,
     limit: int = 5,
     catalog_id: Optional[int] = None,
     db: Session = Depends(get_db),
@@ -436,7 +436,7 @@ async def get_cache_entry(entry_id: int, db: Session = Depends(get_db)):
         "id": entry.id,
         "nl_query": entry.nl_query,
         "template": entry.template,
-        "template_type": entry.template_type.value if entry.template_type else None,
+        "template_type": entry.template_type,  # template_type is already a string
         "is_template": entry.is_template,
         "entity_replacements": entry.entity_replacements,
         "tags": entry.tags,
