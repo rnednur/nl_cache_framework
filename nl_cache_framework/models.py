@@ -34,6 +34,7 @@ class TemplateType(str, Enum):
     SQL = "sql"
     URL = "url"
     API = "api"
+    sql = "sql"
     WORKFLOW = "workflow"
     """Workflow templates store a JSON structure defining a series of steps referencing other cache entries.
     Expected JSON format in the 'template' field:
@@ -69,6 +70,7 @@ class Status(str, Enum):
 class Text2SQLCache(Base):
     """Database model for storing cached Text-to-Template entries."""
     __tablename__ = "text2sql_cache"
+    __table_args__ = {"schema":"autobi"}
 
     id: int = Column(Integer, primary_key=True, index=True)
     """Unique identifier for the cache entry."""
@@ -219,11 +221,12 @@ class Text2SQLCache(Base):
 class UsageLog(Base):
     """Database model for logging cache usage events."""
     __tablename__ = "usage_log"
+    __table_args__ = {"schema":"autobi"}
 
     id: int = Column(Integer, primary_key=True)
     """Unique identifier for the log entry."""
 
-    cache_entry_id: Optional[int] = Column(Integer, ForeignKey("text2sql_cache.id", ondelete="SET NULL"), nullable=True, index=True)
+    cache_entry_id: Optional[int] = Column(Integer, ForeignKey("autobi.text2sql_cache.id", ondelete="SET NULL"), nullable=True, index=True)
     """The ID of the cache entry that was used, if any."""
 
     timestamp: datetime.datetime = Column(
@@ -264,11 +267,12 @@ class UsageLog(Base):
 class CacheAuditLog(Base):
     """Database model for logging changes to cache entries."""
     __tablename__ = "cache_audit_log"
+    __table_args__ = {"schema":"autobi"}
 
     id: int = Column(Integer, primary_key=True)
     """Unique identifier for the audit log entry."""
 
-    cache_entry_id: int = Column(Integer, ForeignKey("text2sql_cache.id", ondelete="CASCADE"), nullable=False, index=True)
+    cache_entry_id: int = Column(Integer, ForeignKey("autobi.text2sql_cache.id", ondelete="CASCADE"), nullable=False, index=True)
     """The ID of the cache entry that was modified."""
 
     changed_field: str = Column(String, nullable=False)
