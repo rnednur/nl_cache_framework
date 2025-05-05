@@ -11,6 +11,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from dotenv import load_dotenv
 import logging
+import urllib.parse
 
 load_dotenv() # Load environment variables from .env file
 
@@ -21,6 +22,7 @@ logger = logging.getLogger(__name__)
 # Example construction (adjust variable names as needed):
 DB_USER = os.environ.get("POSTGRES_USER", "user")
 DB_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "password")
+DB_PASSWORD_encoded = urllib.parse.quote_plus(DB_PASSWORD)
 DB_HOST = os.environ.get("POSTGRES_HOST", "localhost")
 DB_PORT = os.environ.get("POSTGRES_PORT", "5432")
 DB_NAME = os.environ.get("POSTGRES_DB", "mcp_cache_db")
@@ -28,7 +30,7 @@ DB_NAME = os.environ.get("POSTGRES_DB", "mcp_cache_db")
 # Construct the PostgreSQL URL
 SQLALCHEMY_DATABASE_URL = os.environ.get(
     "DATABASE_URL",
-    f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD_encoded}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 )
 
 logger.info(f"Database URL: {SQLALCHEMY_DATABASE_URL}")
