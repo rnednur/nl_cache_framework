@@ -468,17 +468,18 @@ async def create_cache_entry(entry: CacheEntryCreate, db: Session = Depends(get_
             )
 
         # Validate API template is valid JSON
-        if entry.template_type == TemplateType.api.value:
-            try:
-                json.loads(entry.template)
-            except json.JSONDecodeError:
-                raise HTTPException(
-                    status_code=400,
-                    detail="API template must be valid JSON"
-                )
+        # if entry.template_type == TemplateType.api.value:
+        #     try:
+        #         json.loads(entry.template)
+        #     except json.JSONDecodeError:
+        #         raise HTTPException(
+        #             status_code=400,
+        #             detail="API template must be valid JSON"
+        #         )
 
         # Use controller to add the query
         controller = Text2SQLController(db_session=db)
+        
         new_entry_data = controller.add_query(
             nl_query=entry.nl_query,
             template=entry.template,
@@ -487,8 +488,8 @@ async def create_cache_entry(entry: CacheEntryCreate, db: Session = Depends(get_
             is_template=entry.is_template,
             entity_replacements=entry.entity_replacements,
             tags=entry.tags,
-            database_name=entry.database_name,
-            schema_name=entry.schema_name,
+            # database_name=entry.database_name,
+            # schema_name=entry.schema_name,
             catalog_type=entry.catalog_type if hasattr(entry, 'catalog_type') else None,
             catalog_subtype=entry.catalog_subtype if hasattr(entry, 'catalog_subtype') else None,
             catalog_name=entry.catalog_name if hasattr(entry, 'catalog_name') else None,
@@ -519,8 +520,9 @@ async def get_cache_entry(entry_id: int, db: Session = Depends(get_db)):
         "is_template": entry.is_template,
         "entity_replacements": entry.entity_replacements,
         "tags": entry.tags,
-        "database_name": entry.database_name,
-        "schema_name": entry.schema_name,
+        "reasoning_trace": entry.reasoning_trace,
+        # "database_name": entry.database_name,
+        # "schema_name": entry.schema_name,
         "created_at": entry.created_at.isoformat() if entry.created_at else None,
         "updated_at": entry.updated_at.isoformat() if entry.updated_at else None,
         "is_valid": entry.status == "active"
