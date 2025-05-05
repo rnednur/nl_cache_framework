@@ -9,7 +9,8 @@ Provides:
 
 from typing import List, Optional, Dict, Any, Tuple
 import numpy as np
-from sentence_transformers import SentenceTransformer, util
+from sentence_transformers import SentenceTransformer
+from sklearn.metrics.pairwise import cosine_similarity
 from difflib import SequenceMatcher
 import re
 import logging
@@ -146,10 +147,14 @@ class Text2SQLSimilarity:
             Cosine similarity score between -1.0 and 1.0.
         """
         try:
+            logger.debug(f"Computing cosine similarity between embeddings of shapes: {emb1.shape} and {emb2.shape}")
+            
             # Ensure embeddings are NumPy arrays
             if not isinstance(emb1, np.ndarray):
+                logger.debug(f"Converting emb1 to numpy array from type: {type(emb1)}")
                 emb1 = np.array(emb1)
             if not isinstance(emb2, np.ndarray):
+                logger.debug(f"Converting emb2 to numpy array from type: {type(emb2)}")
                 emb2 = np.array(emb2)
 
             # Handle potential shape mismatches or zero vectors if necessary
@@ -157,25 +162,32 @@ class Text2SQLSimilarity:
                 logger.warning(f"Embedding shape mismatch: {emb1.shape} vs {emb2.shape}")
                 return 0.0
             if np.all(emb1 == 0) or np.all(emb2 == 0):
+                logger.warning("Zero vector detected in embeddings")
                 return 0.0
 
-            # Compute cosine similarity
-            similarity = util.cos_sim(emb1, emb2)
-            # util.cos_sim returns a tensor; extract the scalar value
-            score = float(similarity.item())
+            # Reshape for sklearn's cosine_similarity
+            emb1_2d = emb1.reshape(1, -1)
+            emb2_2d = emb2.reshape(1, -1)
+            logger.debug(f"Reshaped embeddings to: {emb1_2d.shape} and {emb2_2d.shape}")
+            
+            # Compute cosine similarity using sklearn
+            similarity = cosine_similarity(emb1_2d, emb2_2d)[0][0]
+            logger.debug(f"Raw cosine similarity score: {similarity}")
             
             # Apply stricter scoring
             # 1. Normalize to 0-1 range (cosine similarity is -1 to 1)
-            score = (score + 1) / 2
+            score = (similarity + 1) / 2
+            logger.debug(f"Normalized score: {score}")
             
             # 2. Apply non-linear scaling to make the scoring more strict
             # This will make scores below 0.7 much lower
             if score < 0.7:
                 score = score * 0.5  # Halve the score for low similarities
+                logger.debug(f"Adjusted score (below 0.7): {score}")
             
             return score
         except Exception as e:
-            logger.error(f"Error computing cosine similarity: {e}")
+            logger.error(f"Error computing cosine similarity: {e}", exc_info=True)
             return 0.0
 
     def compute_vector_similarities(self, query_emb: np.ndarray, candidate_embs: List[np.ndarray]) -> List[float]:
@@ -192,14 +204,28 @@ class Text2SQLSimilarity:
             logger.error("Model not loaded. Cannot compute vector similarities.")
             return [0.0] * len(candidate_embs)
         if query_emb is None or not candidate_embs:
+            logger.warning("Empty query embedding or candidate embeddings")
             return [0.0] * len(candidate_embs)
 
         try:
-            # Ensure candidates are stacked correctly for util.cos_sim
+            logger.debug(f"Computing vector similarities for {len(candidate_embs)} candidates")
+            logger.debug(f"Query embedding shape: {query_emb.shape}")
+            
+            # Ensure candidates are stacked correctly for sklearn's cosine_similarity
             candidate_embs_array = np.array(candidate_embs)
-            similarities = util.cos_sim(query_emb, candidate_embs_array)
+            logger.debug(f"Candidate embeddings array shape: {candidate_embs_array.shape}")
+            
+            # Reshape query embedding to 2D array
+            query_emb_2d = query_emb.reshape(1, -1)
+            logger.debug(f"Reshaped query embedding to: {query_emb_2d.shape}")
+            
+            # Compute cosine similarity using sklearn
+            similarities = cosine_similarity(query_emb_2d, candidate_embs_array)[0]
+            logger.debug(f"Computed similarities shape: {similarities.shape}")
+            logger.debug(f"First few similarity scores: {similarities[:5]}")
+            
             # Return similarities as a list of floats
-            return similarities.flatten().tolist()
+            return similarities.tolist()
         except Exception as e:
             logger.error(f"Error computing batch vector similarities: {e}", exc_info=True)
             return [0.0] * len(candidate_embs)
@@ -262,61 +288,88 @@ class Text2SQLSimilarity:
             List of (candidate_index, similarity_score) tuples for candidates above threshold,
             sorted by similarity descending.
         """
+        logger.info(f"Finding most similar candidates for query: {query}")
+        logger.info(f"Method: {method}, Threshold: {threshold}")
+        logger.info(f"Number of candidates: {len(candidates)}")
+        
         similarities: Optional[List[float]] = None
 
         if method == "vector":
             if not self.model:
-                logger.error(
-                    "Vector similarity requested but embedding model is not available."
-                )
+                logger.error("Vector similarity requested but embedding model is not available.")
                 return []
+                
+            logger.debug("Generating query embedding...")
             query_embedding = self.get_embedding([query])
-            if query_embedding is None:
+            if query_embedding is None or len(query_embedding) == 0:
                 logger.error("Failed to generate embedding for the query.")
                 return []
+                
             # Ensure query_embedding is 1D
-            if query_embedding.ndim > 1:
-                query_embedding = query_embedding[0]
+            query_embedding = query_embedding[0] if query_embedding.ndim > 1 else query_embedding
+            logger.debug(f"Query embedding shape: {query_embedding.shape}")
 
             if candidate_embeddings:
+                logger.debug(f"Using provided candidate embeddings: {len(candidate_embeddings)}")
                 if len(candidate_embeddings) != len(candidates):
                     logger.warning(
-                        "Mismatch between number of candidates and provided embeddings."
+                        f"Mismatch between number of candidates ({len(candidates)}) and provided embeddings ({len(candidate_embeddings)})"
                     )
-                    # Decide handling: error, ignore embeddings, etc. For now, calculate missing ones.
-                    # This part might need adjustment based on expected usage.
+                    # Calculate missing embeddings
                     candidate_embeddings = self.get_embedding(candidates)
-                    if candidate_embeddings is None:
+                    if candidate_embeddings is None or len(candidate_embeddings) == 0:
                         return []
-                similarities = [
-                    (
-                        self.compute_cosine_similarity(query_embedding, cand_emb)
-                        if cand_emb is not None
-                        else 0.0
-                    )  # Handle potential None embeddings
-                    for cand_emb in candidate_embeddings
-                ]
+                
+                # Convert embeddings to numpy arrays and handle None values
+                valid_embeddings = []
+                for i, emb in enumerate(candidate_embeddings):
+                    if emb is not None and isinstance(emb, np.ndarray):
+                        valid_embeddings.append(emb)
+                    else:
+                        logger.warning(f"Invalid embedding at index {i}, using zero vector")
+                        valid_embeddings.append(np.zeros_like(query_embedding))
+                
+                logger.debug(f"Valid embeddings count: {len(valid_embeddings)}")
+                
+                # Compute similarities using sklearn's cosine_similarity
+                query_emb_2d = query_embedding.reshape(1, -1)
+                candidate_embs_2d = np.array(valid_embeddings)
+                logger.debug(f"Shapes - Query: {query_emb_2d.shape}, Candidates: {candidate_embs_2d.shape}")
+                
+                similarities = cosine_similarity(query_emb_2d, candidate_embs_2d)[0].tolist()
+                logger.debug(f"Computed similarities: {similarities[:5]}...")
             else:
+                logger.debug("No candidate embeddings provided, computing new embeddings...")
                 # Calculate embeddings if not provided
                 cand_embeds_calc = self.get_embedding(candidates)
-                if cand_embeds_calc is None:
+                if cand_embeds_calc is None or len(cand_embeds_calc) == 0:
+                    logger.error("Failed to generate embeddings for candidates")
                     return []
-                similarities = [
-                    self.compute_cosine_similarity(query_embedding, cand_emb)
-                    for cand_emb in cand_embeds_calc
-                ]
+                
+                logger.debug(f"Generated candidate embeddings shape: {cand_embeds_calc.shape}")
+                
+                # Compute similarities using sklearn's cosine_similarity
+                query_emb_2d = query_embedding.reshape(1, -1)
+                candidate_embs_2d = cand_embeds_calc
+                logger.debug(f"Shapes - Query: {query_emb_2d.shape}, Candidates: {candidate_embs_2d.shape}")
+                
+                similarities = cosine_similarity(query_emb_2d, candidate_embs_2d)[0].tolist()
+                logger.debug(f"Computed similarities: {similarities[:5]}...")
 
         elif method == "string":
+            logger.debug("Using string similarity method...")
             similarities = [
                 self.compute_string_similarity(query, candidate)
                 for candidate in candidates
             ]
+            logger.debug(f"String similarities: {similarities[:5]}...")
         else:
             logger.error(f"Unknown similarity method requested: {method}")
             raise ValueError(f"Unknown similarity method: {method}")
 
-        if similarities is None:
-            return []  # Should only happen if vector embedding failed
+        if similarities is None or len(similarities) == 0:
+            logger.error("No similarities computed")
+            return []
 
         # Log top 5 similarity scores for debugging
         top_scores = sorted(enumerate(similarities), key=lambda x: x[1], reverse=True)[:5]
@@ -330,7 +383,8 @@ class Text2SQLSimilarity:
             (i, score) for i, score in enumerate(similarities) if score >= threshold
         ]
         similar_indices.sort(key=lambda x: x[1], reverse=True)
-
+        
+        logger.info(f"Found {len(similar_indices)} candidates above threshold {threshold}")
         return similar_indices
 
     # Entity extraction is less about similarity and more about NLP/parsing.

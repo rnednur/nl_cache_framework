@@ -129,9 +129,14 @@ export default function CacheEntries() {
                 <SelectContent>
                   <SelectItem value="all">All template types</SelectItem>
                   <SelectItem value="sql">SQL</SelectItem>
-                  <SelectItem value="api">API</SelectItem>
                   <SelectItem value="url">URL</SelectItem>
+                  <SelectItem value="api">API</SelectItem>
                   <SelectItem value="workflow">Workflow</SelectItem>
+                  <SelectItem value="graphql">GraphQL</SelectItem>
+                  <SelectItem value="regex">Regex</SelectItem>
+                  <SelectItem value="script">Script</SelectItem>
+                  <SelectItem value="nosql">NoSQL</SelectItem>
+                  <SelectItem value="cli">CLI</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -166,31 +171,30 @@ export default function CacheEntries() {
           <table className="w-full caption-bottom text-sm">
             <thead className="border-b bg-muted/50">
               <tr>
-                <th className="h-10 px-4 text-left font-medium">Query</th>
-                <th className="h-10 px-4 text-left font-medium">Template Type</th>
-                <th className="h-10 px-4 text-left font-medium">Visualization</th>
-                <th className="h-10 px-4 text-left font-medium">Tags</th>
-                <th className="h-10 px-4 text-left font-medium">Usage Count</th>
-                <th className="h-10 px-4 text-left font-medium">Actions</th>
+                <th className="h-10 px-4 text-left font-medium w-[40%]">Query</th>
+                <th className="h-10 px-4 text-left font-medium w-[15%]">Template Type</th>
+                <th className="h-10 px-4 text-left font-medium w-[20%]">Tags</th>
+                <th className="h-10 px-4 text-left font-medium w-[10%]">Usage Count</th>
+                <th className="h-10 px-4 text-left font-medium w-[15%]">Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="h-24 text-center">
+                  <td colSpan={5} className="h-24 text-center">
                     Loading cache entries...
                   </td>
                 </tr>
               ) : entries.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="h-24 text-center">
+                  <td colSpan={5} className="h-24 text-center">
                     No cache entries found.
                   </td>
                 </tr>
               ) : (
                 entries.map((entry) => (
                   <tr key={entry.id} className="border-b transition-colors hover:bg-muted/50">
-                    <td className="p-4 align-middle max-w-[300px]">
+                    <td className="p-4 align-middle w-[40%]">
                       <div className="truncate font-medium">
                         <Link 
                           href={`/cache-entries/${entry.id}`}
@@ -200,17 +204,10 @@ export default function CacheEntries() {
                         </Link>
                       </div>
                     </td>
-                    <td className="p-4 align-middle">
+                    <td className="p-4 align-middle w-[15%]">
                       <span className="capitalize">{entry.template_type}</span>
                     </td>
-                    <td className="p-4 align-middle">
-                      {entry.suggested_visualization ? (
-                        <span className="capitalize">{entry.suggested_visualization}</span>
-                      ) : (
-                        <span className="text-muted-foreground text-xs">None</span>
-                      )}
-                    </td>
-                    <td className="p-4 align-middle">
+                    <td className="p-4 align-middle w-[20%]">
                       <div className="flex flex-wrap gap-1">
                         {entry.tags && entry.tags.length > 0 ? (
                           entry.tags.map((tag) => (
@@ -226,10 +223,10 @@ export default function CacheEntries() {
                         )}
                       </div>
                     </td>
-                    <td className="p-4 align-middle">
+                    <td className="p-4 align-middle w-[10%]">
                       {entry.usage_count}
                     </td>
-                    <td className="p-4 align-middle">
+                    <td className="p-4 align-middle w-[15%]">
                       <div className="flex items-center gap-2">
                         <Button variant="ghost" size="icon" asChild>
                           <Link href={`/cache-entries/${entry.id}/edit`}>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Tag as TagIcon } from "lucide-react"
@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../../../components/ui/card"
 import api, { CacheEntryCreate } from "../../../services/api"
 import { Label } from "../../../components/ui/label"
+import React from "react"
 
 export default function CreateCacheEntry() {
   const router = useRouter()
@@ -21,39 +22,104 @@ export default function CreateCacheEntry() {
   const [nlQuery, setNlQuery] = useState("")
   const [template, setTemplate] = useState("")
   const [templateType, setTemplateType] = useState("sql")
-  const [visualization, setVisualization] = useState("")
   const [reasoningTrace, setReasoningTrace] = useState("")
-  const [databaseName, setDatabaseName] = useState("")
-  const [schemaName, setSchemaName] = useState("")
-  const [catalogId, setCatalogId] = useState<number | undefined>()
+  const [catalogType, setCatalogType] = useState<string | undefined>(undefined)
+  const [catalogSubtype, setCatalogSubtype] = useState<string | undefined>(undefined)
+  const [catalogName, setCatalogName] = useState<string | undefined>(undefined)
+  const [status, setStatus] = useState('active')
   
   // Tags handling
   const [tags, setTags] = useState<string[]>([])
   const [tagInput, setTagInput] = useState("")
   
+  // New state for API structured form
+  const [apiMethod, setApiMethod] = useState('GET')
+  const [apiEndpoint, setApiEndpoint] = useState('')
+  const [apiHeaders, setApiHeaders] = useState('{"Content-Type": "application/json"}')
+  const [apiBody, setApiBody] = useState('{}')
+  const [useRawEditor, setUseRawEditor] = useState(false)
+  const [jsonError, setJsonError] = useState<string | null>(null)
+  
   const addTag = () => {
-    if (tagInput.trim() !== "" && !tags.includes(tagInput.trim())) {
+    if (tagInput.trim() && !tags.includes(tagInput.trim())) {
       setTags([...tags, tagInput.trim()])
-      setTagInput("")
     }
+    setTagInput('')
   }
   
-  const removeTag = (tagToRemove: string) => {
-    setTags(tags.filter((tag) => tag !== tagToRemove))
+  const removeTag = (tag: string) => {
+    setTags(tags.filter(t => t !== tag))
   }
   
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
+    if (e.key === 'Enter' && tagInput.trim()) {
       e.preventDefault()
       addTag()
     }
   }
   
+  // Function to generate JSON from structured form
+  const generateApiJson = () => {
+    try {
+      const headers = JSON.parse(apiHeaders || '{}')
+      const body = JSON.parse(apiBody || '{}')
+      const apiJson = {
+        method: apiMethod,
+        url: apiEndpoint,
+        headers,
+        body
+      }
+      const jsonString = JSON.stringify(apiJson, null, 2)
+      setJsonError(null)
+      return jsonString
+    } catch (err) {
+      setJsonError('Invalid JSON in headers or body fields')
+      return ''
+    }
+  }
+  
+  // Update template when using structured form
+  useEffect(() => {
+    if (templateType === 'api' && !useRawEditor) {
+      const newTemplate = generateApiJson()
+      if (newTemplate) {
+        setTemplate(newTemplate)
+      }
+    }
+  }, [apiMethod, apiEndpoint, apiHeaders, apiBody, templateType, useRawEditor])
+  
+  // Clear API form fields when switching away from API template type
+  useEffect(() => {
+    if (templateType !== 'api') {
+      setApiMethod('GET')
+      setApiEndpoint('')
+      setApiHeaders('{"Content-Type": "application/json"}')
+      setApiBody('{}')
+      setUseRawEditor(false)
+      setJsonError(null)
+      setTemplate('')
+    }
+  }, [templateType])
+  
+  // Validate raw JSON editor input
+  useEffect(() => {
+    if (templateType === 'api' && template.trim()) {
+      try {
+        JSON.parse(template)
+        setJsonError(null)
+      } catch (err) {
+        setJsonError(err instanceof Error ? err.message : 'Invalid JSON format')
+      }
+    } else {
+      setJsonError(null)
+    }
+  }, [template, templateType])
+  
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (!nlQuery.trim() || !template.trim()) {
-      setError("Natural Language Query and Template are required.")
+    if (templateType === 'api' && jsonError) {
+      setError('Please fix the JSON errors before submitting')
       return
     }
     
@@ -63,15 +129,15 @@ export default function CreateCacheEntry() {
     try {
       const entry: CacheEntryCreate = {
         nl_query: nlQuery,
-        template: template,
+        template,
         template_type: templateType,
+        reasoning_trace: reasoningTrace || undefined,
         is_template: true,
         tags: tags.length > 0 ? tags : undefined,
-        suggested_visualization: visualization || undefined,
-        reasoning_trace: reasoningTrace || undefined,
-        database_name: databaseName || undefined,
-        schema_name: schemaName || undefined,
-        catalog_id: catalogId
+        catalog_type: catalogType || undefined,
+        catalog_subtype: catalogSubtype || undefined,
+        catalog_name: catalogName || undefined,
+        status: status
       }
       
       await api.createCacheEntry(entry)
@@ -106,34 +172,17 @@ export default function CreateCacheEntry() {
             
             <div className="space-y-2">
               <label
-                htmlFor="query"
+                htmlFor="nl-query"
                 className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
               >
                 Natural Language Query<span className="text-red-500">*</span>
               </label>
               <Textarea
-                id="query"
-                placeholder="e.g., Get all users who signed up last month"
+                id="nl-query"
+                placeholder="e.g., Show me all users who signed up last week"
                 className="min-h-[100px]"
                 value={nlQuery}
                 onChange={(e) => setNlQuery(e.target.value)}
-                required
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label
-                htmlFor="template"
-                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-              >
-                Template<span className="text-red-500">*</span>
-              </label>
-              <Textarea
-                id="template"
-                placeholder="e.g., SELECT * FROM users WHERE signup_date >= '{{start_date}}' AND signup_date <= '{{end_date}}'"
-                className="min-h-[100px] font-mono text-sm"
-                value={template}
-                onChange={(e) => setTemplate(e.target.value)}
                 required
               />
             </div>
@@ -157,75 +206,251 @@ export default function CreateCacheEntry() {
                   <SelectItem value="api">API</SelectItem>
                   <SelectItem value="url">URL</SelectItem>
                   <SelectItem value="workflow">Workflow</SelectItem>
+                  <SelectItem value="graphql">GraphQL</SelectItem>
+                  <SelectItem value="regex">Regex</SelectItem>
+                  <SelectItem value="script">Script</SelectItem>
+                  <SelectItem value="nosql">NoSQL</SelectItem>
+                  <SelectItem value="cli">CLI</SelectItem>
+                  <SelectItem value="prompt">Prompt</SelectItem>
+                  <SelectItem value="configuration">Configuration</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             <div className="space-y-2">
               <label
-                htmlFor="visualization"
+                htmlFor="template"
                 className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
               >
-                Suggested Visualization
+                Template<span className="text-red-500">*</span>
               </label>
-              <Select 
-                value={visualization}
-                onValueChange={setVisualization}
-              >
-                <SelectTrigger id="visualization">
-                  <SelectValue placeholder="Select visualization type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="table">Table</SelectItem>
-                  <SelectItem value="bar">Bar Chart</SelectItem>
-                  <SelectItem value="line">Line Chart</SelectItem>
-                  <SelectItem value="pie">Pie Chart</SelectItem>
-                  <SelectItem value="scatter">Scatter Plot</SelectItem>
-                  <SelectItem value="map">Map</SelectItem>
-                  <SelectItem value="custom">Custom</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                Tags
-              </label>
-              <div className="flex flex-wrap gap-2 mb-2">
-                {tags.map((tag) => (
-                  <div
-                    key={tag}
-                    className="flex items-center bg-slate-100 text-slate-800 px-3 py-1 rounded-full text-sm"
-                  >
-                    <span>{tag}</span>
-                    <button 
+              {templateType === 'api' ? (
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-2">
+                    <Button
                       type="button"
-                      onClick={() => removeTag(tag)} 
-                      className="ml-2 text-slate-500 hover:text-slate-700"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setUseRawEditor(!useRawEditor)}
                     >
-                      ×
-                    </button>
+                      {useRawEditor ? 'Use Structured Form' : 'Use Raw JSON Editor'}
+                    </Button>
                   </div>
-                ))}
-              </div>
-              <div className="flex">
-                <Input
-                  placeholder="Add tag..."
-                  value={tagInput}
-                  onChange={(e) => setTagInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  className="rounded-r-none"
+                  {useRawEditor ? (
+                    <div className="space-y-2">
+                      <Textarea
+                        id="template"
+                        placeholder='e.g., {\n  "method": "GET",\n  "url": "https://api.example.com/data",\n  "headers": {\n    "Content-Type": "application/json"\n  },\n  "body": {}\n}'
+                        className="min-h-[200px] font-mono text-sm"
+                        value={template}
+                        onChange={(e) => setTemplate(e.target.value)}
+                        required
+                      />
+                      {jsonError && <p className="text-red-500 text-xs">{jsonError}</p>}
+                    </div>
+                  ) : (
+                    <div className="space-y-4 border p-4 rounded-md">
+                      <div className="space-y-2">
+                        <label htmlFor="api-method" className="text-sm">Method</label>
+                        <Select value={apiMethod} onValueChange={setApiMethod}>
+                          <SelectTrigger id="api-method">
+                            <SelectValue placeholder="Select method" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="GET">GET</SelectItem>
+                            <SelectItem value="POST">POST</SelectItem>
+                            <SelectItem value="PUT">PUT</SelectItem>
+                            <SelectItem value="DELETE">DELETE</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <label htmlFor="api-endpoint" className="text-sm">Endpoint URL</label>
+                        <Input
+                          id="api-endpoint"
+                          placeholder="https://api.example.com/resource"
+                          value={apiEndpoint}
+                          onChange={(e) => setApiEndpoint(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label htmlFor="api-headers" className="text-sm">Headers (JSON)</label>
+                        <Textarea
+                          id="api-headers"
+                          placeholder='{"Content-Type": "application/json"}'
+                          className="min-h-[100px] font-mono text-sm"
+                          value={apiHeaders}
+                          onChange={(e) => setApiHeaders(e.target.value)}
+                        />
+                        {jsonError && jsonError.includes('headers') && <p className="text-red-500 text-xs">Invalid JSON in headers</p>}
+                      </div>
+                      <div className="space-y-2">
+                        <label htmlFor="api-body" className="text-sm">Body (JSON)</label>
+                        <Textarea
+                          id="api-body"
+                          placeholder="{}"
+                          className="min-h-[100px] font-mono text-sm"
+                          value={apiBody}
+                          onChange={(e) => setApiBody(e.target.value)}
+                        />
+                        {jsonError && jsonError.includes('body') && <p className="text-red-500 text-xs">Invalid JSON in body</p>}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : templateType === 'sql' ? (
+                <Textarea
+                  id="template"
+                  placeholder="e.g., SELECT * FROM users WHERE signup_date >= '{{start_date}}' AND signup_date <= '{{end_date}}'"
+                  className="min-h-[100px] font-mono text-sm"
+                  value={template}
+                  onChange={(e) => setTemplate(e.target.value)}
+                  required
                 />
-                <Button 
-                  type="button"
-                  onClick={addTag} 
-                  variant="secondary" 
-                  className="rounded-l-none"
-                >
-                  <TagIcon className="h-4 w-4 mr-1" />
-                  Add
-                </Button>
-              </div>
+              ) : templateType === 'url' ? (
+                <Input
+                  id="template"
+                  placeholder="e.g., https://example.com/data?param={{value}}"
+                  value={template}
+                  onChange={(e) => setTemplate(e.target.value)}
+                  required
+                />
+              ) : templateType === 'workflow' ? (
+                <div className="space-y-2">
+                  <Textarea
+                    id="template"
+                    placeholder='e.g., {
+  "steps": [
+    {
+      "type": "api",
+      "url": "https://api.example.com/step1"
+    },
+    {
+      "type": "transform",
+      "operation": "filter"
+    }
+  ]
+}'
+                    className="min-h-[200px] font-mono text-sm"
+                    value={template}
+                    onChange={(e) => setTemplate(e.target.value)}
+                    required
+                  />
+                  {templateType === 'workflow' && template.trim() && (() => {
+                    try {
+                      JSON.parse(template);
+                      return null;
+                    } catch (err) {
+                      return <p className="text-red-500 text-xs">Invalid JSON format</p>;
+                    }
+                  })()}
+                </div>
+              ) : templateType === 'graphql' ? (
+                <Textarea
+                  id="template"
+                  placeholder="e.g., query { user(id: {{user_id}}) { name, email } }"
+                  className="min-h-[100px] font-mono text-sm"
+                  value={template}
+                  onChange={(e) => setTemplate(e.target.value)}
+                  required
+                />
+              ) : templateType === 'regex' ? (
+                <Input
+                  id="template"
+                  placeholder="e.g., \d{4}-\d{2}-\d{2}"
+                  value={template}
+                  onChange={(e) => setTemplate(e.target.value)}
+                  required
+                />
+              ) : templateType === 'script' ? (
+                <div className="space-y-2">
+                  <Textarea
+                    id="template"
+                    placeholder='e.g., {
+  "language": "javascript",
+  "code": "function transform(data) { return data.filter(d => d.active); }"
+}'
+                    className="min-h-[200px] font-mono text-sm"
+                    value={template}
+                    onChange={(e) => setTemplate(e.target.value)}
+                    required
+                  />
+                  {templateType === 'script' && template.trim() && (() => {
+                    try {
+                      JSON.parse(template);
+                      return null;
+                    } catch (err) {
+                      return <p className="text-red-500 text-xs">Invalid JSON format</p>;
+                    }
+                  })()}
+                </div>
+              ) : templateType === 'nosql' ? (
+                <Textarea
+                  id="template"
+                  placeholder='e.g., {
+  "collection": "users",
+  "query": { "status": "active" },
+  "projection": { "name": 1, "email": 1 }
+}'
+                  className="min-h-[100px] font-mono text-sm"
+                  value={template}
+                  onChange={(e) => setTemplate(e.target.value)}
+                  required
+                />
+              ) : templateType === 'cli' ? (
+                <Input
+                  id="template"
+                  placeholder="e.g., grep '{{search_term}}' /var/log/*.log"
+                  value={template}
+                  onChange={(e) => setTemplate(e.target.value)}
+                  required
+                />
+              ) : templateType === 'prompt' ? (
+                <Textarea
+                  id="template"
+                  placeholder="e.g., Translate the following text to {{language}}: '{{text}}'"
+                  className="min-h-[100px] font-mono text-sm"
+                  value={template}
+                  onChange={(e) => setTemplate(e.target.value)}
+                  required
+                />
+              ) : templateType === 'configuration' ? (
+                <div className="space-y-2">
+                  <Textarea
+                    id="template"
+                    placeholder='e.g., {
+  "settings": {
+    "timeout": 30,
+    "retries": 3
+  },
+  "parameters": {
+    "key": "{{api_key}}"
+  }
+}'
+                    className="min-h-[200px] font-mono text-sm"
+                    value={template}
+                    onChange={(e) => setTemplate(e.target.value)}
+                    required
+                  />
+                  {templateType === 'configuration' && template.trim() && (() => {
+                    try {
+                      JSON.parse(template);
+                      return null;
+                    } catch (err) {
+                      return <p className="text-red-500 text-xs">Invalid JSON format</p>;
+                    }
+                  })()}
+                </div>
+              ) : (
+                <Textarea
+                  id="template"
+                  placeholder="Enter template content"
+                  className="min-h-[100px] font-mono text-sm"
+                  value={template}
+                  onChange={(e) => setTemplate(e.target.value)}
+                  required
+                />
+              )}
             </div>
 
             <div className="space-y-2">
@@ -246,35 +471,53 @@ export default function CreateCacheEntry() {
 
             <div className="grid gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="database">Database Name</Label>
+                <Label htmlFor="catalogType">Catalog Type</Label>
                 <Input
-                  id="database"
-                  placeholder="Enter database name"
-                  value={databaseName}
-                  onChange={(e) => setDatabaseName(e.target.value)}
+                  id="catalogType"
+                  placeholder="Enter catalog type"
+                  value={catalogType || ''}
+                  onChange={(e) => setCatalogType(e.target.value || undefined)}
                 />
               </div>
-              
               <div className="grid gap-2">
-                <Label htmlFor="schema">Schema Name</Label>
+                <Label htmlFor="catalogSubtype">Catalog Subtype</Label>
                 <Input
-                  id="schema"
-                  placeholder="Enter schema name"
-                  value={schemaName}
-                  onChange={(e) => setSchemaName(e.target.value)}
+                  id="catalogSubtype"
+                  placeholder="Enter catalog subtype"
+                  value={catalogSubtype || ''}
+                  onChange={(e) => setCatalogSubtype(e.target.value || undefined)}
                 />
               </div>
+              <div className="grid gap-2">
+                <Label htmlFor="catalogName">Catalog Name</Label>
+                <Input
+                  id="catalogName"
+                  placeholder="Enter catalog name"
+                  value={catalogName || ''}
+                  onChange={(e) => setCatalogName(e.target.value || undefined)}
+                />
+              </div>
+            </div>
 
-              <div className="grid gap-2">
-                <Label htmlFor="catalog">Catalog ID</Label>
-                <Input
-                  id="catalog"
-                  type="number"
-                  placeholder="Enter catalog ID"
-                  value={catalogId || ""}
-                  onChange={(e) => setCatalogId(e.target.value ? parseInt(e.target.value) : undefined)}
-                />
-              </div>
+            <div className="space-y-2">
+              <label
+                htmlFor="status"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              >
+                Status
+              </label>
+              <Select 
+                value={status}
+                onValueChange={setStatus}
+              >
+                <SelectTrigger id="status">
+                  <SelectValue placeholder="Select status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </CardContent>
           

@@ -9,7 +9,7 @@ import datetime
 from scipy.spatial.distance import cosine
 
 # Local imports within the library
-from .models import Text2SQLCache, TemplateType
+from .models import Text2SQLCache, TemplateType, Status, CacheAuditLog
 from .similarity import Text2SQLSimilarity
 
 logger = logging.getLogger(__name__)
@@ -58,8 +58,8 @@ class Text2SQLController:
             Exception: If embedding generation fails unexpectedly (logged).
         """
         try:
-            embedding = self.similarity_util.get_embedding(text)
-            if embedding is None:
+            embedding = self.similarity_util.get_embedding([text])
+            if embedding is None or len(embedding) == 0:
                 logger.warning(f"Could not generate embedding for text: {text[:50]}...")
                 return None
             # Ensure it's a 1D array if a single string was passed
@@ -96,11 +96,11 @@ class Text2SQLController:
         entity_replacements: Optional[Dict[str, Any]] = None,
         reasoning_trace: Optional[str] = None,
         tags: Optional[List[str]] = None,
-        suggested_visualization: Optional[str] = None,
-        database_name: Optional[str] = None,
-        schema_name: Optional[str] = None,
-        catalog_id: Optional[int] = None,
+        catalog_type: Optional[str] = None,
+        catalog_subtype: Optional[str] = None,
+        catalog_name: Optional[str] = None,
         is_template: Optional[bool] = None,
+        status: str = Status.ACTIVE,
     ) -> Dict[str, Any]:
         """
         Add a new query to the cache.
@@ -112,11 +112,11 @@ class Text2SQLController:
             entity_replacements: Optional dictionary of entity replacements.
             reasoning_trace: Optional explanation of the template.
             tags: Optional list of tags for categorization.
-            suggested_visualization: Optional hint for visualization.
-            database_name: Optional target database identifier.
-            schema_name: Optional target schema identifier.
-            catalog_id: Optional catalog identifier.
+            catalog_type: Optional catalog type to filter by.
+            catalog_subtype: Optional catalog subtype to filter by.
+            catalog_name: Optional catalog name to filter by.
             is_template: Flag indicating if this entry contains placeholders.
+            status: Status of the cache entry (pending, active, archive). Defaults to ACTIVE.
 
         Returns:
             Dictionary representation of the created cache entry.
@@ -145,10 +145,10 @@ class Text2SQLController:
                 entity_replacements=entity_replacements,
                 reasoning_trace=reasoning_trace,
                 tags=tags,
-                suggested_visualization=suggested_visualization,
-                database_name=database_name,
-                schema_name=schema_name,
-                catalog_id=catalog_id,
+                catalog_type=catalog_type,
+                catalog_subtype=catalog_subtype,
+                catalog_name=catalog_name,
+                status=status,
             )
             # Use the property setter to handle numpy array -> list conversion
             cache_entry.embedding = embedding_array
@@ -156,6 +156,17 @@ class Text2SQLController:
             # Store in database using the provided session
             self.session.add(cache_entry)
             self.session.flush()  # Assign ID before commit/return
+            self.session.commit()
+
+            # Log the creation in audit log
+            audit_log = CacheAuditLog(
+                cache_entry_id=cache_entry.id,
+                changed_field="creation",
+                old_value=None,
+                new_value=None,
+                change_reason="New cache entry created"
+            )
+            self.session.add(audit_log)
             self.session.commit()
 
             # Convert to dictionary before returning
@@ -178,124 +189,90 @@ class Text2SQLController:
         self,
         nl_query: str,
         template_type: Optional[str] = None,
-        search_method: str = "auto",
+        search_method: str = "vector",
         similarity_threshold: float = 0.8,
-        database_name: Optional[str] = None,
-        schema_name: Optional[str] = None,
-        catalog_id: Optional[int] = None,
         limit: int = 5,
+        catalog_type: Optional[str] = None,
+        catalog_subtype: Optional[str] = None,
+        catalog_name: Optional[str] = None,
+        status: Optional[str] = Status.ACTIVE,
     ) -> List[Dict[str, Any]]:
-        """
-        Search for a natural language query in the cache.
+        """Search for similar queries in the cache.
 
         Args:
-            nl_query: Natural language query to search for.
-            template_type: Optional filter for template type.
-            search_method: Search method ('exact', 'string', 'vector', or 'auto').
-            similarity_threshold: Minimum similarity threshold (0.0 to 1.0).
-            database_name: Optional filter by database name.
-            schema_name: Optional filter by schema name.
-            catalog_id: Optional filter by catalog ID.
+            nl_query: The natural language query to search for.
+            template_type: Optional template type to filter by.
+            search_method: Method to use for similarity search ('exact', 'string', 'vector', or 'auto').
+            similarity_threshold: Minimum similarity score (0.0 to 1.0).
             limit: Maximum number of results to return.
+            catalog_type: Optional catalog type to filter by.
+            catalog_subtype: Optional catalog subtype to filter by.
+            catalog_name: Optional catalog name to filter by.
+            status: Optional status to filter by (pending, active, archive). Defaults to ACTIVE.
 
         Returns:
-            List of matching cache entries as dictionaries, including 'similarity'
-            and 'match_type'. Sorted by relevance. Returns empty list on error.
-
-        Raises:
-            ValueError: If search_method is invalid.
-            SQLAlchemyError: If a database error occurs during candidate fetching (logged, returns []).
-            Exception: If similarity computation fails unexpectedly (logged, returns []).
+            List of matching cache entries with similarity scores.
         """
-        if not nl_query or not nl_query.strip():
-            logger.warning("Empty query provided to search_query")
+        if not nl_query:
             return []
 
-        valid_search_methods = ["exact", "string", "vector", "auto"]
-        if search_method not in valid_search_methods:
-            raise ValueError(
-                f"Invalid search_method. Must be one of: {', '.join(valid_search_methods)}"
-            )
+        # Get all candidates
+        candidates = self.get_all_queries(status=status)
+        if not candidates:
+            return []
 
+        # Filter by template type and catalog fields if specified
+        if template_type or catalog_type or catalog_subtype or catalog_name:
+            candidates = [
+                c for c in candidates
+                if (template_type is None or c.get("template_type") == template_type) and
+                   (catalog_type is None or c.get("catalog_type") == catalog_type) and
+                   (catalog_subtype is None or c.get("catalog_subtype") == catalog_subtype) and
+                   (catalog_name is None or c.get("catalog_name") == catalog_name)
+            ]
+
+        # Get embeddings for vector similarity if needed
+        candidate_embeddings_list = None
+        if search_method in ["vector", "auto"]:
+            candidate_texts = [c.get("nl_query", "") for c in candidates]
+            if candidate_texts:
+                try:
+                    candidate_embeddings = self.similarity_util.get_embedding(candidate_texts)
+                    if candidate_embeddings is None or len(candidate_embeddings) == 0:
+                        logger.warning("Failed to generate embeddings for candidates")
+                        candidate_embeddings = None
+                    else:
+                        # Convert to list of embeddings, ensuring each is a numpy array
+                        candidate_embeddings_list = []
+                        for emb in candidate_embeddings:
+                            if isinstance(emb, np.ndarray):
+                                candidate_embeddings_list.append(emb)
+                            else:
+                                logger.warning("Invalid embedding type in results, using zero vector")
+                                candidate_embeddings_list.append(np.zeros(768))
+                except Exception as e:
+                    logger.error(f"Error generating candidate embeddings: {e}", exc_info=True)
+                    candidate_embeddings_list = None
+            else:
+                logger.warning("No candidate texts to generate embeddings for")
+
+        # Find similar queries
+        similar_indices = self.similarity_util.find_most_similar(
+            nl_query,
+            [c.get("nl_query", "") for c in candidates],
+            candidate_embeddings=candidate_embeddings_list,
+            method=search_method if search_method in ["vector", "string"] else "vector",
+            threshold=similarity_threshold,
+        )
+
+        # Return results with similarity scores
         results = []
-        similarity_threshold = max(0.0, min(1.0, similarity_threshold))
+        for idx, score in similar_indices:
+            entry = candidates[idx].copy()
+            entry["similarity_score"] = score
+            results.append(entry)
 
-        try:
-            # --- Get Query Embedding ---
-            query_embedding = self._get_embedding(nl_query)
-            if query_embedding is None:
-                logger.warning(f"Could not generate embedding for search query: {nl_query[:50]}..." " Skipping similarity search.")
-                # Optionally, could still perform exact match here if needed
-                return []
-
-            # --- Build Base Query & Fetch Candidates ---
-            # Fetch all potentially relevant candidates first
-            base_query = self.session.query(Text2SQLCache).filter(
-                Text2SQLCache.is_valid == True
-            )
-            # Add existing filters
-            if template_type:
-                base_query = base_query.filter(Text2SQLCache.template_type == template_type)
-            if database_name:
-                base_query = base_query.filter(Text2SQLCache.database_name == database_name)
-            if schema_name:
-                base_query = base_query.filter(Text2SQLCache.schema_name == schema_name)
-            if catalog_id is not None:
-                base_query = base_query.filter(Text2SQLCache.catalog_id == catalog_id)
-
-            # Fetch all candidates matching filters
-            # WARNING: This can be inefficient for large tables!
-            candidate_entries = base_query.all()
-            if not candidate_entries:
-                logger.debug("No candidate entries found matching filters.")
-                return []
-
-            logger.debug(f"Fetched {len(candidate_entries)} candidates for similarity check.")
-
-            # --- Calculate Similarities in Python ---
-            # Filter entries that have embeddings and calculate similarity
-            entries_with_embeddings = []
-            embeddings_to_compare = []
-            for entry in candidate_entries:
-                entry_embedding = entry.embedding # Use property getter
-                if entry_embedding is not None:
-                    entries_with_embeddings.append(entry)
-                    embeddings_to_compare.append(entry_embedding)
-
-            if not entries_with_embeddings:
-                logger.debug("No candidates with valid embeddings found.")
-                return []
-
-            # Use the similarity utility to compute scores
-            similarities = self.similarity_util.compute_vector_similarities(
-                query_embedding, embeddings_to_compare
-            )
-
-            # Combine entries with scores and filter by threshold
-            scored_results = []
-            for i, entry in enumerate(entries_with_embeddings):
-                similarity_score = float(similarities[i])
-                if similarity_score >= similarity_threshold:
-                    entry_dict = entry.to_dict()
-                    entry_dict['similarity'] = similarity_score
-                    entry_dict['match_type'] = 'vector' # Still call it vector for consistency
-                    scored_results.append(entry_dict)
-
-            # Sort by similarity and limit
-            results = sorted(scored_results, key=lambda x: x["similarity"], reverse=True)[:limit]
-
-            logger.info(f"In-memory similarity search found {len(results)} results for query: {nl_query[:50]}...")
-            return results
-
-        except SQLAlchemyError as e:
-            logger.error(f"Database error during search: {str(e)}", exc_info=True)
-            self.session.rollback()
-            return [] # Return empty list on DB error
-        except Exception as e:
-            # Catch potential errors during embedding or similarity calculation
-            logger.error(f"Unexpected error during search: {str(e)}", exc_info=True)
-            self.session.rollback() # Rollback on any exception during search logic
-            return []
+        return results[:limit]
 
     def get_query_by_id(self, query_id: int) -> Optional[Dict[str, Any]]:
         """
@@ -334,7 +311,7 @@ class Text2SQLController:
             raise
 
     def update_query(
-        self, query_id: int, updates: Dict[str, Any]
+        self, query_id: int, updates: Dict[str, Any], change_reason: Optional[str] = None, changed_by: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """
         Update a query entry.
@@ -343,6 +320,8 @@ class Text2SQLController:
             query_id: ID of the query to update.
             updates: Dictionary of fields to update. Keys should match Text2SQLCache attributes.
                      Special handling for 'nl_query' (recomputes embedding).
+            change_reason: Optional reason for the update to log in audit trail.
+            changed_by: Optional identifier of who made the change.
 
         Returns:
             Updated query as a dictionary or None if not found.
@@ -381,12 +360,23 @@ class Text2SQLController:
                 entity_replacements = update_data["entity_replacements"]
                 query.is_template = bool(entity_replacements)
 
-            # Update other fields
+            # Log changes for audit trail
+            audit_logs = []
             for key, value in update_data.items():
-                # Skip fields handled specially above
-                if key in ['nl_query']: # nl_query already applied if present
-                    continue
                 if hasattr(query, key):
+                    old_value = getattr(query, key)
+                    if old_value != value:
+                        audit_logs.append(CacheAuditLog(
+                            cache_entry_id=query_id,
+                            changed_field=key,
+                            old_value=str(old_value) if old_value is not None else None,
+                            new_value=str(value) if value is not None else None,
+                            change_reason=change_reason,
+                            changed_by=changed_by
+                        ))
+                    # Update the field
+                    if key in ['nl_query']: # nl_query already applied if present
+                        continue
                     setattr(query, key, value)
                 else:
                     logger.warning(
@@ -396,6 +386,8 @@ class Text2SQLController:
             # Ensure updated_at is set (handle type change from model)
             query.updated_at = datetime.datetime.utcnow()
 
+            # Add audit logs to session
+            self.session.add_all(audit_logs)
             self.session.commit()
             result = query.to_dict()
             logger.info(f"Updated cache entry with ID {query_id}")
@@ -710,3 +702,232 @@ class Text2SQLController:
                     filtered_results.append(query.to_dict())
 
         return filtered_results
+
+    def get_all_queries(self, status: Optional[str] = Status.ACTIVE) -> List[Dict[str, Any]]:
+        """Get all queries from the cache filtered by status.
+
+        Args:
+            status: Optional status to filter by (pending, active, archive). Defaults to ACTIVE.
+
+        Returns:
+            List of cache entries as dictionaries matching the status filter.
+        """
+        try:
+            if status:
+                queries = (
+                    self.session.query(Text2SQLCache)
+                    .filter(Text2SQLCache.status == status)
+                    .all()
+                )
+            else:
+                queries = self.session.query(Text2SQLCache).all()
+            return [query.to_dict() for query in queries]
+        except Exception as e:
+            logger.error(f"Failed to get all queries: {str(e)}", exc_info=True)
+            return []
+
+    def execute_workflow(
+        self, 
+        workflow_id: int, 
+        entity_values: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Execute a workflow by parsing its JSON structure and processing each step.
+
+        Args:
+            workflow_id: The ID of the workflow cache entry to execute.
+            entity_values: Optional dictionary of entity values for substitution in steps.
+
+        Returns:
+            Dictionary containing the results of the workflow execution.
+
+        Raises:
+            ValueError: If the workflow ID is invalid, not a workflow type, or JSON is malformed.
+            SQLAlchemyError: If a database error occurs.
+        """
+        from sqlalchemy.exc import SQLAlchemyError
+        import json
+        from typing import Dict, Any, Optional
+
+        try:
+            # Fetch the workflow cache entry
+            workflow_entry = (
+                self.session.query(Text2SQLCache)
+                .filter(Text2SQLCache.id == workflow_id, Text2SQLCache.is_valid)
+                .first()
+            )
+
+            if not workflow_entry:
+                raise ValueError(f"Workflow with ID {workflow_id} not found or is invalid")
+
+            if workflow_entry.template_type != TemplateType.WORKFLOW:
+                raise ValueError(f"Cache entry with ID {workflow_id} is not of type 'workflow'")
+
+            # Parse the JSON template
+            try:
+                workflow_data = json.loads(workflow_entry.template)
+                if not isinstance(workflow_data, dict) or 'steps' not in workflow_data:
+                    raise ValueError("Invalid workflow JSON structure: 'steps' key not found")
+            except json.JSONDecodeError as e:
+                raise ValueError(f"Invalid JSON in workflow template: {str(e)}")
+
+            # Initialize results
+            results = {"workflow_id": workflow_id, "steps": []}
+            step_results = {}
+
+            # Process steps
+            steps = workflow_data.get('steps', [])
+            if not steps:
+                return {"workflow_id": workflow_id, "steps": [], "message": "No steps defined in workflow"}
+
+            # Group steps by execution type for parallel processing (simplified for now)
+            sequential_steps = [step for step in steps if step.get('type') == 'sequential']
+            parallel_steps = [step for step in steps if step.get('type') == 'parallel']
+
+            # Execute sequential steps
+            for step in sequential_steps:
+                step_result = self._execute_workflow_step(step, entity_values, step_results)
+                step_results[step.get('cache_id')] = step_result
+                results['steps'].append(step_result)
+
+            # Execute parallel steps (simplified as sequential for now, could use threading/async in future)
+            for step in parallel_steps:
+                step_result = self._execute_workflow_step(step, entity_values, step_results)
+                step_results[step.get('cache_id')] = step_result
+                results['steps'].append(step_result)
+
+            # Increment usage count for workflow
+            workflow_entry.usage_count = (workflow_entry.usage_count or 0) + 1
+            self.session.commit()
+
+            return results
+
+        except SQLAlchemyError as e:
+            logger.error(f"Database error executing workflow: {str(e)}", exc_info=True)
+            self.session.rollback()
+            raise
+        except Exception as e:
+            logger.error(f"Error executing workflow: {str(e)}", exc_info=True)
+            raise ValueError(f"Failed to execute workflow: {str(e)}")
+
+    def _execute_workflow_step(
+        self, 
+        step: Dict[str, Any], 
+        entity_values: Optional[Dict[str, Any]], 
+        previous_results: Dict[int, Any]
+    ) -> Dict[str, Any]:
+        """
+        Execute a single step in a workflow by fetching the referenced cache entry and processing it.
+
+        Args:
+            step: Dictionary containing step details (cache_id, type, description).
+            entity_values: Optional entity values for substitution.
+            previous_results: Results from previous steps for potential data passing.
+
+        Returns:
+            Dictionary with the result of the step execution.
+        """
+        cache_id = step.get('cache_id')
+        if not isinstance(cache_id, int):
+            return {"step": step, "status": "error", "message": "Invalid cache_id in step"}
+
+        try:
+            # Fetch the cache entry for this step
+            cache_entry = (
+                self.session.query(Text2SQLCache)
+                .filter(Text2SQLCache.id == cache_id, Text2SQLCache.is_valid)
+                .first()
+            )
+
+            if not cache_entry:
+                return {"step": step, "status": "error", "message": f"Cache entry with ID {cache_id} not found or invalid"}
+
+            # Increment usage count for the step's cache entry
+            cache_entry.usage_count = (cache_entry.usage_count or 0) + 1
+
+            # Handle entity substitution if needed
+            substituted_template = cache_entry.template
+            if cache_entry.is_template and entity_values:
+                if cache_entry.entity_replacements:
+                    from .entity_substitution import Text2SQLEntitySubstitution
+                    substituted_template, mapping = Text2SQLEntitySubstitution.extract_and_replace_entities(
+                        nl_query="",
+                        template=cache_entry.template,
+                        entity_replacements=cache_entry.entity_replacements,
+                        new_entity_values=entity_values,
+                        template_type=cache_entry.template_type
+                    )
+                else:
+                    return {"step": step, "status": "error", "message": "Entity substitution needed but no replacements defined"}
+
+            # Simplified execution: return the substituted template as result
+            # In a full implementation, this could execute SQL, call APIs, etc.
+            result = {
+                "step": step,
+                "status": "success",
+                "cache_id": cache_id,
+                "template_type": cache_entry.template_type,
+                "result": substituted_template
+            }
+
+            # Commit usage count update
+            self.session.commit()
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Error executing step for cache_id {cache_id}: {str(e)}", exc_info=True)
+            return {"step": step, "status": "error", "message": str(e)}
+
+    def change_status(self, query_id: int, new_status: str, reason: Optional[str] = None, changed_by: Optional[str] = None) -> bool:
+        """
+        Change the status of a cache entry.
+
+        Args:
+            query_id: ID of the query to update.
+            new_status: New status for the cache entry (pending, active, archive).
+            reason: Optional reason for the status change.
+            changed_by: Optional identifier of who made the change.
+
+        Returns:
+            True if successful, False if query not found.
+
+        Raises:
+            SQLAlchemyError: If a database error occurs (session rolled back).
+        """
+        try:
+            query = (
+                self.session.query(Text2SQLCache)
+                .filter(Text2SQLCache.id == query_id)
+                .first()
+            )
+
+            if not query:
+                return False
+
+            old_status = query.status
+            if old_status != new_status:
+                query.status = new_status
+                query.updated_at = datetime.datetime.utcnow()
+
+                # Log the status change in audit log
+                audit_log = CacheAuditLog(
+                    cache_entry_id=query_id,
+                    changed_field="status",
+                    old_value=old_status,
+                    new_value=new_status,
+                    change_reason=reason,
+                    changed_by=changed_by
+                )
+                self.session.add(audit_log)
+
+                self.session.commit()
+                logger.info(f"Changed status of cache entry with ID {query_id} to {new_status}")
+            return True
+
+        except Exception as e:
+            logger.error(
+                f"Failed to change status of query {query_id}: {str(e)}", exc_info=True
+            )
+            self.session.rollback()
+            raise

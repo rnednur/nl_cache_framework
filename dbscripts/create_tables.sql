@@ -1,5 +1,8 @@
 -- Create enum type for template types
-CREATE TYPE template_type AS ENUM ('sql', 'url', 'api', 'workflow');
+CREATE TYPE template_type AS ENUM ('sql', 'url', 'api', 'workflow', 'graphql', 'regex', 'script', 'nosql', 'cli', 'prompt', 'configuration');
+
+-- Create enum type for status
+CREATE TYPE status_type AS ENUM ('pending', 'active', 'archive');
 
 -- Create text2sql_cache table
 CREATE TABLE text2sql_cache (
@@ -12,12 +15,10 @@ CREATE TABLE text2sql_cache (
     entity_replacements JSONB,
     reasoning_trace TEXT,
     tags JSONB,
-    suggested_visualization VARCHAR,
-    database_name VARCHAR,
-    schema_name VARCHAR,
-    catalog_id INTEGER,
-    is_valid BOOLEAN NOT NULL DEFAULT TRUE,
-    invalidation_reason VARCHAR,
+    catalog_type VARCHAR,
+    catalog_subtype VARCHAR,
+    catalog_name VARCHAR,
+    status status_type NOT NULL DEFAULT 'active',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -26,20 +27,44 @@ CREATE TABLE text2sql_cache (
 CREATE INDEX idx_text2sql_cache_nl_query ON text2sql_cache(nl_query);
 CREATE INDEX idx_text2sql_cache_template_type ON text2sql_cache(template_type);
 CREATE INDEX idx_text2sql_cache_is_template ON text2sql_cache(is_template);
-CREATE INDEX idx_text2sql_cache_database_name ON text2sql_cache(database_name);
-CREATE INDEX idx_text2sql_cache_schema_name ON text2sql_cache(schema_name);
-CREATE INDEX idx_text2sql_cache_is_valid ON text2sql_cache(is_valid);
+CREATE INDEX idx_text2sql_cache_catalog_type ON text2sql_cache(catalog_type);
+CREATE INDEX idx_text2sql_cache_catalog_subtype ON text2sql_cache(catalog_subtype);
+CREATE INDEX idx_text2sql_cache_catalog_name ON text2sql_cache(catalog_name);
+CREATE INDEX idx_text2sql_cache_status ON text2sql_cache(status);
 
 -- Create usage_log table
 CREATE TABLE usage_log (
     id SERIAL PRIMARY KEY,
-    cache_entry_id INTEGER NOT NULL REFERENCES text2sql_cache(id),
-    timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    cache_entry_id INTEGER REFERENCES text2sql_cache(id) ON DELETE SET NULL,
+    timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    prompt TEXT,
+    success_status BOOLEAN,
+    similarity_score FLOAT,
+    error_message TEXT,
+    catalog_type VARCHAR,
+    catalog_subtype VARCHAR,
+    catalog_name VARCHAR
 );
 
 -- Create index for usage_log
 CREATE INDEX idx_usage_log_cache_entry_id ON usage_log(cache_entry_id);
 CREATE INDEX idx_usage_log_timestamp ON usage_log(timestamp);
+
+-- Create cache_audit_log table
+CREATE TABLE cache_audit_log (
+    id SERIAL PRIMARY KEY,
+    cache_entry_id INTEGER REFERENCES text2sql_cache(id) ON DELETE CASCADE,
+    changed_field VARCHAR NOT NULL,
+    old_value TEXT,
+    new_value TEXT,
+    change_reason TEXT,
+    changed_by VARCHAR,
+    timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create index for cache_audit_log
+CREATE INDEX idx_cache_audit_log_cache_entry_id ON cache_audit_log(cache_entry_id);
+CREATE INDEX idx_cache_audit_log_timestamp ON cache_audit_log(timestamp);
 
 -- Create trigger to automatically update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -54,3 +79,14 @@ CREATE TRIGGER update_text2sql_cache_updated_at
     BEFORE UPDATE ON text2sql_cache
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column(); 
+
+-- Note: The following ALTER statements are kept for reference but are not needed for new database setups
+-- ALTER TABLE text2sql_cache DROP COLUMN IF EXISTS catalog_id;
+-- ALTER TABLE text2sql_cache ADD COLUMN IF NOT EXISTS catalog_type VARCHAR;
+-- ALTER TABLE text2sql_cache ADD COLUMN IF NOT EXISTS catalog_subtype VARCHAR;
+-- ALTER TABLE text2sql_cache ADD COLUMN IF NOT EXISTS catalog_name VARCHAR;
+
+-- ALTER TABLE usage_log DROP COLUMN IF EXISTS catalog_id;
+-- ALTER TABLE usage_log ADD COLUMN IF NOT EXISTS catalog_type VARCHAR;
+-- ALTER TABLE usage_log ADD COLUMN IF NOT EXISTS catalog_subtype VARCHAR;
+-- ALTER TABLE usage_log ADD COLUMN IF NOT EXISTS catalog_name VARCHAR;    

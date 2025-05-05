@@ -1,0 +1,344 @@
+import { Input } from "../../../components/ui/input";
+import { Textarea } from "../../../components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../components/ui/select";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../../../components/ui/card";
+import { Label } from "../../../components/ui/label";
+import { Button } from "../../../components/ui/button";
+import React from "react";
+
+interface CacheEntryFormProps {
+  nlQuery: string;
+  setNlQuery?: (v: string) => void;
+  template: string;
+  setTemplate?: (v: string) => void;
+  templateType: string;
+  setTemplateType?: (v: string) => void;
+  reasoningTrace: string;
+  setReasoningTrace?: (v: string) => void;
+  catalogType?: string;
+  setCatalogType?: (v: string | undefined) => void;
+  catalogSubtype?: string;
+  setCatalogSubtype?: (v: string | undefined) => void;
+  catalogName?: string;
+  setCatalogName?: (v: string | undefined) => void;
+  status: string;
+  setStatus?: (v: string) => void;
+  tags: string[];
+  addTag?: () => void;
+  removeTag?: (tag: string) => void;
+  tagInput?: string;
+  setTagInput?: (v: string) => void;
+  handleKeyDown?: (e: React.KeyboardEvent) => void;
+  error?: string | null;
+  readOnly?: boolean;
+  children?: React.ReactNode;
+}
+
+export function CacheEntryForm({
+  nlQuery,
+  setNlQuery,
+  template,
+  setTemplate,
+  templateType,
+  setTemplateType,
+  reasoningTrace,
+  setReasoningTrace,
+  catalogType,
+  setCatalogType,
+  catalogSubtype,
+  setCatalogSubtype,
+  catalogName,
+  setCatalogName,
+  status,
+  setStatus,
+  tags,
+  addTag,
+  removeTag,
+  tagInput,
+  setTagInput,
+  handleKeyDown,
+  error,
+  readOnly,
+  children,
+}: CacheEntryFormProps) {
+  return (
+    <Card className="w-full border-0 shadow-none">
+      <CardHeader>
+        <CardTitle>Cache Entry Details</CardTitle>
+        <CardDescription>Enter the details for this cache entry.</CardDescription>
+      </CardHeader>
+      <CardContent className="p-0 space-y-6">
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-2">
+            <Label htmlFor="nl-query">Natural Language Query</Label>
+            <Input
+              id="nl-query"
+              placeholder="Enter natural language query"
+              value={nlQuery}
+              onChange={setNlQuery ? (e) => setNlQuery(e.target.value) : undefined}
+              disabled={readOnly}
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="template-type">Template Type</Label>
+            <Select
+              value={templateType}
+              onValueChange={setTemplateType}
+              disabled={readOnly}
+            >
+              <SelectTrigger id="template-type">
+                <SelectValue placeholder="Select template type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="sql">SQL</SelectItem>
+                <SelectItem value="url">URL</SelectItem>
+                <SelectItem value="api">API</SelectItem>
+                <SelectItem value="workflow">Workflow</SelectItem>
+                <SelectItem value="graphql">GraphQL</SelectItem>
+                <SelectItem value="regex">Regex</SelectItem>
+                <SelectItem value="script">Script</SelectItem>
+                <SelectItem value="nosql">NoSQL</SelectItem>
+                <SelectItem value="cli">CLI</SelectItem>
+                <SelectItem value="prompt">Prompt</SelectItem>
+                <SelectItem value="configuration">Configuration</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-2">
+            <Label htmlFor="status">Status</Label>
+            <Select
+              value={status}
+              onValueChange={setStatus}
+              disabled={readOnly}
+            >
+              <SelectTrigger id="status">
+                <SelectValue placeholder="Select status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="archive">Archive</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="reasoning">Reasoning Trace</Label>
+            <Input
+              id="reasoning"
+              placeholder="Enter reasoning trace"
+              value={reasoningTrace}
+              onChange={setReasoningTrace ? (e) => setReasoningTrace(e.target.value) : undefined}
+              disabled={readOnly}
+            />
+          </div>
+        </div>
+
+        <div className="grid gap-2">
+          <Label htmlFor="template">Template</Label>
+          {templateType === 'api' ? (
+            <Textarea
+              id="template"
+              placeholder="Enter API template content in JSON format"
+              className="min-h-[100px] font-mono text-sm"
+              value={template}
+              onChange={setTemplate ? (e) => setTemplate(e.target.value) : undefined}
+              disabled={readOnly}
+            />
+          ) : templateType === 'sql' ? (
+            <Textarea
+              id="template"
+              placeholder="e.g., SELECT * FROM users WHERE signup_date >= '{{start_date}}' AND signup_date <= '{{end_date}}'"
+              className="min-h-[100px] font-mono text-sm"
+              value={template}
+              onChange={setTemplate ? (e) => setTemplate(e.target.value) : undefined}
+              disabled={readOnly}
+            />
+          ) : templateType === 'url' ? (
+            <Input
+              id="template"
+              placeholder="e.g., https://example.com/data?param={{value}}"
+              value={template}
+              onChange={setTemplate ? (e) => setTemplate(e.target.value) : undefined}
+              disabled={readOnly}
+            />
+          ) : templateType === 'workflow' ? (
+            <div className="space-y-2">
+              <Textarea
+                id="template"
+                placeholder='e.g., {\n  "steps": [\n    {\n      "type": "api",\n      "url": "https://api.example.com/step1"\n    },\n    {\n      "type": "transform",\n      "operation": "filter"\n    }\n  ]\n}'
+                className="min-h-[200px] font-mono text-sm"
+                value={template}
+                onChange={setTemplate ? (e) => setTemplate(e.target.value) : undefined}
+                disabled={readOnly}
+              />
+              {templateType === 'workflow' && !readOnly && (
+                <p className="text-sm text-muted-foreground mt-1">
+                  For workflows, use the step builder below to define the template.
+                </p>
+              )}
+              {templateType === 'workflow' && template.trim() && !readOnly && (() => {
+                try {
+                  JSON.parse(template);
+                  return null;
+                } catch (err) {
+                  return <p className="text-red-500 text-xs">Invalid JSON format</p>;
+                }
+              })()}
+            </div>
+          ) : templateType === 'graphql' ? (
+            <Textarea
+              id="template"
+              placeholder="e.g., query { user(id: {{user_id}}) { name, email } }"
+              className="min-h-[100px] font-mono text-sm"
+              value={template}
+              onChange={setTemplate ? (e) => setTemplate(e.target.value) : undefined}
+              disabled={readOnly}
+            />
+          ) : templateType === 'regex' ? (
+            <Input
+              id="template"
+              placeholder="e.g., \d{4}-\d{2}-\d{2}"
+              value={template}
+              onChange={setTemplate ? (e) => setTemplate(e.target.value) : undefined}
+              disabled={readOnly}
+            />
+          ) : templateType === 'script' ? (
+            <div className="space-y-2">
+              <Textarea
+                id="template"
+                placeholder='e.g., {\n  "language": "javascript",\n  "code": "function transform(data) { return data.filter(d => d.active); }"\n}'
+                className="min-h-[200px] font-mono text-sm"
+                value={template}
+                onChange={setTemplate ? (e) => setTemplate(e.target.value) : undefined}
+                disabled={readOnly}
+              />
+              {templateType === 'script' && !readOnly && (
+                <p className="text-sm text-muted-foreground mt-1">
+                  For script templates, include visualization details in JSON format (e.g., visualization_type, script).
+                </p>
+              )}
+              {templateType === 'script' && template.trim() && !readOnly && (() => {
+                try {
+                  JSON.parse(template);
+                  return null;
+                } catch (err) {
+                  return <p className="text-red-500 text-xs">Invalid JSON format</p>;
+                }
+              })()}
+            </div>
+          ) : templateType === 'nosql' ? (
+            <Textarea
+              id="template"
+              placeholder='e.g., {\n  "collection": "users",\n  "query": { "status": "active" },\n  "projection": { "name": 1, "email": 1 }\n}'
+              className="min-h-[100px] font-mono text-sm"
+              value={template}
+              onChange={setTemplate ? (e) => setTemplate(e.target.value) : undefined}
+              disabled={readOnly}
+            />
+          ) : templateType === 'cli' ? (
+            <Input
+              id="template"
+              placeholder="e.g., grep '{{search_term}}' /var/log/*.log"
+              value={template}
+              onChange={setTemplate ? (e) => setTemplate(e.target.value) : undefined}
+              disabled={readOnly}
+            />
+          ) : templateType === 'prompt' ? (
+            <Textarea
+              id="template"
+              placeholder="e.g., Translate the following text to {{language}}: '{{text}}'"
+              className="min-h-[100px] font-mono text-sm"
+              value={template}
+              onChange={setTemplate ? (e) => setTemplate(e.target.value) : undefined}
+              disabled={readOnly}
+            />
+          ) : templateType === 'configuration' ? (
+            <div className="space-y-2">
+              <Textarea
+                id="template"
+                placeholder='e.g., {\n  "settings": {\n    "timeout": 30,\n    "retries": 3\n  },\n  "parameters": {\n    "key": "{{api_key}}"\n  }\n}'
+                className="min-h-[200px] font-mono text-sm"
+                value={template}
+                onChange={setTemplate ? (e) => setTemplate(e.target.value) : undefined}
+                disabled={readOnly}
+              />
+              {templateType === 'configuration' && template.trim() && !readOnly && (() => {
+                try {
+                  JSON.parse(template);
+                  return null;
+                } catch (err) {
+                  return <p className="text-red-500 text-xs">Invalid JSON format</p>;
+                }
+              })()}
+            </div>
+          ) : (
+            <Textarea
+              id="template"
+              placeholder="Enter template content"
+              className="min-h-[100px]"
+              value={template}
+              onChange={setTemplate ? (e) => setTemplate(e.target.value) : undefined}
+              disabled={readOnly}
+            />
+          )}
+        </div>
+
+        {templateType === 'workflow' && (
+          <div className="grid gap-4 mt-4">
+            <Label>Workflow Steps</Label>
+            <CardDescription>Define the steps of the workflow by referencing other cache entries.</CardDescription>
+            <div className="border rounded-md p-4 space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Step builder UI will be implemented here to add/edit steps with cache ID, type (sequential/parallel), and description.
+              </p>
+              {readOnly ? (
+                <p className="text-sm">Viewing mode for workflow steps will display the JSON structure or a visual representation.</p>
+              ) : (
+                <Button variant="outline" size="sm" disabled={readOnly}>
+                  Add Step (Coming Soon)
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className="grid gap-4">
+          <div className="grid gap-2">
+            <Label htmlFor="catalogType">Catalog Type</Label>
+            <Input
+              id="catalogType"
+              placeholder="Enter catalog type"
+              value={catalogType || ""}
+              onChange={setCatalogType ? (e) => setCatalogType(e.target.value || undefined) : undefined}
+              disabled={readOnly}
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="catalogSubtype">Catalog Subtype</Label>
+            <Input
+              id="catalogSubtype"
+              placeholder="Enter catalog subtype"
+              value={catalogSubtype || ""}
+              onChange={setCatalogSubtype ? (e) => setCatalogSubtype(e.target.value || undefined) : undefined}
+              disabled={readOnly}
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="catalogName">Catalog Name</Label>
+            <Input
+              id="catalogName"
+              placeholder="Enter catalog name"
+              value={catalogName || ""}
+              onChange={setCatalogName ? (e) => setCatalogName(e.target.value || undefined) : undefined}
+              disabled={readOnly}
+            />
+          </div>
+        </div>
+      </CardContent>
+      {children}
+    </Card>
+  );
+} 

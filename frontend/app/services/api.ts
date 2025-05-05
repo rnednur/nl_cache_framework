@@ -11,9 +11,10 @@ export interface CacheItem {
   reasoning_trace?: string;
   entity_replacements?: Record<string, any>;
   tags?: string[];
-  suggested_visualization?: string;
-  database_name?: string;
-  schema_name?: string;
+  catalog_type?: string;
+  catalog_subtype?: string;
+  catalog_name?: string;
+  status: string;
   usage_count: number;
   created_at: string;
   updated_at: string;
@@ -22,7 +23,7 @@ export interface CacheItem {
 // Stats interface
 export interface CacheStats {
   total_entries: number;
-  entries_by_type: Record<string, number>;
+  by_template_type: Record<string, number>;
   recent_usage: Array<{
     date: string;
     count: number;
@@ -43,10 +44,10 @@ export interface CacheEntryCreate {
   is_template: boolean;
   entity_replacements?: Record<string, any>;
   tags?: string[];
-  suggested_visualization?: string;
-  database_name?: string;
-  schema_name?: string;
-  catalog_id?: number;
+  catalog_type?: string;
+  catalog_subtype?: string;
+  catalog_name?: string;
+  status?: string;
 }
 
 // API service for cache management
@@ -177,7 +178,7 @@ const api = {
           console.warn('Server returned 422 for stats endpoint, using fallback data');
           return {
             total_entries: 0,
-            entries_by_type: {
+            by_template_type: {
               sql: 0,
               api: 0,
               url: 0,
@@ -196,7 +197,7 @@ const api = {
       // Return fallback data on any error
       return {
         total_entries: 0,
-        entries_by_type: {
+        by_template_type: {
           sql: 0,
           api: 0,
           url: 0,
@@ -254,7 +255,9 @@ const api = {
     template_type?: string,
     threshold: number = 0.7,
     limit: number = 5,
-    catalog_id?: number
+    catalog_type?: string,
+    catalog_subtype?: string,
+    catalog_name?: string
   ): Promise<CacheItem[]> {
     try {
       let url = `${API_BASE}/v1/cache/search?nl_query=${encodeURIComponent(nl_query)}`;
@@ -263,8 +266,16 @@ const api = {
         url += `&template_type=${encodeURIComponent(template_type)}`;
       }
       
-      if (catalog_id) {
-        url += `&catalog_id=${catalog_id}`;
+      if (catalog_type) {
+        url += `&catalog_type=${encodeURIComponent(catalog_type)}`;
+      }
+      
+      if (catalog_subtype) {
+        url += `&catalog_subtype=${encodeURIComponent(catalog_subtype)}`;
+      }
+      
+      if (catalog_name) {
+        url += `&catalog_name=${encodeURIComponent(catalog_name)}`;
       }
       
       url += `&threshold=${threshold}&limit=${limit}`;
@@ -278,6 +289,22 @@ const api = {
       return await response.json();
     } catch (error) {
       console.error('Error searching cache entries:', error);
+      throw error;
+    }
+  },
+
+  // Get usage logs
+  async getUsageLogs(page: number = 1, pageSize: number = 10): Promise<{ items: any[], total: number }> {
+    try {
+      const response = await fetch(`${API_BASE}/v1/usage_logs?page=${page}&page_size=${pageSize}`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching usage logs:', error);
       throw error;
     }
   },

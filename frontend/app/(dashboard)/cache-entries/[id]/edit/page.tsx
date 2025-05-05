@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../../../../components/ui/card"
 import api, { CacheEntryCreate, CacheItem } from "../../../../services/api"
 import { Label } from "../../../../components/ui/label"
+import { CacheEntryForm } from "../CacheEntryForm"
 
 export default function EditCacheEntry({ params }: { params: { id: string } }) {
   const router = useRouter()
@@ -22,11 +23,11 @@ export default function EditCacheEntry({ params }: { params: { id: string } }) {
   const [nlQuery, setNlQuery] = useState("")
   const [template, setTemplate] = useState("")
   const [templateType, setTemplateType] = useState("sql")
-  const [visualization, setVisualization] = useState("")
   const [reasoningTrace, setReasoningTrace] = useState("")
-  const [databaseName, setDatabaseName] = useState("")
-  const [schemaName, setSchemaName] = useState("")
-  const [catalogId, setCatalogId] = useState<number | undefined>()
+  const [catalogType, setCatalogType] = useState<string | undefined>(undefined)
+  const [catalogSubtype, setCatalogSubtype] = useState<string | undefined>(undefined)
+  const [catalogName, setCatalogName] = useState<string | undefined>(undefined)
+  const [status, setStatus] = useState('active')
   
   // Tags handling
   const [tags, setTags] = useState<string[]>([])
@@ -39,11 +40,11 @@ export default function EditCacheEntry({ params }: { params: { id: string } }) {
         setNlQuery(entry.nl_query)
         setTemplate(entry.template)
         setTemplateType(entry.template_type)
-        setVisualization(entry.suggested_visualization || "")
         setReasoningTrace(entry.reasoning_trace || "")
-        setDatabaseName(entry.database_name || "")
-        setSchemaName(entry.schema_name || "")
-        setCatalogId(entry.catalog_id)
+        setCatalogType(entry.catalog_type || undefined)
+        setCatalogSubtype(entry.catalog_subtype || undefined)
+        setCatalogName(entry.catalog_name || undefined)
+        setStatus(entry.status || 'active')
         setTags(entry.tags || [])
       } catch (err) {
         console.error("Failed to fetch cache entry:", err)
@@ -77,6 +78,9 @@ export default function EditCacheEntry({ params }: { params: { id: string } }) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
+    // Debug log
+    console.log("Submitting with nlQuery:", nlQuery)
+
     if (!nlQuery.trim() || !template.trim()) {
       setError("Natural Language Query and Template are required.")
       return
@@ -92,14 +96,19 @@ export default function EditCacheEntry({ params }: { params: { id: string } }) {
         template_type: templateType,
         is_template: true,
         tags: tags.length > 0 ? tags : undefined,
-        suggested_visualization: visualization || undefined,
         reasoning_trace: reasoningTrace || undefined,
-        database_name: databaseName || undefined,
-        schema_name: schemaName || undefined,
-        catalog_id: catalogId
+        catalog_type: catalogType || undefined,
+        catalog_subtype: catalogSubtype || undefined,
+        catalog_name: catalogName || undefined,
+        status: status
       }
       
+      // Debug log
+      console.log("PUT body:", entry)
+
       await api.updateCacheEntry(parseInt(params.id), entry)
+      // Force a hard refresh of the cache entries list
+      router.refresh()
       router.push("/cache-entries")
     } catch (err) {
       console.error("Failed to update cache entry:", err)
@@ -140,189 +149,46 @@ export default function EditCacheEntry({ params }: { params: { id: string } }) {
               </div>
             )}
             
-            <div className="space-y-2">
-              <label
-                htmlFor="query"
-                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-              >
-                Natural Language Query<span className="text-red-500">*</span>
-              </label>
-              <Textarea
-                id="query"
-                placeholder="e.g., Get all users who signed up last month"
-                className="min-h-[100px]"
-                value={nlQuery}
-                onChange={(e) => setNlQuery(e.target.value)}
-                required
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label
-                htmlFor="template"
-                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-              >
-                Template<span className="text-red-500">*</span>
-              </label>
-              <Textarea
-                id="template"
-                placeholder="e.g., SELECT * FROM users WHERE signup_date >= '{{start_date}}' AND signup_date <= '{{end_date}}'"
-                className="min-h-[100px] font-mono text-sm"
-                value={template}
-                onChange={(e) => setTemplate(e.target.value)}
-                required
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label
-                htmlFor="template-type"
-                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-              >
-                Template Type
-              </label>
-              <Select 
-                value={templateType}
-                onValueChange={setTemplateType}
-              >
-                <SelectTrigger id="template-type">
-                  <SelectValue placeholder="Select template type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="sql">SQL</SelectItem>
-                  <SelectItem value="api">API</SelectItem>
-                  <SelectItem value="url">URL</SelectItem>
-                  <SelectItem value="workflow">Workflow</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <label
-                htmlFor="visualization"
-                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-              >
-                Suggested Visualization
-              </label>
-              <Select 
-                value={visualization}
-                onValueChange={setVisualization}
-              >
-                <SelectTrigger id="visualization">
-                  <SelectValue placeholder="Select visualization type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="table">Table</SelectItem>
-                  <SelectItem value="bar">Bar Chart</SelectItem>
-                  <SelectItem value="line">Line Chart</SelectItem>
-                  <SelectItem value="pie">Pie Chart</SelectItem>
-                  <SelectItem value="scatter">Scatter Plot</SelectItem>
-                  <SelectItem value="map">Map</SelectItem>
-                  <SelectItem value="custom">Custom</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <label
-                htmlFor="tags"
-                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-              >
-                Tags
-              </label>
-              <div className="flex flex-wrap gap-2 mb-2">
-                {tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="inline-flex items-center gap-1 rounded-full bg-muted px-3 py-1 text-sm"
-                  >
-                    {tag}
-                    <button
-                      type="button"
-                      onClick={() => removeTag(tag)}
-                      className="ml-1 text-muted-foreground hover:text-foreground"
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))}
-              </div>
-              <div className="flex gap-2">
-                <Input
-                  id="tags"
-                  placeholder="Add a tag..."
-                  value={tagInput}
-                  onChange={(e) => setTagInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                />
-                <Button type="button" variant="outline" onClick={addTag}>
-                  Add
-                </Button>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label
-                htmlFor="reasoning"
-                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-              >
-                Reasoning Trace
-              </label>
-              <Textarea
-                id="reasoning"
-                placeholder="Explain how this template relates to the query..."
-                className="min-h-[100px]"
-                value={reasoningTrace}
-                onChange={(e) => setReasoningTrace(e.target.value)}
-              />
-            </div>
-
-            <div className="grid gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="database">Database Name</Label>
-                <Input
-                  id="database"
-                  placeholder="Enter database name"
-                  value={databaseName}
-                  onChange={(e) => setDatabaseName(e.target.value)}
-                />
-              </div>
-              
-              <div className="grid gap-2">
-                <Label htmlFor="schema">Schema Name</Label>
-                <Input
-                  id="schema"
-                  placeholder="Enter schema name"
-                  value={schemaName}
-                  onChange={(e) => setSchemaName(e.target.value)}
-                />
-              </div>
-
-              <div className="grid gap-2">
-                <Label htmlFor="catalog">Catalog ID</Label>
-                <Input
-                  id="catalog"
-                  type="number"
-                  placeholder="Enter catalog ID"
-                  value={catalogId || ""}
-                  onChange={(e) => setCatalogId(e.target.value ? parseInt(e.target.value) : undefined)}
-                />
-              </div>
-            </div>
-          </CardContent>
-          
-          <CardFooter className="flex justify-end space-x-2 border-t pt-6">
-            <Button 
-              type="button"
-              variant="outline" 
-              onClick={() => router.push("/cache-entries")}
+            <CacheEntryForm
+              nlQuery={nlQuery}
+              setNlQuery={setNlQuery}
+              template={template}
+              setTemplate={setTemplate}
+              templateType={templateType}
+              setTemplateType={setTemplateType}
+              reasoningTrace={reasoningTrace}
+              setReasoningTrace={setReasoningTrace}
+              catalogType={catalogType}
+              setCatalogType={setCatalogType}
+              catalogSubtype={catalogSubtype}
+              setCatalogSubtype={setCatalogSubtype}
+              catalogName={catalogName}
+              setCatalogName={setCatalogName}
+              status={status}
+              setStatus={setStatus}
+              tags={tags}
+              addTag={addTag}
+              removeTag={removeTag}
+              tagInput={tagInput}
+              setTagInput={setTagInput}
+              handleKeyDown={handleKeyDown}
+              error={error}
+              readOnly={false}
             >
-              Cancel
-            </Button>
-            <Button type="submit" disabled={saving}>
-              {saving ? "Saving..." : "Save Changes"}
-            </Button>
-          </CardFooter>
+              <CardFooter className="flex justify-end space-x-2 border-t pt-6">
+                <Button 
+                  type="button"
+                  variant="outline" 
+                  onClick={() => router.push("/cache-entries")}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={saving}>
+                  {saving ? "Saving..." : "Save Changes"}
+                </Button>
+              </CardFooter>
+            </CacheEntryForm>
+          </CardContent>
         </form>
       </Card>
     </div>

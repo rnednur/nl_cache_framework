@@ -16,7 +16,9 @@ import api, { CacheStats } from "../../services/api"
 
 export default function Dashboard() {
   const [stats, setStats] = useState<CacheStats | null>(null)
+  const [usageLogs, setUsageLogs] = useState<any[] | null>(null)
   const [loading, setLoading] = useState(true)
+  const [logsLoading, setLogsLoading] = useState(true)
   
   useEffect(() => {
     const fetchStats = async () => {
@@ -30,7 +32,19 @@ export default function Dashboard() {
       }
     }
     
+    const fetchLogs = async () => {
+      try {
+        const data = await api.getUsageLogs(1, 5)
+        setUsageLogs(data.items)
+      } catch (error) {
+        console.error("Failed to fetch usage logs:", error)
+      } finally {
+        setLogsLoading(false)
+      }
+    }
+    
     fetchStats()
+    fetchLogs()
   }, [])
   
   return (
@@ -68,7 +82,7 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {loading ? "Loading..." : stats?.entries_by_type?.sql || 0}
+              {loading ? "Loading..." : stats?.by_template_type?.sql || 0}
             </div>
             <p className="text-xs text-muted-foreground">
               SQL query templates
@@ -83,7 +97,7 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {loading ? "Loading..." : stats?.entries_by_type?.api || 0}
+              {loading ? "Loading..." : stats?.by_template_type?.api || 0}
             </div>
             <p className="text-xs text-muted-foreground">
               API call templates
@@ -98,10 +112,100 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {loading ? "Loading..." : stats?.entries_by_type?.url || 0}
+              {loading ? "Loading..." : stats?.by_template_type?.url || 0}
             </div>
             <p className="text-xs text-muted-foreground">
               URL templates
+            </p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Workflow Templates</CardTitle>
+            <FileText className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {loading ? "Loading..." : stats?.by_template_type?.workflow || 0}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Workflow templates
+            </p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">GraphQL Templates</CardTitle>
+            <FileText className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {loading ? "Loading..." : stats?.by_template_type?.graphql || 0}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              GraphQL query templates
+            </p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Regex Templates</CardTitle>
+            <FileText className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {loading ? "Loading..." : stats?.by_template_type?.regex || 0}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Regular expression templates
+            </p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Script Templates</CardTitle>
+            <FileText className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {loading ? "Loading..." : stats?.by_template_type?.script || 0}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Script templates
+            </p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">NoSQL Templates</CardTitle>
+            <FileText className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {loading ? "Loading..." : stats?.by_template_type?.nosql || 0}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              NoSQL query templates
+            </p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">CLI Templates</CardTitle>
+            <FileText className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {loading ? "Loading..." : stats?.by_template_type?.cli || 0}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Command-line interface templates
             </p>
           </CardContent>
         </Card>
@@ -121,8 +225,9 @@ export default function Dashboard() {
                 <p>Loading chart data...</p>
               </div>
             ) : (
-              <div className="flex items-center justify-center h-60">
+              <div className="flex items-center justify-center h-60 flex-col">
                 <BarChart2 className="h-40 w-40 text-muted-foreground" />
+                <p className="text-muted-foreground mt-2">Usage chart visualization is under development. Check back soon!</p>
               </div>
             )}
           </CardContent>
@@ -174,6 +279,49 @@ export default function Dashboard() {
               className="text-sm text-blue-600 hover:text-blue-800 flex items-center"
             >
               View all cache entries
+              <ArrowRight className="ml-1 h-4 w-4" />
+            </Link>
+          </CardFooter>
+        </Card>
+        
+        <Card className="col-span-2">
+          <CardHeader>
+            <CardTitle>Recent Usage Logs</CardTitle>
+            <CardDescription>
+              Latest interactions with the cache
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {logsLoading ? (
+              <div className="flex items-center justify-center h-60">
+                <p>Loading usage logs...</p>
+              </div>
+            ) : usageLogs && usageLogs.length > 0 ? (
+              <div className="space-y-4">
+                {usageLogs.slice(0, 5).map((log, index) => (
+                  <div key={index} className="flex justify-between items-center border-b pb-2">
+                    <div className="truncate max-w-[400px]">
+                      <p className="text-sm font-medium">{log.prompt}</p>
+                      <p className="text-xs text-muted-foreground">{new Date(log.timestamp).toLocaleString()}</p>
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      Status: {log.success_status ? 'Success' : 'Failed'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex items-center justify-center h-60">
+                <p className="text-muted-foreground">No usage logs available</p>
+              </div>
+            )}
+          </CardContent>
+          <CardFooter>
+            <Link 
+              href="/usage-logs" 
+              className="text-sm text-blue-600 hover:text-blue-800 flex items-center"
+            >
+              View all usage logs
               <ArrowRight className="ml-1 h-4 w-4" />
             </Link>
           </CardFooter>

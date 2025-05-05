@@ -318,7 +318,7 @@ def handle_call_tool(request: Dict[str, Any], db: Session) -> Dict[str, Any]:
             except ValueError:
                  raise ValueError(f"Invalid template_type: {updates['template_type']}")
 
-        updated_entry = controller.update_query(entry_id=entry_id, updates=updates, commit=True)
+        updated_entry = controller.update_query(query_id=entry_id, updates=updates)
 
         if not updated_entry:
             # Raise error consistent with MCP expectations (ValueError maybe?)

@@ -62,7 +62,9 @@ class CacheEntryCreate(BaseModel):
     tags: Optional[List[str]] = Field(None, description="List of tags for categorization")
     database_name: Optional[str] = Field(None, description="Target database identifier")
     schema_name: Optional[str] = Field(None, description="Target schema identifier")
-    catalog_id: Optional[int] = Field(None, description="Catalog identifier")
+    catalog_type: Optional[str] = Field(None, description="Catalog type identifier")
+    catalog_subtype: Optional[str] = Field(None, description="Catalog subtype identifier")
+    catalog_name: Optional[str] = Field(None, description="Catalog name identifier")
 
 class CompleteRequest(BaseModel):
     prompt: str = Field(..., description="The natural language prompt to complete")
@@ -137,8 +139,43 @@ async def health_check(db: Session = Depends(get_db)):
     }
 
 
+@app.get("/v1/cache/stats")
+async def get_cache_stats(db: Session = Depends(get_db)):
+    """Get cache statistics"""
+    logger.info("Received request for /v1/cache/stats")
+    try:
+        base_query = db.query(Text2SQLCache)
+        
+        total_count = base_query.count()
+        valid_count = base_query.filter(Text2SQLCache.status == 'active').count()
+        template_count = base_query.filter(Text2SQLCache.is_template == True).count()
+        
+        # Get counts by template type
+        type_counts = {}
+        for t_type in TemplateType:
+            count = base_query.filter(Text2SQLCache.template_type == t_type).count()
+            type_counts[t_type.value] = count
+        
+        return {
+            "total_entries": total_count,
+            "valid_entries": valid_count,
+            "template_entries": template_count,
+            "by_template_type": type_counts
+        }
+    except Exception as e:
+        logger.error(f"Error in /v1/cache/stats: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error processing stats: {str(e)}")
+
+
 @app.post("/v1/complete")
-async def complete(request: CompleteRequest, db: Session = Depends(get_db)):
+async def complete(
+    request: CompleteRequest, 
+    catalog_type: Optional[str] = None, 
+    catalog_subtype: Optional[str] = None, 
+    catalog_name: Optional[str] = None, 
+    similarity_threshold: Optional[float] = None, 
+    db: Session = Depends(get_db)
+):
     """Process a completion request, utilizing the NL cache.
 
     Looks up the prompt in the cache. If a match is found (above threshold),
@@ -148,6 +185,10 @@ async def complete(request: CompleteRequest, db: Session = Depends(get_db)):
 
     Args:
         request: The request containing the prompt.
+        catalog_type: Optional catalog type to filter cache entries.
+        catalog_subtype: Optional catalog subtype to filter cache entries.
+        catalog_name: Optional catalog name to filter cache entries.
+        similarity_threshold: Optional similarity threshold for cache matching.
         db: The SQLAlchemy Session dependency.
 
     Returns:
@@ -173,10 +214,18 @@ async def complete(request: CompleteRequest, db: Session = Depends(get_db)):
     cache_hit = False
     similarity_score = 0.0
 
+    # Use provided similarity threshold or default
+    threshold = similarity_threshold if similarity_threshold is not None else SIMILARITY_THRESHOLD
+
     # Check cache
     try:
         cache_results = controller.search_query(
-            nl_query=query, similarity_threshold=SIMILARITY_THRESHOLD, limit=1
+            nl_query=query, 
+            similarity_threshold=threshold, 
+            limit=1,
+            catalog_type=catalog_type,
+            catalog_subtype=catalog_subtype,
+            catalog_name=catalog_name
         )
     except Exception as e:
         # Log controller search error specifically
@@ -225,13 +274,27 @@ async def complete(request: CompleteRequest, db: Session = Depends(get_db)):
             # Regular template, no substitution needed
             final_result = template
 
-        # Record the usage in UsageLog
+        # Record the usage in UsageLog with detailed information for both hits and misses
         try:
-            usage_log = UsageLog(cache_entry_id=template_id)
+            from datetime import datetime
+            template_id = None
+            if cache_hit and cache_results and len(cache_results) > 0:
+                template_id = cache_results[0].get("id")
+            usage_log = UsageLog(
+                cache_entry_id=template_id,
+                prompt=query,
+                request_time=datetime.utcnow(),
+                success_status=cache_hit,
+                similarity_score=similarity_score,
+                error_message=str(e) if 'e' in locals() else None,
+                catalog_type=catalog_type,
+                catalog_subtype=catalog_subtype,
+                catalog_name=catalog_name
+            )
             db.add(usage_log)
             # Without explicit commit, this will be committed in the outer function
         except Exception as e:
-            logger.warning(f"Failed to log cache usage: {e}")
+            logger.warning(f"Failed to log cache usage with details: {e}")
 
         # Prepare response for cache hit
         response_data = {
@@ -268,7 +331,9 @@ async def search_cache(
     template_type: Optional[str] = None,
     threshold: float = 0.8,
     limit: int = 5,
-    catalog_id: Optional[int] = None,
+    catalog_type: Optional[str] = None,
+    catalog_subtype: Optional[str] = None,
+    catalog_name: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     """Search the cache for similar queries"""
@@ -283,7 +348,9 @@ async def search_cache(
             template_type=template_type,
             similarity_threshold=threshold,
             limit=limit,
-            catalog_id=catalog_id,
+            catalog_type=catalog_type,
+            catalog_subtype=catalog_subtype,
+            catalog_name=catalog_name,
         )
 
         logger.info(
@@ -374,7 +441,7 @@ async def list_cache_entries(
             "tags": entry.tags,
             "created_at": entry.created_at.isoformat() if entry.created_at else None,
             "updated_at": entry.updated_at.isoformat() if entry.updated_at else None,
-            "is_valid": entry.is_valid
+            "is_valid": entry.status == "active"
         }
         items.append(item)
     
@@ -400,6 +467,16 @@ async def create_cache_entry(entry: CacheEntryCreate, db: Session = Depends(get_
                 detail=f"Invalid template type: {entry.template_type}. Valid options: {[t.value for t in TemplateType]}"
             )
 
+        # Validate API template is valid JSON
+        if entry.template_type == TemplateType.api.value:
+            try:
+                json.loads(entry.template)
+            except json.JSONDecodeError:
+                raise HTTPException(
+                    status_code=400,
+                    detail="API template must be valid JSON"
+                )
+
         # Use controller to add the query
         controller = Text2SQLController(db_session=db)
         new_entry_data = controller.add_query(
@@ -412,7 +489,9 @@ async def create_cache_entry(entry: CacheEntryCreate, db: Session = Depends(get_
             tags=entry.tags,
             database_name=entry.database_name,
             schema_name=entry.schema_name,
-            catalog_id=entry.catalog_id,
+            catalog_type=entry.catalog_type if hasattr(entry, 'catalog_type') else None,
+            catalog_subtype=entry.catalog_subtype if hasattr(entry, 'catalog_subtype') else None,
+            catalog_name=entry.catalog_name if hasattr(entry, 'catalog_name') else None,
         )
 
         # Return the created entry - new_entry_data is already a dictionary
@@ -444,7 +523,7 @@ async def get_cache_entry(entry_id: int, db: Session = Depends(get_db)):
         "schema_name": entry.schema_name,
         "created_at": entry.created_at.isoformat() if entry.created_at else None,
         "updated_at": entry.updated_at.isoformat() if entry.updated_at else None,
-        "is_valid": entry.is_valid
+        "is_valid": entry.status == "active"
     }
 
 
@@ -456,24 +535,13 @@ async def update_cache_entry(entry_id: int, request: Request, db: Session = Depe
 
         # Use controller to update the query
         controller = Text2SQLController(db_session=db)
-        updated_entry = controller.update_query(entry_id=entry_id, updates=data, commit=True)
+        updated_entry = controller.update_query(query_id=entry_id, updates=data)
 
         if not updated_entry:
              raise HTTPException(status_code=404, detail=f"Cache entry with ID {entry_id} not found")
 
-        # Assuming controller.update_query returns the updated model instance:
-        return {
-            "id": updated_entry.id,
-            "nl_query": updated_entry.nl_query,
-            "template": updated_entry.template,
-            "template_type": updated_entry.template_type.value if updated_entry.template_type else None,
-            "is_template": updated_entry.is_template,
-            "entity_replacements": updated_entry.entity_replacements,
-            "tags": updated_entry.tags,
-            "created_at": updated_entry.created_at.isoformat() if updated_entry.created_at else None,
-            "updated_at": updated_entry.updated_at.isoformat() if updated_entry.updated_at else None,
-            "is_valid": updated_entry.is_valid
-        }
+        # Return the updated entry directly since it's already a dictionary
+        return updated_entry
 
     except HTTPException:
         raise
@@ -537,7 +605,7 @@ async def test_cache_entry(entry_id: int, db: Session = Depends(get_db)):
                 validation_message = "API template must be valid JSON"
         
         # Update validity in database
-        entry.is_valid = is_valid
+        entry.status = "active" if is_valid else "inactive"
         entry.updated_at = datetime.datetime.now()
         db.commit()
         
@@ -550,33 +618,40 @@ async def test_cache_entry(entry_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Error testing cache entry: {str(e)}")
 
 
-@app.get("/v1/cache/stats")
-async def get_cache_stats(
-    template_type: Optional[str] = None, 
-    db: Session = Depends(get_db)
-):
-    """Get cache statistics"""
-    base_query = db.query(Text2SQLCache)
-    
-    if template_type:
-        base_query = base_query.filter(Text2SQLCache.template_type == template_type)
-    
-    total_count = base_query.count()
-    valid_count = base_query.filter(Text2SQLCache.is_valid == True).count()
-    template_count = base_query.filter(Text2SQLCache.is_template == True).count()
-    
-    # Get counts by template type
-    type_counts = {}
-    for t_type in TemplateType:
-        count = base_query.filter(Text2SQLCache.template_type == t_type).count()
-        type_counts[t_type.value] = count
-    
-    return {
-        "total_entries": total_count,
-        "valid_entries": valid_count,
-        "template_entries": template_count,
-        "by_template_type": type_counts
-    }
+@app.get("/v1/test")
+async def test_endpoint():
+    """Simple test endpoint to check API accessibility"""
+    logger.info("Received request for /v1/test")
+    return {"status": "ok", "message": "Test endpoint reached"}
+
+
+@app.get("/v1/usage_logs")
+async def list_usage_logs(page: int = 1, page_size: int = 10, db: Session = Depends(get_db)):
+    """List usage log entries"""
+    logger.info("Received request for /v1/usage_logs")
+    try:
+        total_count = db.query(UsageLog).count()
+        logs = db.query(UsageLog).offset((page - 1) * page_size).limit(page_size).all()
+        return {
+            "total_count": total_count,
+            "page": page,
+            "page_size": page_size,
+            "logs": [{
+                "id": log.id,
+                "cache_entry_id": log.cache_entry_id,
+                "timestamp": log.timestamp,
+                "prompt": log.prompt,
+                "success_status": log.success_status,
+                "similarity_score": log.similarity_score,
+                "error_message": log.error_message,
+                "catalog_type": log.catalog_type,
+                "catalog_subtype": log.catalog_subtype,
+                "catalog_name": log.catalog_name
+            } for log in logs]
+        }
+    except Exception as e:
+        logger.error(f"Error fetching usage logs: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error fetching usage logs: {str(e)}")
 
 
 if __name__ == "__main__":
