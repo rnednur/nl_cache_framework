@@ -1,10 +1,10 @@
-# NL Cache Framework
+# ThinkForge
 
-A lightweight framework for managing natural language query caches built with Fastv1.
+A lightweight framework for managing chain of thought templates built with Fastv1.
 
 ## Features
 
-- Create, read, update, and delete cache entries for natural language queries
+- Create, read, update, and delete chain of thought templates
 - Associate templates with queries
 - Track usage statistics
 - Simple REST API interface
@@ -172,59 +172,3 @@ Endpoint for testing specific functionalities of a cache entry, potentially rela
 ### Get Cache Statistics
 
 ```
-GET /v1/cache/stats
-```
-
-Returns statistics about the cache entries, including total count. Note: Per-entry usage count is now tracked separately.
-
-## Data Model (`Text2SQLCache`)
-
-Each cache entry contains:
-
-- `id`: (Integer) Unique identifier for the cache entry.
-- `nl_query`: (String) The original natural language query. (Required)
-- `template`: (Text) The template (SQL, URL, API spec, etc.) corresponding to the NL query. (Required)
-- `template_type`: (String) Type of the template. Defaults to `sql`. Allowed values: `sql`, `url`, `api`, `workflow`.
-- `vector_embedding`: (Vector) Optional vector embedding of the `nl_query` (e.g., for similarity search).
-- `is_template`: (Boolean) Flag indicating if this entry contains placeholders for entity substitution. Defaults to `false`.
-- `entity_replacements`: (JSON) Optional JSON blob describing placeholders and their types for substitution. Example: `{"entity_key": {"placeholder": ":placeholder_name", "type": "string"}}`.
-- `reasoning_trace`: (Text) Optional explanation of how the template was derived.
-- `tags`: (JSON) Optional list of strings for categorization (e.g., `["sales", "summary"]`).
-- `suggested_visualization`: (String) Optional hint for visualizing the result.
-- `database_name`: (String) Optional identifier for the target database.
-- `schema_name`: (String) Optional identifier for the target schema.
-- `catalog_id`: (Integer) Optional identifier linking to an external data catalog.
-- `is_valid`: (Boolean) Flag indicating if the cache entry is currently considered valid. Defaults to `true`.
-- `invalidation_reason`: (String) Optional reason why the entry was marked as invalid.
-- `created_at`: (DateTime) Timestamp when the entry was created (UTC).
-- `updated_at`: (DateTime) Timestamp when the entry was last updated (UTC).
-
-**Note:** Usage statistics (like hit count per entry) are tracked in a separate `UsageLog` table, linked by `cache_entry_id`. The `/v1/cache/stats` endpoint provides aggregate statistics.
-
-## Development
-
-The application uses SQLAlchemy with fallback to an in-memory SQLite database if no external database is configured. 
-
-### Handling Large Files
-
-Several large binary files are used in this project but are excluded from version control to keep the repository size manageable. These files include:
-
-- `frontend/node_modules/@next/swc-darwin-arm64/next-swc.darwin-arm64.node`
-- `venv/lib/python3.11/site-packages/torch/lib/libtorch_cpu.dylib`
-- `venv/lib/python3.11/site-packages/torch/lib/libtorch_python.dylib`
-- `venv/lib/python3.11/site-packages/cryptography/hazmat/bindings/_rust.abi3.so`
-
-These files are automatically generated when setting up the development environment and should not be committed to the repository. The `.gitignore` file has been configured to exclude these files.
-
-When setting up a new development environment, follow these steps:
-
-1. Clone the repository
-2. Create and activate a virtual environment: `python -m venv venv && source venv/bin/activate`
-3. Install the dependencies: `pip install -r requirements.txt`
-4. Set up the frontend: `cd frontend && npm install`
-
-This will generate all necessary binary files that are excluded from version control.
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details. 

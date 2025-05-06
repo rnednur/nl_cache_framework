@@ -5,8 +5,8 @@ import './globals.css'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'NL Cache Framework',
-  description: 'A web application for managing natural language cache entries',
+  title: 'ThinkForge',
+  description: 'A web application for managing chain of thought templates',
 }
 
 export default function RootLayout({

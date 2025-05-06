@@ -51,7 +51,7 @@ export default function Sidebar() {
   return (
     <div className="hidden md:flex w-64 flex-col bg-white border-r border-slate-200 h-screen">
       <div className="p-6">
-        <h1 className="text-2xl font-bold text-slate-900">NL Cache Framework</h1>
+        <h1 className="text-2xl font-bold text-slate-900">ThinkForge</h1>
       </div>
       <nav className="flex-1 px-4 py-2 space-y-1">
         {navItems.map((item) => {

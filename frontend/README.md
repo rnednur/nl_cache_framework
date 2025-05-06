@@ -1,6 +1,6 @@
-# NL Cache Framework Frontend
+# ThinkForge Frontend
 
-A modern React-based web application for managing natural language cache entries, built with Next.js and TypeScript.
+A modern React-based web application for managing chain of thought templates, built with Next.js and TypeScript.
 
 ## Features
 
@@ -92,7 +92,7 @@ yarn start
 
 ## API Integration
 
-The frontend communicates with the NL Cache Framework backend API through the services defined in `/app/services/api.ts`, which includes:
+The frontend communicates with the ThinkForge backend API through the services defined in `/app/services/api.ts`, which includes:
 
 - `getCacheEntries`: List entries with pagination and filtering
 - `getCacheEntry`: Get a single entry by ID
