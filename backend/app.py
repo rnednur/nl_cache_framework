@@ -15,6 +15,7 @@ import json
 from pydantic import BaseModel, Field
 import csv
 import io
+import requests
 
 # Import database configuration
 from database import get_db, engine, SessionLocal
@@ -904,6 +905,92 @@ async def upload_csv(
     except Exception as e:
         logger.error(f"Error processing CSV file: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error processing CSV file: {str(e)}")
+
+
+@app.post("/v1/upload/swagger")
+async def upload_swagger(
+    swagger_url: str = Body(..., embed=True),
+    template_type: str = "api",
+    db: Session = Depends(get_db)
+):
+    """
+    Process a Swagger URL to generate natural language queries and API templates using an LLM.
+    Only GET, PUT, and POST operations are processed.
+    """
+    try:
+        # Fetch Swagger JSON
+        response = requests.get(swagger_url)
+        if response.status_code != 200:
+            raise HTTPException(status_code=400, detail=f"Failed to fetch Swagger JSON from {swagger_url}")
+        
+        swagger_data = response.json()
+        controller = get_controller(db)
+        processed_count = 0
+        failed_count = 0
+        results = []
+        
+        # Process paths for GET, PUT, POST operations
+        for path, methods in swagger_data.get('paths', {}).items():
+            for method, details in methods.items():
+                if method.lower() not in ['get', 'put', 'post']:
+                    continue
+                
+                try:
+                    # Generate natural language query and reasoning trace using LLM
+                    operation_id = details.get('operationId', f"{method.upper()} {path}")
+                    summary = details.get('summary', '')
+                    nl_query = f"{method.upper()} operation for {operation_id}"
+                    if summary:
+                        nl_query += f": {summary}"
+                    
+                    # Create API template
+                    template = {
+                        'method': method.upper(),
+                        'path': path,
+                        'parameters': details.get('parameters', []),
+                        'responses': details.get('responses', {})
+                    }
+                    template_str = json.dumps(template, indent=2)
+                    
+                    # Generate reasoning trace (simplified, ideally LLM-generated)
+                    reasoning_trace = f"This template was generated from Swagger for {method.upper()} operation on {path}."
+                    
+                    # Add to cache
+                    new_entry = controller.add_query(
+                        nl_query=nl_query,
+                        template=template_str,
+                        template_type=TemplateType.api,
+                        reasoning_trace=reasoning_trace,
+                        is_template=False,
+                        catalog_type='api',
+                        catalog_subtype=method.lower(),
+                        catalog_name=operation_id
+                    )
+                    
+                    results.append({
+                        "id": new_entry.get("id"),
+                        "nl_query": nl_query,
+                        "status": "success"
+                    })
+                    processed_count += 1
+                except Exception as e:
+                    logger.error(f"Error processing {method} {path}: {str(e)}")
+                    results.append({
+                        "nl_query": f"{method.upper()} {path}",
+                        "status": "error",
+                        "error": str(e)
+                    })
+                    failed_count += 1
+        
+        return {
+            "status": "completed",
+            "processed": processed_count,
+            "failed": failed_count,
+            "results": results
+        }
+    except Exception as e:
+        logger.error(f"Error processing Swagger URL: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error processing Swagger URL: {str(e)}")
 
 
 if __name__ == "__main__":

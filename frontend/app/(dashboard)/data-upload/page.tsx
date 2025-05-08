@@ -19,6 +19,9 @@ export default function DataUploadPage() {
   const [uploadResult, setUploadResult] = useState<CsvUploadResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [swaggerUrl, setSwaggerUrl] = useState<string>("")
+  const [isSwaggerUploading, setIsSwaggerUploading] = useState(false)
+  const [swaggerError, setSwaggerError] = useState<string | null>(null)
   
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -60,6 +63,26 @@ export default function DataUploadPage() {
     setError(null)
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
+    }
+  }
+  
+  const handleSwaggerUpload = async () => {
+    if (!swaggerUrl) {
+      setSwaggerError("Please enter a Swagger URL")
+      return
+    }
+    
+    setIsSwaggerUploading(true)
+    setSwaggerError(null)
+    
+    try {
+      const result = await api.uploadSwagger(swaggerUrl, templateType)
+      setUploadResult(result)
+    } catch (err: any) {
+      setSwaggerError(err.message || "An error occurred during Swagger upload")
+      setUploadResult(null)
+    } finally {
+      setIsSwaggerUploading(false)
     }
   }
   
@@ -156,9 +179,62 @@ export default function DataUploadPage() {
         
         <Card>
           <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Upload className="h-5 w-5" />
+              Swagger URL Upload
+            </CardTitle>
+            <CardDescription>
+              Provide a Swagger URL to generate API templates
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Alert>
+              <File className="h-4 w-4" />
+              <AlertTitle>Swagger Processing</AlertTitle>
+              <AlertDescription>
+                Only GET, PUT, and POST operations will be processed into API templates.
+              </AlertDescription>
+            </Alert>
+            
+            <div className="space-y-2">
+              <Label htmlFor="swagger-url">Swagger URL</Label>
+              <Input
+                id="swagger-url"
+                type="url"
+                placeholder="https://api.example.com/swagger.json"
+                value={swaggerUrl}
+                onChange={(e) => setSwaggerUrl(e.target.value)}
+              />
+            </div>
+            
+            {swaggerError && (
+              <div className="p-3 border border-red-200 bg-red-50 rounded-md text-red-700 flex gap-2">
+                <CircleAlert className="h-5 w-5 flex-shrink-0" />
+                <p>{swaggerError}</p>
+              </div>
+            )}
+          </CardContent>
+          <CardFooter>
+            <Button
+              className="w-full"
+              onClick={handleSwaggerUpload}
+              disabled={!swaggerUrl || isSwaggerUploading}
+            >
+              {isSwaggerUploading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Processing Swagger URL... This may take a while.
+                </>
+              ) : "Process Swagger URL"}
+            </Button>
+          </CardFooter>
+        </Card>
+        
+        <Card>
+          <CardHeader>
             <CardTitle>Results</CardTitle>
             <CardDescription>
-              Results of your CSV upload
+              Results of your CSV or Swagger upload
             </CardDescription>
           </CardHeader>
           <CardContent>

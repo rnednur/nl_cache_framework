@@ -462,6 +462,37 @@ const api = {
       console.error('Error uploading CSV file:', error);
       throw error;
     }
+  },
+
+  // Upload Swagger URL to generate API templates
+  async uploadSwagger(swaggerUrl: string, templateType: string = 'api'): Promise<CsvUploadResponse> {
+    try {
+      const url = `${API_BASE}/v1/upload/swagger`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 seconds timeout
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ swagger_url: swaggerUrl, template_type: templateType }),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error: unknown) {
+      console.error('Error uploading Swagger URL:', error);
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Request timed out. Please check your internet connection or try again later.');
+      }
+      throw error;
+    }
   }
 };
 
