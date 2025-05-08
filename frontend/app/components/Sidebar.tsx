@@ -8,7 +8,8 @@ import {
   Database, 
   FileText, 
   Grid, 
-  Settings 
+  Settings,
+  Sparkles
 } from "lucide-react"
 import { cn } from "../lib/utils"
 
@@ -27,6 +28,11 @@ const navItems = [
     name: "Templates",
     href: "/templates",
     icon: <Code className="h-5 w-5" />
+  },
+  {
+    name: "Complete Test",
+    href: "/complete-test",
+    icon: <Sparkles className="h-5 w-5" />
   },
   {
     name: "Documentation",

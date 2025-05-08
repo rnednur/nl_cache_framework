@@ -172,3 +172,39 @@ Endpoint for testing specific functionalities of a cache entry, potentially rela
 ### Get Cache Statistics
 
 ```
+```
+
+# Database Schema Configuration
+
+The NL Cache Framework now supports configurable database schemas. By default, the system will use the `public` schema if no other schema is specified.
+
+## Configuration
+
+To set a custom schema name:
+
+1. Set the `DB_SCHEMA` environment variable in your `.env` file:
+   ```
+   DB_SCHEMA=your_schema_name
+   ```
+
+2. Initialize the schema using the provided utility script:
+   ```bash
+   # Create the schema if it doesn't exist
+   python dbscripts/init_schema.py --create-schema
+   
+   # Only initialize tables without creating schema
+   python dbscripts/init_schema.py
+   ```
+
+## Migration from Previous Versions
+
+If you're migrating from a previous version that used the hardcoded "autobi" schema:
+
+1. Update your `.env` file to include:
+   ```
+   DB_SCHEMA=autobi
+   ```
+
+2. After updating the code, restart the application services.
+
+This configuration ensures backward compatibility with existing databases while providing flexibility for future installations.

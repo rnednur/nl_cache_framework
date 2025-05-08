@@ -216,62 +216,86 @@ class Text2SQLController:
         if not nl_query:
             return []
 
-        # Get all candidates
-        candidates = self.get_all_queries(status=status)
+        # Build the base query with filters applied at the database level
+        query = self.session.query(Text2SQLCache)
+        if status:
+            query = query.filter(Text2SQLCache.status == status)
+        if template_type:
+            query = query.filter(Text2SQLCache.template_type == template_type)
+        if catalog_type:
+            query = query.filter(Text2SQLCache.catalog_type == catalog_type)
+        if catalog_subtype:
+            query = query.filter(Text2SQLCache.catalog_subtype == catalog_subtype)
+        if catalog_name:
+            query = query.filter(Text2SQLCache.catalog_name == catalog_name)
+
+        # Fetch the filtered candidates
+        candidates = [c.to_dict() for c in query.all()]
         if not candidates:
             return []
-
-        # Filter by template type and catalog fields if specified
-        if template_type or catalog_type or catalog_subtype or catalog_name:
-            candidates = [
-                c for c in candidates
-                if (template_type is None or c.get("template_type") == template_type) and
-                   (catalog_type is None or c.get("catalog_type") == catalog_type) and
-                   (catalog_subtype is None or c.get("catalog_subtype") == catalog_subtype) and
-                   (catalog_name is None or c.get("catalog_name") == catalog_name)
-            ]
-
+        
         # Get embeddings for vector similarity if needed
-        candidate_embeddings_list = None
-        if search_method in ["vector", "auto"]:
-            candidate_texts = [c.get("nl_query", "") for c in candidates]
-            if candidate_texts:
-                try:
-                    candidate_embeddings = self.similarity_util.get_embedding(candidate_texts)
-                    if candidate_embeddings is None or len(candidate_embeddings) == 0:
-                        logger.warning("Failed to generate embeddings for candidates")
-                        candidate_embeddings = None
-                    else:
-                        # Convert to list of embeddings, ensuring each is a numpy array
-                        candidate_embeddings_list = []
-                        for emb in candidate_embeddings:
-                            if isinstance(emb, np.ndarray):
-                                candidate_embeddings_list.append(emb)
-                            else:
-                                logger.warning("Invalid embedding type in results, using zero vector")
-                                candidate_embeddings_list.append(np.zeros(768))
-                except Exception as e:
-                    logger.error(f"Error generating candidate embeddings: {e}", exc_info=True)
-                    candidate_embeddings_list = None
+        candidate_embeddings_list = []
+        embedding_field_name = 'embedding'  # Default field name
+        # Check if the field might be named differently
+        if candidates and 'vector_embedding' in candidates[0]:
+            embedding_field_name = 'vector_embedding'
+        for c in candidates:
+            emb = c.get(embedding_field_name)
+            if emb is not None and len(emb) > 0:
+                candidate_embeddings_list.append(np.array(emb))
             else:
-                logger.warning("No candidate texts to generate embeddings for")
+                candidate_embeddings_list.append(None)
+        logger.info(f"Using stored embeddings for {len(candidate_embeddings_list)} candidates")
 
-        # Find similar queries
-        similar_indices = self.similarity_util.find_most_similar(
-            nl_query,
-            [c.get("nl_query", "") for c in candidates],
-            candidate_embeddings=candidate_embeddings_list,
-            method=search_method if search_method in ["vector", "string"] else "vector",
-            threshold=similarity_threshold,
-        )
+        # Determine search method if auto
+        if search_method == "auto":
+            if len(candidates) > 100:
+                search_method = "vector"
+            else:
+                search_method = "string"
+        logger.info(f"Method: {search_method}, Threshold: {similarity_threshold}")
 
-        # Return results with similarity scores
-        results = []
-        for idx, score in similar_indices:
-            entry = candidates[idx].copy()
-            entry["similarity_score"] = score
-            results.append(entry)
+        # Perform search based on method
+        if search_method == "exact":
+            results = [
+                c for c in candidates if c.get("nl_query", "").lower() == nl_query.lower()
+            ]
+            for r in results:
+                r["similarity"] = 1.0 if r.get("nl_query", "").lower() == nl_query.lower() else 0.0
+        elif search_method == "string":
+            results = []
+            for c in candidates:
+                sim = self._compute_string_similarity(nl_query, c.get("nl_query", ""))
+                if sim >= similarity_threshold:
+                    c["similarity"] = sim
+                    results.append(c)
+        elif search_method == "vector":
+            query_emb = self._get_embedding(nl_query)
+            if query_emb is None:
+                logger.warning("Failed to get embedding for query, falling back to string search")
+                results = []
+                for c in candidates:
+                    sim = self._compute_string_similarity(nl_query, c.get("nl_query", ""))
+                    if sim >= similarity_threshold:
+                        c["similarity"] = sim
+                        results.append(c)
+            else:
+                results = []
+                valid_indices = [i for i, emb in enumerate(candidate_embeddings_list) if emb is not None]
+                valid_embs = [candidate_embeddings_list[i] for i in valid_indices]
+                if valid_embs:
+                    similarities = self.similarity_util.compute_vector_similarities(query_emb, valid_embs)
+                    for idx, sim in zip(valid_indices, similarities):
+                        if sim >= similarity_threshold:
+                            candidates[idx]["similarity"] = float(sim)
+                            results.append(candidates[idx])
+                logger.info(f"Found {len(results)} matches above threshold")
+        else:
+            raise ValueError(f"Unknown search method: {search_method}")
 
+        # Sort by similarity if available, otherwise by ID
+        results.sort(key=lambda x: x.get("similarity", 0.0), reverse=True)
         return results[:limit]
 
     def get_query_by_id(self, query_id: int) -> Optional[Dict[str, Any]]:
@@ -314,89 +338,79 @@ class Text2SQLController:
         self, query_id: int, updates: Dict[str, Any], change_reason: Optional[str] = None, changed_by: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """
-        Update a query entry.
+        Update an existing query in the cache.
 
         Args:
             query_id: ID of the query to update.
-            updates: Dictionary of fields to update. Keys should match Text2SQLCache attributes.
-                     Special handling for 'nl_query' (recomputes embedding).
-            change_reason: Optional reason for the update to log in audit trail.
+            updates: Dictionary of fields to update.
+            change_reason: Optional reason for the update.
             changed_by: Optional identifier of who made the change.
 
         Returns:
-            Updated query as a dictionary or None if not found.
+            Updated cache entry as a dictionary, or None if not found.
 
         Raises:
-            SQLAlchemyError: If a database error occurs (session rolled back).
-            Exception: If embedding generation fails for updated nl_query (logged).
+            SQLAlchemyError: If a database error occurs.
         """
         try:
-            query = (
-                self.session.query(Text2SQLCache)
-                .filter(Text2SQLCache.id == query_id)
-                .first()
-            )
-
-            if not query:
+            cache_entry = self.session.query(Text2SQLCache).filter(Text2SQLCache.id == query_id).first()
+            if not cache_entry:
+                logger.warning(f"Cache entry {query_id} not found for update")
                 return None
 
-            update_data = updates.copy()
+            # Track changes for audit log
+            changes = []
 
-            # Handle special case for nl_query to update embedding
-            if "nl_query" in update_data and update_data["nl_query"] != query.nl_query:
-                new_embedding_array = self._get_embedding(update_data["nl_query"])
-                # Use the property setter to handle numpy array -> list conversion
-                query.embedding = new_embedding_array
-                if new_embedding_array is None:
-                     logger.warning(
-                        "Failed to generate new embedding during update, vector embedding set to null."
-                     )
-            # Remove embedding fields from direct updates as they are handled above
-            update_data.pop('embedding', None)
-            update_data.pop('vector_embedding', None)
+            # Handle embedding update if nl_query is updated
+            if "nl_query" in updates:
+                new_nl_query = updates["nl_query"]
+                if new_nl_query and new_nl_query != cache_entry.nl_query:
+                    embedding_array = self._get_embedding(new_nl_query)
+                    if embedding_array is not None:
+                        old_embedding = cache_entry.embedding
+                        cache_entry.embedding = embedding_array
+                        changes.append(("embedding", old_embedding, embedding_array))
+                    changes.append(("nl_query", cache_entry.nl_query, new_nl_query))
 
-            # If entity_replacements is explicitly updated, adjust is_template
-            if "entity_replacements" in update_data:
-                entity_replacements = update_data["entity_replacements"]
-                query.is_template = bool(entity_replacements)
+            # Apply other updates
+            for field, new_value in updates.items():
+                if hasattr(cache_entry, field):
+                    old_value = getattr(cache_entry, field)
+                    if old_value != new_value:
+                        setattr(cache_entry, field, new_value)
+                        changes.append((field, old_value, new_value))
 
-            # Log changes for audit trail
-            audit_logs = []
-            for key, value in update_data.items():
-                if hasattr(query, key):
-                    old_value = getattr(query, key)
-                    if old_value != value:
-                        audit_logs.append(CacheAuditLog(
-                            cache_entry_id=query_id,
-                            changed_field=key,
-                            old_value=str(old_value) if old_value is not None else None,
-                            new_value=str(value) if value is not None else None,
-                            change_reason=change_reason,
-                            changed_by=changed_by
-                        ))
-                    # Update the field
-                    if key in ['nl_query']: # nl_query already applied if present
-                        continue
-                    setattr(query, key, value)
-                else:
-                    logger.warning(
-                        f"Attempted to update non-existent attribute '{key}' on Text2SQLCache"
-                    )
+            # Update the updated_at timestamp
+            cache_entry.updated_at = datetime.datetime.utcnow()
 
-            # Ensure updated_at is set (handle type change from model)
-            query.updated_at = datetime.datetime.utcnow()
-
-            # Add audit logs to session
-            self.session.add_all(audit_logs)
+            # Commit the changes
             self.session.commit()
-            result = query.to_dict()
-            logger.info(f"Updated cache entry with ID {query_id}")
-            return result
 
-        except Exception as e:
-            logger.error(f"Failed to update query {query_id}: {str(e)}", exc_info=True)
+            # Log changes to audit log if there are any
+            if changes:
+                for field, old_val, new_val in changes:
+                    audit_log = CacheAuditLog(
+                        cache_entry_id=cache_entry.id,
+                        changed_field=field,
+                        old_value=old_val,
+                        new_value=new_val,
+                        change_reason=change_reason,
+                        changed_by=changed_by
+                    )
+                    self.session.add(audit_log)
+                self.session.commit()
+
+            logger.info(f"Updated cache entry with ID {query_id}")
+            return cache_entry.to_dict()
+
+        except SQLAlchemyError as e:
+            logger.error(f"Database error updating query {query_id}: {str(e)}", exc_info=True)
             self.session.rollback()
             raise
+        except Exception as e:
+            logger.error(f"Error updating query {query_id}: {str(e)}", exc_info=True)
+            self.session.rollback()
+            raise ValueError(f"Error updating cache entry: {str(e)}")
 
     def invalidate_query(self, query_id: int, reason: Optional[str] = None) -> bool:
         """
@@ -701,30 +715,72 @@ class Text2SQLController:
                 if query:
                     filtered_results.append(query.to_dict())
 
+        # Log search results for debugging
+        logger.info(f"Vector search results: distances={distances[0].tolist()}, indices={indices[0].tolist()}")
+        logger.info(f"Applying threshold filter: {self.similarity_threshold}")
+
         return filtered_results
 
-    def get_all_queries(self, status: Optional[str] = Status.ACTIVE) -> List[Dict[str, Any]]:
-        """Get all queries from the cache filtered by status.
+    def get_all_queries(self, status: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Get all cache entries, optionally filtered by status.
 
         Args:
-            status: Optional status to filter by (pending, active, archive). Defaults to ACTIVE.
+            status: Optional status to filter by.
 
         Returns:
-            List of cache entries as dictionaries matching the status filter.
+            List of cache entry dictionaries.
         """
-        try:
-            if status:
-                queries = (
-                    self.session.query(Text2SQLCache)
-                    .filter(Text2SQLCache.status == status)
-                    .all()
-                )
-            else:
-                queries = self.session.query(Text2SQLCache).all()
-            return [query.to_dict() for query in queries]
-        except Exception as e:
-            logger.error(f"Failed to get all queries: {str(e)}", exc_info=True)
-            return []
+        query = self.session.query(Text2SQLCache)
+        if status:
+            query = query.filter(Text2SQLCache.status == status)
+        return [entry.to_dict() for entry in query.all()]
+
+    def get_cache_count(self) -> int:
+        """Get the total number of cache entries.
+
+        Returns:
+            Total count of cache entries.
+        """
+        return self.session.query(Text2SQLCache).count()
+
+    def get_valid_cache_count(self) -> int:
+        """Get the number of cache entries with active status.
+
+        Returns:
+            Count of active cache entries.
+        """
+        return self.session.query(Text2SQLCache).filter(Text2SQLCache.status == 'active').count()
+
+    def get_template_count(self) -> int:
+        """Get the number of cache entries that are templates.
+
+        Returns:
+            Count of template cache entries.
+        """
+        return self.session.query(Text2SQLCache).filter(Text2SQLCache.is_template == True).count()
+
+    def get_template_type_counts(self) -> Dict[str, int]:
+        """Get counts of cache entries by template type.
+
+        Returns:
+            Dictionary mapping template types to their counts.
+        """
+        type_counts = {}
+        for t_type in TemplateType:
+            count = self.session.query(Text2SQLCache).filter(Text2SQLCache.template_type == t_type).count()
+            type_counts[t_type.value] = count
+        return type_counts
+
+    def get_distinct_values(self, field: str) -> List[str]:
+        """Get distinct non-null values for a specified field.
+
+        Args:
+            field: The field name to get distinct values for (e.g., 'catalog_type').
+
+        Returns:
+            List of distinct non-null values for the field.
+        """
+        return [value for value, in self.session.query(getattr(Text2SQLCache, field)).distinct().all() if value is not None]
 
     def execute_workflow(
         self, 

@@ -35,6 +35,43 @@ export interface CacheStats {
   }>
 }
 
+// Usage log interface
+export interface UsageLog {
+  id: number;
+  cache_entry_id?: number;
+  timestamp: string; 
+  prompt?: string;
+  success_status: boolean;
+  similarity_score: number;
+  error_message?: string;
+  catalog_type?: string;
+  catalog_subtype?: string;
+  catalog_name?: string;
+  llm_used: boolean;
+}
+
+// Complete request/response interfaces
+export interface CompleteRequest {
+  prompt: string;
+  use_llm?: boolean;
+  catalog_type?: string;
+  catalog_subtype?: string;
+  catalog_name?: string;
+  similarity_threshold?: number;
+}
+
+export interface CompleteResponse {
+  cache_template: string;
+  cache_hit: boolean;
+  similarity_score: number;
+  template_id?: number;
+  cached_query?: string;
+  user_query: string;
+  updated_template?: string;
+  llm_explanation?: string;
+  warning?: string;
+}
+
 // Create cache entry interface
 export interface CacheEntryCreate {
   nl_query: string;
@@ -48,6 +85,25 @@ export interface CacheEntryCreate {
   catalog_subtype?: string;
   catalog_name?: string;
   status?: string;
+}
+
+export interface CsvUploadResponse {
+  status: string;
+  processed: number;
+  failed: number;
+  results: Array<{
+    id?: number;
+    nl_query: string;
+    status: 'success' | 'error';
+    error?: string;
+  }>;
+}
+
+// CatalogValues interface
+export interface CatalogValues {
+  catalog_types: string[];
+  catalog_subtypes: string[];
+  catalog_names: string[];
 }
 
 // API service for cache management
@@ -209,6 +265,27 @@ const api = {
     }
   },
   
+  // Get distinct catalog values
+  async getCatalogValues(): Promise<CatalogValues> {
+    try {
+      const response = await fetch(`${API_BASE}/v1/cache/catalogs`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching catalog values:', error);
+      // Return empty lists on error
+      return {
+        catalog_types: [],
+        catalog_subtypes: [],
+        catalog_names: []
+      };
+    }
+  },
+  
   // Test a cache entry
   async testCacheEntry(id: number): Promise<any> {
     try {
@@ -294,7 +371,7 @@ const api = {
   },
 
   // Get usage logs
-  async getUsageLogs(page: number = 1, pageSize: number = 10): Promise<{ items: any[], total: number }> {
+  async getUsageLogs(page: number = 1, pageSize: number = 10): Promise<{ items: UsageLog[], total: number }> {
     try {
       const response = await fetch(`${API_BASE}/v1/usage_logs?page=${page}&page_size=${pageSize}`);
       
@@ -308,6 +385,84 @@ const api = {
       throw error;
     }
   },
+  
+  // Process a completion request
+  async complete(request: CompleteRequest): Promise<CompleteResponse> {
+    try {
+      // Build URL with query parameters
+      let url = `${API_BASE}/v1/complete`;
+      const params = new URLSearchParams();
+      
+      if (request.use_llm) {
+        params.append('use_llm', 'true');
+      }
+      
+      if (request.catalog_type) {
+        params.append('catalog_type', request.catalog_type);
+      }
+      
+      if (request.catalog_subtype) {
+        params.append('catalog_subtype', request.catalog_subtype);
+      }
+      
+      if (request.catalog_name) {
+        params.append('catalog_name', request.catalog_name);
+      }
+      
+      if (request.similarity_threshold) {
+        params.append('similarity_threshold', request.similarity_threshold.toString());
+      }
+      
+      // Add query parameters if any
+      if (params.toString()) {
+        url += `?${params.toString()}`;
+      }
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ prompt: request.prompt }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error with completion request:', error);
+      throw error;
+    }
+  },
+
+  // Upload CSV file to create cache entries
+  async uploadCsv(file: File, templateType: string = 'sql'): Promise<CsvUploadResponse> {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      // Add template_type as a query parameter
+      const url = `${API_BASE}/v1/upload/csv?template_type=${encodeURIComponent(templateType)}`;
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        body: formData,
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error uploading CSV file:', error);
+      throw error;
+    }
+  }
 };
 
 export default api; 

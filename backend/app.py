@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, Request, Body
+from fastapi import FastAPI, Depends, HTTPException, Request, Body, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, RedirectResponse
@@ -13,9 +13,14 @@ import datetime
 from sqlalchemy import or_, func
 import json
 from pydantic import BaseModel, Field
+import csv
+import io
 
 # Import database configuration
-from .database import get_db, engine, SessionLocal
+from database import get_db, engine, SessionLocal
+
+# Import LLM service for enhanced completions
+from llm_service import LLMService
 
 # Add parent directory to path to ensure imports work
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -50,6 +55,33 @@ DEFAULT_MODEL_NAME = os.environ.get(
     "DEFAULT_MODEL_NAME", "sentence-transformers/all-mpnet-base-v2"
 )
 SIMILARITY_THRESHOLD = float(os.environ.get("SIMILARITY_THRESHOLD", "0.85"))
+
+# Create a singleton instance of Text2SQLController to be reused across requests
+controller_instance = None
+db_for_controller = None
+similarity_util = None
+
+def get_controller(db_session):
+    """Get a shared instance of Text2SQLController"""
+    global controller_instance, db_for_controller, similarity_util
+    if similarity_util is None:
+        logger.info("Initializing shared similarity utility")
+        from nl_cache_framework import Text2SQLSimilarity
+        similarity_util = Text2SQLSimilarity(model_name=DEFAULT_MODEL_NAME)
+    if controller_instance is None:
+        logger.info("Initializing singleton Text2SQLController instance")
+        controller_instance = Text2SQLController(
+            db_session=db_session, similarity_model_name=DEFAULT_MODEL_NAME
+        )
+        controller_instance.similarity_util = similarity_util
+        db_for_controller = db_session
+    else:
+        # Update the database session if it's different, but keep the same controller
+        if db_for_controller != db_session:
+            logger.info("Updating database session for existing Text2SQLController")
+            controller_instance.session = db_session
+            db_for_controller = db_session
+    return controller_instance
 
 # Pydantic models for request/response schema
 class CacheEntryCreate(BaseModel):
@@ -141,21 +173,20 @@ async def health_check(db: Session = Depends(get_db)):
 
 @app.get("/v1/cache/stats")
 async def get_cache_stats(db: Session = Depends(get_db)):
-    """Get cache statistics"""
-    logger.info("Received request for /v1/cache/stats")
+    """Get statistics about the cache entries.
+
+    Returns:
+        JSON response with counts of total entries and breakdown by template type.
+
+    Raises:
+        HTTPException(500): If an error occurs while fetching stats.
+    """
     try:
-        base_query = db.query(Text2SQLCache)
-        
-        total_count = base_query.count()
-        valid_count = base_query.filter(Text2SQLCache.status == 'active').count()
-        template_count = base_query.filter(Text2SQLCache.is_template == True).count()
-        
-        # Get counts by template type
-        type_counts = {}
-        for t_type in TemplateType:
-            count = base_query.filter(Text2SQLCache.template_type == t_type).count()
-            type_counts[t_type.value] = count
-        
+        controller = get_controller(db)
+        total_count = controller.get_cache_count()
+        valid_count = controller.get_valid_cache_count()
+        template_count = controller.get_template_count()
+        type_counts = controller.get_template_type_counts()
         return {
             "total_entries": total_count,
             "valid_entries": valid_count,
@@ -167,6 +198,31 @@ async def get_cache_stats(db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Error processing stats: {str(e)}")
 
 
+@app.get("/v1/cache/catalogs")
+async def get_catalog_values(db: Session = Depends(get_db)):
+    """Get distinct catalog types, subtypes, and names from the cache entries.
+
+    Returns:
+        JSON response with lists of distinct catalog_type, catalog_subtype, and catalog_name values.
+
+    Raises:
+        HTTPException(500): If an error occurs while fetching catalog values.
+    """
+    try:
+        controller = get_controller(db)
+        catalog_types = controller.get_distinct_values("catalog_type")
+        catalog_subtypes = controller.get_distinct_values("catalog_subtype")
+        catalog_names = controller.get_distinct_values("catalog_name")
+        return {
+            "catalog_types": [ct for ct in catalog_types if ct],
+            "catalog_subtypes": [cs for cs in catalog_subtypes if cs],
+            "catalog_names": [cn for cn in catalog_names if cn]
+        }
+    except Exception as e:
+        logger.error(f"Error in /v1/cache/catalogs: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error fetching catalog values: {str(e)}")
+
+
 @app.post("/v1/complete")
 async def complete(
     request: CompleteRequest, 
@@ -174,6 +230,7 @@ async def complete(
     catalog_subtype: Optional[str] = None, 
     catalog_name: Optional[str] = None, 
     similarity_threshold: Optional[float] = None, 
+    use_llm: bool = False,
     db: Session = Depends(get_db)
 ):
     """Process a completion request, utilizing the NL cache.
@@ -189,6 +246,7 @@ async def complete(
         catalog_subtype: Optional catalog subtype to filter cache entries.
         catalog_name: Optional catalog name to filter cache entries.
         similarity_threshold: Optional similarity threshold for cache matching.
+        use_llm: If True, use LLM to enhance search results with semantic analysis.
         db: The SQLAlchemy Session dependency.
 
     Returns:
@@ -204,25 +262,26 @@ async def complete(
         raise HTTPException(status_code=400, detail="Prompt cannot be empty")
 
     # --- Cache Interaction ---
-    controller = Text2SQLController(
-        db_session=db, similarity_model_name=DEFAULT_MODEL_NAME
-    )
+    controller = get_controller(db)
     entity_sub = Text2SQLEntitySubstitution()
 
     response_data = {}
     final_result = ""
     cache_hit = False
     similarity_score = 0.0
+    explanation = None
 
     # Use provided similarity threshold or default
     threshold = similarity_threshold if similarity_threshold is not None else SIMILARITY_THRESHOLD
 
     # Check cache
     try:
+        # Get multiple results to allow LLM to choose from them if use_llm is enabled
+        limit = 5 if use_llm else 1  
         cache_results = controller.search_query(
             nl_query=query, 
             similarity_threshold=threshold, 
-            limit=1,
+            limit=limit,
             catalog_type=catalog_type,
             catalog_subtype=catalog_subtype,
             catalog_name=catalog_name
@@ -232,15 +291,89 @@ async def complete(
         logger.error(f"Cache search failed for query '{query[:50]}...': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error searching cache")
 
-    # Process results if we have any
-    if cache_results and len(cache_results) > 0:
-        # We have a match
-        best_match = cache_results[0]
+    # Process results
+    if not cache_results or len(cache_results) == 0:
+        # No matches found
+        logger.info(f"No cache matches for query: {query[:50]}...")
+        response_data = {
+            "cache_template": "No cached template found for this query.",
+            "cache_hit": False,
+            "similarity_score": 0.0,
+            "template_id": None,
+            "cached_query": None,
+            "user_query": query,
+            "updated_template": None,
+            "llm_explanation": "No similar query found in cache.",
+        }
+    else:
+        # LLM-based enhancement if requested and we have multiple results
+        updated_query = None
+        if use_llm and len(cache_results) > 0:
+            # Check if LLM service is configured
+            if not LLMService.is_configured():
+                logger.warning("LLM enhancement requested but service not configured")
+                response_data = {
+                    "warning": "LLM enhancement was requested but the service is not configured. Set OPENROUTER_API_KEY in .env file.",
+                }
+                # Continue with standard processing without LLM
+                best_match = cache_results[0]
+                similarity_score = best_match.get("similarity", 0.0)
+            else:
+                try:
+                    logger.info(f"Using LLM enhancement for query: {query[:50]}...")
+                    # Initialize LLM service with the correct model from environment variable
+                    llm_service = LLMService(model=os.getenv("OPENROUTER_MODEL", "google/gemini-pro"))
+                    llm_result = llm_service.can_answer_with_context(
+                        query=query,
+                        context_entries=cache_results,
+                        similarity_threshold=threshold
+                    )
+                    
+                    can_answer = llm_result.get("can_answer", False)
+                    explanation = llm_result.get("explanation", "")
+                    selected_entry_id = llm_result.get("selected_entry_id")
+                    updated_query = llm_result.get("updated_query")
+                    
+                    if can_answer and selected_entry_id:
+                        # Find the selected entry
+                        selected_entry = next(
+                            (entry for entry in cache_results if entry.get("id") == selected_entry_id), 
+                            None
+                        )
+                        if selected_entry:
+                            # Use the selected entry as our best match
+                            best_match = selected_entry
+                            similarity_score = selected_entry.get("similarity", 0.0)
+                            logger.info(
+                                f"LLM selected cache entry: {selected_entry_id} for query: {query[:50]}..."
+                            )
+                        else:
+                            # Fall back to first result if entry not found
+                            best_match = cache_results[0]
+                            similarity_score = best_match.get("similarity", 0.0)
+                    else:
+                        # LLM determined we can't answer or failed - use first result
+                        best_match = cache_results[0]
+                        similarity_score = best_match.get("similarity", 0.0)
+                except Exception as e:
+                    logger.error(f"LLM processing failed: {e}", exc_info=True)
+                    # Fall back to best match without LLM
+                    best_match = cache_results[0]
+                    similarity_score = best_match.get("similarity", 0.0)
+        else:
+            # Without LLM, just use the top result
+            best_match = cache_results[0]
+            similarity_score = best_match.get("similarity", 0.0)
+        
+        # We have a match - either from LLM selection or top result
         cache_hit = True
-        similarity_score = best_match.get("similarity", 0.0)
         logger.info(
             f"Cache hit for query: {query[:50]}... (score: {similarity_score:.4f})"
         )
+
+        # If we have an updated query from LLM, log it
+        if updated_query:
+            logger.info(f"Updated query from LLM: {updated_query}")
 
         # Get the template
         template_id = best_match.get("id")
@@ -252,8 +385,10 @@ async def complete(
             # Entity substitution
             try:
                 # Extract entities from the query
+                # If LLM provided an updated query, use it for entity extraction
+                extraction_query = updated_query if updated_query else query
                 extracted_entities = entity_sub.extract_entities(
-                    query, best_match.get("entity_replacements", {})
+                    extraction_query, best_match.get("entity_replacements", {})
                 )
 
                 # Apply substitution
@@ -274,53 +409,58 @@ async def complete(
             # Regular template, no substitution needed
             final_result = template
 
-        # Record the usage in UsageLog with detailed information for both hits and misses
-        try:
-            from datetime import datetime
-            template_id = None
-            if cache_hit and cache_results and len(cache_results) > 0:
-                template_id = cache_results[0].get("id")
-            usage_log = UsageLog(
-                cache_entry_id=template_id,
-                prompt=query,
-                request_time=datetime.utcnow(),
-                success_status=cache_hit,
-                similarity_score=similarity_score,
-                error_message=str(e) if 'e' in locals() else None,
-                catalog_type=catalog_type,
-                catalog_subtype=catalog_subtype,
-                catalog_name=catalog_name
-            )
-            db.add(usage_log)
-            # Without explicit commit, this will be committed in the outer function
-        except Exception as e:
-            logger.warning(f"Failed to log cache usage with details: {e}")
-
-        # Prepare response for cache hit
+    # Prepare final response
+    if cache_hit:
         response_data = {
-            "completion": final_result,
-            "status": "cache_hit",
+            "cache_template": final_result,
+            "cache_hit": True,
             "similarity_score": similarity_score,
+            "template_id": template_id,
+            "cached_query": best_match.get("nl_query", ""),
+            "user_query": query,
+            "updated_template": updated_query if updated_query else final_result,
+            "llm_explanation": explanation if explanation else "Retrieved from cache based on similarity.",
         }
-
     else:
-        # Cache miss
-        logger.info(f"Cache miss for query: {query[:50]}...")
-        final_result = "This query requires LLM processing. No cached result was found."
         response_data = {
-            "completion": final_result,
-            "status": "cache_miss",
+            "cache_template": "No cached template found for this query.",
+            "cache_hit": False,
+            "similarity_score": 0.0,
+            "template_id": None,
+            "cached_query": None,
+            "user_query": query,
+            "updated_template": None,
+            "llm_explanation": "No similar query found in cache.",
         }
 
-    # Commit happens implicitly if controller.add/update/delete is called with commit=True
-    # or explicitly if needed after db.add(usage_log)
-    # Let's add an explicit commit here for the usage log
+    # Record the usage in UsageLog with detailed information for both hits and misses
     try:
+        from datetime import datetime
+        template_id = None
+        if cache_hit and 'best_match' in locals():
+            template_id = best_match.get("id")
+        
+        usage_log = UsageLog(
+            cache_entry_id=template_id,
+            prompt=query,
+            timestamp=datetime.utcnow(),
+            success_status=cache_hit,
+            similarity_score=similarity_score if cache_hit else 0.0,
+            error_message=None,
+            catalog_type=catalog_type,
+            catalog_subtype=catalog_subtype,
+            catalog_name=catalog_name,
+            llm_used=use_llm
+        )
+        db.add(usage_log)
+        # Commit to ensure the log is saved
         db.commit()
-    except Exception as commit_error:
-        db.rollback() # Rollback on commit error
-        logger.error(f"Database commit error after processing completion: {commit_error}")
-        # Depending on policy, might want to raise an error here
+    except Exception as log_error:
+        logger.warning(f"Failed to log cache usage with details: {log_error}")
+        try:
+            db.rollback()  # Rollback on logging error to keep the database consistent
+        except:
+            pass  # Swallow potential rollback errors
 
     return response_data
 
@@ -340,7 +480,7 @@ async def search_cache(
     if not nl_query or not nl_query.strip():
         raise HTTPException(status_code=400, detail="nl_query parameter is required")
 
-    controller = Text2SQLController(db_session=db)
+    controller = get_controller(db)
 
     try:
         results = controller.search_query(
@@ -372,7 +512,7 @@ async def apply_entity_substitution(
     if not entity_values:
         raise HTTPException(status_code=400, detail="entity_values are required")
 
-    controller = Text2SQLController(db_session=db)
+    controller = get_controller(db)
 
     try:
         result = controller.apply_entity_substitution(
@@ -478,7 +618,7 @@ async def create_cache_entry(entry: CacheEntryCreate, db: Session = Depends(get_
         #         )
 
         # Use controller to add the query
-        controller = Text2SQLController(db_session=db)
+        controller = get_controller(db)
         
         new_entry_data = controller.add_query(
             nl_query=entry.nl_query,
@@ -536,7 +676,7 @@ async def update_cache_entry(entry_id: int, request: Request, db: Session = Depe
         data = await request.json()
 
         # Use controller to update the query
-        controller = Text2SQLController(db_session=db)
+        controller = get_controller(db)
         updated_entry = controller.update_query(query_id=entry_id, updates=data)
 
         if not updated_entry:
@@ -557,7 +697,7 @@ async def delete_cache_entry_api(entry_id: int, db: Session = Depends(get_db)):
     """Delete a cache entry using the controller"""
     try:
         # Use controller to delete the query
-        controller = Text2SQLController(db_session=db)
+        controller = get_controller(db)
         deleted = controller.delete_query(entry_id=entry_id, commit=True)
 
         if not deleted:
@@ -654,6 +794,116 @@ async def list_usage_logs(page: int = 1, page_size: int = 10, db: Session = Depe
     except Exception as e:
         logger.error(f"Error fetching usage logs: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error fetching usage logs: {str(e)}")
+
+
+@app.post("/v1/upload/csv")
+async def upload_csv(
+    file: UploadFile = File(...),
+    template_type: str = "sql",
+    db: Session = Depends(get_db)
+):
+    """
+    Upload and process a CSV file to create cache entries.
+    
+    The CSV should have at least 'nl_query' and 'template' columns.
+    Additional columns can include 'tags', 'catalog_type', etc.
+    """
+    
+    if not file.filename.endswith('.csv'):
+        raise HTTPException(status_code=400, detail="Only CSV files are allowed")
+    
+    try:
+        # Read the CSV file content
+        contents = await file.read()
+        csv_text = contents.decode('utf-8')
+        csv_io = io.StringIO(csv_text)
+        reader = csv.DictReader(csv_io)
+        
+        # Validate CSV structure
+        required_fields = ['nl_query', 'template']
+        first_row = next(reader, None)
+        csv_io.seek(0)  # Reset to start for full processing
+        reader = csv.DictReader(csv_io)  # Re-initialize reader
+        
+        if not first_row or not all(field in first_row for field in required_fields):
+            raise HTTPException(
+                status_code=400,
+                detail=f"CSV must contain at least these columns: {', '.join(required_fields)}"
+            )
+        
+        # Process each row
+        controller = get_controller(db)
+        processed_count = 0
+        failed_count = 0
+        results = []
+        
+        for row in reader:
+            try:
+                # Skip empty rows
+                if not row['nl_query'].strip() or not row['template'].strip():
+                    continue
+                
+                # Extract fields with defaults
+                nl_query = row['nl_query'].strip()
+                template = row['template'].strip()
+                is_template = row.get('is_template', 'false').lower() == 'true'
+                
+                # Handle optional fields
+                tags = row.get('tags', '').split(',') if row.get('tags') else None
+                tags = [tag.strip() for tag in tags] if tags else None
+                
+                reasoning_trace = row.get('reasoning_trace', None)
+                entity_replacements = None  # Would need to parse JSON if provided
+                
+                catalog_type = row.get('catalog_type', None)
+                catalog_subtype = row.get('catalog_subtype', None)
+                catalog_name = row.get('catalog_name', None)
+                
+                # Add to cache with embeddings
+                try:
+                    template_type_enum = TemplateType(template_type.lower())
+                except ValueError:
+                    template_type_enum = TemplateType.sql
+                
+                new_entry = controller.add_query(
+                    nl_query=nl_query,
+                    template=template,
+                    template_type=template_type_enum,
+                    reasoning_trace=reasoning_trace,
+                    is_template=is_template,
+                    entity_replacements=entity_replacements,
+                    tags=tags,
+                    catalog_type=catalog_type,
+                    catalog_subtype=catalog_subtype,
+                    catalog_name=catalog_name,
+                )
+                
+                results.append({
+                    "id": new_entry.get("id"),
+                    "nl_query": nl_query,
+                    "status": "success"
+                })
+                processed_count += 1
+                
+            except Exception as e:
+                logger.error(f"Error processing row: {str(e)}")
+                results.append({
+                    "nl_query": row.get('nl_query', 'unknown'),
+                    "status": "error",
+                    "error": str(e)
+                })
+                failed_count += 1
+        
+        return {
+            "status": "completed",
+            "processed": processed_count,
+            "failed": failed_count,
+            "results": results
+        }
+        
+    except Exception as e:
+        logger.error(f"Error processing CSV file: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error processing CSV file: {str(e)}")
 
 
 if __name__ == "__main__":

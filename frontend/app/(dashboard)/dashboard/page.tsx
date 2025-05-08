@@ -8,15 +8,16 @@ import {
   FileText, 
   Code, 
   PlusCircle,
-  ArrowRight
+  ArrowRight,
+  Brain
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../../components/ui/card"
 import { Button } from "../../components/ui/button"
-import api, { CacheStats } from "../../services/api"
+import api, { CacheStats, UsageLog } from "../../services/api"
 
 export default function Dashboard() {
   const [stats, setStats] = useState<CacheStats | null>(null)
-  const [usageLogs, setUsageLogs] = useState<any[] | null>(null)
+  const [usageLogs, setUsageLogs] = useState<UsageLog[] | null>(null)
   const [loading, setLoading] = useState(true)
   const [logsLoading, setLogsLoading] = useState(true)
   
@@ -304,7 +305,8 @@ export default function Dashboard() {
                       <p className="text-sm font-medium">{log.prompt}</p>
                       <p className="text-xs text-muted-foreground">{new Date(log.timestamp).toLocaleString()}</p>
                     </div>
-                    <div className="text-sm text-muted-foreground">
+                    <div className="text-sm text-muted-foreground flex items-center">
+                      {log.llm_used && <Brain className="h-4 w-4 mr-1 text-purple-500" aria-label="LLM Enhanced" />}
                       Status: {log.success_status ? 'Success' : 'Failed'}
                     </div>
                   </div>

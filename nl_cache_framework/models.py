@@ -19,9 +19,18 @@ import datetime
 import numpy as np
 import json
 import logging
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Setup logger
 logger = logging.getLogger(__name__)
+
+# Get database schema from environment variable or use default
+DB_SCHEMA = os.environ.get("DB_SCHEMA", "public")
+logger.info(f"Using database schema: {DB_SCHEMA}")
 
 # Use a generic Base, applications using the library will need to ensure
 # this Base is part of their metadata if they use declarative models elsewhere.
@@ -70,7 +79,7 @@ class Status(str, Enum):
 class Text2SQLCache(Base):
     """Database model for storing cached Text-to-Template entries."""
     __tablename__ = "text2sql_cache"
-    __table_args__ = {"schema":"autobi"}
+    __table_args__ = {"schema": DB_SCHEMA}
 
     id: int = Column(Integer, primary_key=True, index=True)
     """Unique identifier for the cache entry."""
@@ -150,23 +159,28 @@ class Text2SQLCache(Base):
             self.vector_embedding = None
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert the SQLAlchemy model instance to a dictionary.
-
-        Excludes the vector_embedding by default.
-        Includes common fields.
         """
-        d = {}
-        for col in self.__table__.columns:
-            # Exclude vector embedding by default from general dict representation
-            if col.name == "vector_embedding":
-                continue
-            val = getattr(self, col.name)
-            # Convert datetime objects to ISO format string
-            if isinstance(val, datetime.datetime):
-                 d[col.name] = val.isoformat()
-            else:
-                 d[col.name] = val
-        return d
+        Convert the cache entry to a dictionary.
+        """
+        result = {
+            "id": self.id,
+            "nl_query": self.nl_query,
+            "template": self.template,
+            "template_type": self.template_type,
+            "is_template": self.is_template,
+            "entity_replacements": self.entity_replacements,
+            "reasoning_trace": self.reasoning_trace,
+            "tags": self.tags,
+            "catalog_type": self.catalog_type,
+            "catalog_subtype": self.catalog_subtype,
+            "catalog_name": self.catalog_name,
+            "status": self.status,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            # Ensure embedding is included, regardless of field name in database
+            "embedding": self.vector_embedding if hasattr(self, 'vector_embedding') else (self.embedding if hasattr(self, 'embedding') else None)
+        }
+        return result
 
     def __repr__(self):
         return f"<Text2SQLCache(id={self.id}, nl_query='{self.nl_query[:30]}...', template_type='{self.template_type}')>"
@@ -221,12 +235,12 @@ class Text2SQLCache(Base):
 class UsageLog(Base):
     """Database model for logging cache usage events."""
     __tablename__ = "usage_log"
-    __table_args__ = {"schema":"autobi"}
+    __table_args__ = {"schema": DB_SCHEMA}
 
     id: int = Column(Integer, primary_key=True)
     """Unique identifier for the log entry."""
 
-    cache_entry_id: Optional[int] = Column(Integer, ForeignKey("autobi.text2sql_cache.id", ondelete="SET NULL"), nullable=True, index=True)
+    cache_entry_id: Optional[int] = Column(Integer, ForeignKey(f"{DB_SCHEMA}.text2sql_cache.id", ondelete="SET NULL"), nullable=True, index=True)
     """The ID of the cache entry that was used, if any."""
 
     timestamp: datetime.datetime = Column(
@@ -254,6 +268,9 @@ class UsageLog(Base):
 
     catalog_name: Optional[str] = Column(String, nullable=True)
     """Catalog name associated with the request, if provided."""
+    
+    llm_used: Optional[bool] = Column(Boolean, default=False, nullable=True)
+    """Flag indicating if LLM enhancement was used for this request."""
 
     # Optional: Define relationship for easier access from log to entry
     cache_entry = relationship("Text2SQLCache")
@@ -267,12 +284,12 @@ class UsageLog(Base):
 class CacheAuditLog(Base):
     """Database model for logging changes to cache entries."""
     __tablename__ = "cache_audit_log"
-    __table_args__ = {"schema":"autobi"}
+    __table_args__ = {"schema": DB_SCHEMA}
 
     id: int = Column(Integer, primary_key=True)
     """Unique identifier for the audit log entry."""
 
-    cache_entry_id: int = Column(Integer, ForeignKey("autobi.text2sql_cache.id", ondelete="CASCADE"), nullable=False, index=True)
+    cache_entry_id: int = Column(Integer, ForeignKey(f"{DB_SCHEMA}.text2sql_cache.id", ondelete="CASCADE"), nullable=False, index=True)
     """The ID of the cache entry that was modified."""
 
     changed_field: str = Column(String, nullable=False)

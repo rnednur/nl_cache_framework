@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card"
 import { Switch } from "../../components/ui/switch"
 import { Label } from "../../components/ui/label"
-import api, { CacheItem } from "../../services/api"
+import api, { CacheItem, CatalogValues } from "../../services/api"
 
 export default function CacheEntries() {
   const [entries, setEntries] = useState<CacheItem[]>([])
@@ -21,6 +21,29 @@ export default function CacheEntries() {
   const [searchQuery, setSearchQuery] = useState("")
   const [searchInputValue, setSearchInputValue] = useState("")
   const [useSimilaritySearch, setUseSimilaritySearch] = useState(false)
+  const [catalogType, setCatalogType] = useState("")
+  const [catalogSubtype, setCatalogSubtype] = useState("")
+  const [catalogName, setCatalogName] = useState("")
+  const [catalogValues, setCatalogValues] = useState<CatalogValues>({ catalog_types: [], catalog_subtypes: [], catalog_names: [] })
+  const [loadingCatalogs, setLoadingCatalogs] = useState(false)
+  
+  useEffect(() => {
+    /*
+    const fetchCatalogValues = async () => {
+      setLoadingCatalogs(true)
+      try {
+        const values = await api.getCatalogValues()
+        console.log('Catalog Values from API:', values)
+        setCatalogValues(values)
+      } catch (err) {
+        console.error("Failed to fetch catalog values", err)
+      } finally {
+        setLoadingCatalogs(false)
+      }
+    }
+    fetchCatalogValues()
+    */
+  }, [])
   
   useEffect(() => {
     const fetchEntries = async () => {
@@ -30,7 +53,9 @@ export default function CacheEntries() {
           // Use similarity search
           const results = await api.searchCacheEntries(
             searchQuery,
-            templateType === "all" ? undefined : templateType
+            templateType === "all" ? undefined : templateType,
+            0.7,
+            10
           )
           setEntries(results)
           setTotalEntries(results.length)

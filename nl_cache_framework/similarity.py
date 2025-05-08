@@ -50,14 +50,14 @@ class Text2SQLSimilarity:
             SentenceTransformer model or None if loading fails.
         """
         if model_name in cls._model_cache:
-            logger.debug(f"Using cached SentenceTransformer model: {model_name}")
+            logger.info(f"Using cached SentenceTransformer model: {model_name}")
             return cls._model_cache[model_name]
 
         try:
-            logger.info(f"Loading SentenceTransformer model: {model_name}")
+            logger.info(f"Loading SentenceTransformer model for the first time: {model_name}")
             model = SentenceTransformer(model_name)
             cls._model_cache[model_name] = model
-            logger.info(f"Successfully loaded model: {model_name}")
+            logger.info(f"Successfully loaded and cached model: {model_name}")
             return model
         except Exception as e:
             logger.error(
@@ -85,6 +85,8 @@ class Text2SQLSimilarity:
         try:
             # Ensure all elements are strings
             processed_text = [str(t) if t is not None else "" for t in text]
+            # Log the model being used for embeddings
+            logger.info(f"Generating embeddings using model: {self.model._modules['0'].auto_model.config._name_or_path}")
             embeddings = self.model.encode(processed_text, convert_to_numpy=True)
             return embeddings
         except Exception as e:
