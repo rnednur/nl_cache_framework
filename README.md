@@ -1,210 +1,158 @@
-# ThinkForge
+# NL Cache Framework
 
-A lightweight framework for managing chain of thought templates built with Fastv1.
+A framework for caching natural language queries and their corresponding structured outputs (like SQL, API calls, etc.) to improve retrieval and performance using similarity search.
 
-## Features
+## Overview
 
-- Create, read, update, and delete chain of thought templates
-- Associate templates with queries
-- Track usage statistics
-- Simple REST API interface
-- Automatic dependency installation
+The NL Cache Framework is designed to cache natural language (NL) queries and map them to structured outputs such as SQL queries, API calls, URLs, or other templates. It uses embeddings for similarity search to retrieve the most relevant cached entry for a given input query, enhancing response accuracy and speed for applications dealing with natural language processing.
 
-## Getting Started
+## Data Model
 
-### Prerequisites
+The core data model revolves around the `Text2SQLCache` table, which stores cached entries with their embeddings for similarity search.
 
-- Python 3.8 or higher
-
-### Installation
-
-No installation needed. The application automatically installs required dependencies when run.
-
-### Running the Server
-
-```bash
-# Navigate to the project root (the directory containing backend/ and frontend/)
-# Ensure Python 3.8+ is installed and accessible as 'python3'
-
-# Activate your virtual environment if you have one, otherwise the script creates one
-# source venv/bin/activate 
-
-# Run the start script
-./backend/start.sh 
+```mermaid
+classDiagram
+    class Text2SQLCache {
+        +id: Integer
+        +nl_query: String
+        +template_type: String
+        +template: String
+        +embedding: Vector
+        +catalog_type: String
+        +catalog_subtype: String
+        +catalog_name: String
+        +tags: Array
+        +status: String
+        +usage_count: Integer
+        +created_at: Timestamp
+        +updated_at: Timestamp
+        +llm_used: String
+    }
+    note for Text2SQLCache "Stores natural language queries and their structured templates with embeddings for similarity search"
 ```
 
-Alternatively, if you have manually installed dependencies and activated the environment:
-```bash
-# From the project root
-uvicorn backend.app:app --reload --host 0.0.0.0 --port 8000
+## Framework Architecture
+
+The framework consists of backend services for managing cache entries and similarity search, and a frontend for user interaction.
+
+```mermaid
+graph TD
+    A[User Input] --> B[Frontend UI]
+    B --> C[API Service]
+    C --> D[Backend Controller]
+    D --> E[Database with Text2SQLCache]
+    D --> F[Similarity Search Module]
+    F --> E
+    E --> G[Embeddings]
+    F --> H[LLM Service for New Queries]
+    H --> E
+    D --> I[Cache Management]
+    I --> E
+    subgraph Backend
+        D
+        F
+        H
+        I
+    end
+    subgraph Frontend
+        B
+        C
+    end
 ```
 
-The server will start on `http://localhost:8000`.
+## Sequence Flow
 
-## API Endpoints
+The sequence diagram below illustrates the flow of a user query through the system, from input to retrieving or generating a response.
 
-### Health Check
-
-```
-GET /health
-```
-
-Returns the health status of the server and its dependencies (e.g., database).
-
-### Process NL Query
-
-```
-POST /v1/complete
-```
-Utilizes the cache to process a natural language prompt. Returns a cached template/result if a sufficiently similar query exists, otherwise indicates a cache miss.
-
-Request Body:
-```json
-{
-  "prompt": "Your natural language query here"
-}
-```
-
-Response Body (Cache Hit):
-```json
-{
-  "completion": "The processed template or result",
-  "status": "cache_hit",
-  "similarity_score": 0.95 
-}
-```
-
-Response Body (Cache Miss):
-```json
-{
-  "completion": "This query requires LLM processing. No cached result was found.",
-  "status": "cache_miss"
-}
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant F as Frontend
+    participant B as Backend API
+    participant C as Controller
+    participant S as Similarity Search
+    participant D as Database
+    participant L as LLM Service
+    U->>F: Enter NL Query
+    F->>B: Send Query Request
+    B->>C: Process Request
+    C->>S: Perform Similarity Search
+    S->>D: Retrieve Cached Entries
+    alt Match Found
+        D-->>S: Return Matching Entry
+        S-->>C: Return Template
+        C-->>B: Return Response
+        B-->>F: Display Result
+        F-->>U: Show Structured Output
+    else No Match
+        D-->>S: No Relevant Entry
+        S-->>C: No Match
+        C->>L: Generate New Template
+        L-->>C: Return Generated Template
+        C->>D: Cache New Entry with Embedding
+        D-->>C: Confirm Storage
+        C-->>B: Return Response
+        B-->>F: Display Result
+        F-->>U: Show Structured Output
+    end
 ```
 
-### Search Cache Entries
+## Installation
 
-```
-GET /v1/cache/search
-```
-Searches the cache for entries similar to the provided natural language query.
+To set up the NL Cache Framework locally, follow these steps:
 
-Query Parameters:
-- `nl_query` (required): The natural language query to search for.
-- `template_type` (optional): Filter by template type (e.g., "sql", "url").
-- `threshold` (optional): Minimum similarity score (default: 0.7).
-- `limit` (optional): Maximum number of results to return (default: 5).
-
-### List Cache Entries
-
-```
-GET /v1/cache
-```
-
-Query Parameters:
-- `page`: Page number for pagination (default: 1)
-- `page_size`: Number of entries per page (default: 10)
-- `search_query`: Optional search term to filter entries by `nl_query` or `template` content.
-- `template_type`: Optional filter by template type (e.g., "sql", "url", "api", "workflow").
-
-### Create Cache Entry
-
-```
-POST /v1/cache
-```
-
-Request Body: See Data Model section below for possible fields. Requires at least `nl_query` and `template`.
-```json
-{
-  "nl_query": "Show me total sales by region",
-  "template": "SELECT region, SUM(sales) FROM orders GROUP BY region;",
-  "template_type": "sql", 
-  "tags": ["sales", "regional"],
-  "database_name": "sales_db" 
-}
-```
-
-### Get Cache Entry
-
-```
-GET /v1/cache/{entry_id}
-```
-
-Returns a specific cache entry by ID.
-
-### Update Cache Entry
-
-```
-PUT /v1/cache/{entry_id}
-```
-
-Request Body: Same fields as create endpoint. Include only fields to be updated.
-
-### Delete Cache Entry
-
-```
-DELETE /v1/cache/{entry_id}
-```
-
-Removes a cache entry by ID.
-
-### Apply Entity Substitution (Test)
-
-```
-POST /v1/cache/{entry_id}/apply
-```
-Applies entity substitution to a template entry using provided text. Useful for testing substitution logic.
-
-Request Body:
-```json
-{
-  "text": "Show me sales for the 'West' region"
-}
-```
-
-### Test Cache Entry (Experimental)
-
-```
-POST /v1/cache/{entry_id}/test
-```
-Endpoint for testing specific functionalities of a cache entry, potentially related to entity extraction or substitution.
-
-### Get Cache Statistics
-
-```
-```
-
-# Database Schema Configuration
-
-The NL Cache Framework now supports configurable database schemas. By default, the system will use the `public` schema if no other schema is specified.
-
-## Configuration
-
-To set a custom schema name:
-
-1. Set the `DB_SCHEMA` environment variable in your `.env` file:
-   ```
-   DB_SCHEMA=your_schema_name
-   ```
-
-2. Initialize the schema using the provided utility script:
+1. **Clone the Repository**:
    ```bash
-   # Create the schema if it doesn't exist
-   python dbscripts/init_schema.py --create-schema
-   
-   # Only initialize tables without creating schema
-   python dbscripts/init_schema.py
+   git clone https://github.com/rnednur/nl_cache_framework.git
+   cd nl_cache_framework
    ```
 
-## Migration from Previous Versions
+2. **Backend Setup**:
+   - Navigate to the `backend` directory.
+   - Install dependencies:
+     ```bash
+     pip install -r requirements.txt
+     ```
+   - Set up the database by running the initialization scripts in `dbscripts`.
+   - Start the backend server:
+     ```bash
+     python app.py
+     ```
 
-If you're migrating from a previous version that used the hardcoded "autobi" schema:
+3. **Frontend Setup**:
+   - Navigate to the `frontend` directory.
+   - Install dependencies:
+     ```bash
+     npm install
+     ```
+   - Start the frontend development server:
+     ```bash
+     npm run dev
+     ```
 
-1. Update your `.env` file to include:
-   ```
-   DB_SCHEMA=autobi
-   ```
+4. **Environment Configuration**:
+   - Ensure you have the necessary environment variables set for database connections and model configurations. Refer to `.env.example` for required variables.
 
-2. After updating the code, restart the application services.
+## Usage
 
-This configuration ensures backward compatibility with existing databases while providing flexibility for future installations.
+- **Access the Application**: Open your browser and navigate to `http://localhost:3000` (or the port specified by your frontend server) to interact with the UI.
+- **Cache Management**: Use the dashboard to view, create, edit, or delete cache entries under `/cache-entries`.
+- **Query Testing**: Test natural language queries at `/complete-test` to see the matched or generated structured outputs.
+
+## Contributing
+
+Contributions are welcome! Please follow these steps to contribute:
+
+1. Fork the repository.
+2. Create a new branch for your feature or bug fix.
+3. Make your changes and commit them with descriptive messages.
+4. Push your changes to your fork.
+5. Submit a pull request to the main repository with a detailed description of your changes.
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Contact
+
+For questions or support, please contact the project maintainer at [maintainer's email or GitHub profile].
