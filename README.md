@@ -8,56 +8,140 @@ The NL Cache Framework is designed to cache natural language (NL) queries and ma
 
 ## Data Model
 
-The core data model revolves around the `Text2SQLCache` table, which stores cached entries with their embeddings for similarity search.
+The core data model revolves around the `Text2SQLCache` table, which stores cached entries with their embeddings for similarity search. Below is a detailed view of the data model and related classes.
 
 ```mermaid
 classDiagram
     class Text2SQLCache {
-        +id: Integer
-        +nl_query: String
-        +template_type: String
-        +template: String
-        +embedding: Vector
-        +catalog_type: String
-        +catalog_subtype: String
-        +catalog_name: String
-        +tags: Array
-        +status: String
-        +usage_count: Integer
-        +created_at: Timestamp
-        +updated_at: Timestamp
-        +llm_used: String
+        +int id
+        +string nl_query
+        +string template
+        +string template_type
+        +list vector_embedding
+        +bool is_template
+        +dict entity_replacements
+        +string reasoning_trace
+        +list tags
+        +string suggested_visualization
+        +string database_name
+        +string schema_name
+        +int catalog_id
+        +bool is_valid
+        +string invalidation_reason
+        +datetime created_at
+        +datetime updated_at
+        +np.ndarray embedding()
+        +dict to_dict()
+        +classmethod from_dict(dict)
     }
+    
+    class UsageLog {
+        +int id
+        +int cache_entry_id
+        +datetime timestamp
+    }
+    
+    class TemplateType {
+        <<enumeration>>
+        SQL
+        URL
+        API
+        WORKFLOW
+    }
+    
+    class Text2SQLController {
+        -Session session
+        -Text2SQLSimilarity similarity_util
+        +add_query()
+        +search_query()
+        +get_query_by_id()
+        +update_query()
+        +invalidate_query()
+        +delete_query()
+        +apply_entity_substitution()
+    }
+    
+    class Text2SQLSimilarity {
+        -dict _model_cache
+        -SentenceTransformer model
+        +get_embedding()
+        +compute_string_similarity()
+        +compute_cosine_similarity()
+        +batch_compute_similarity()
+    }
+    
+    class Text2SQLEntitySubstitution {
+        +extract_placeholders()
+        +extract_entities()
+        +apply_substitution()
+        +apply_sql_substitution()
+        +apply_url_substitution()
+        +apply_api_substitution()
+    }
+    
+    Text2SQLCache --o TemplateType
+    UsageLog --> Text2SQLCache
+    Text2SQLController --> Text2SQLCache : manages
+    Text2SQLController --> Text2SQLSimilarity : uses
+    Text2SQLController --> Text2SQLEntitySubstitution : uses
     note for Text2SQLCache "Stores natural language queries and their structured templates with embeddings for similarity search"
 ```
 
 ## Framework Architecture
 
-The framework consists of backend services for managing cache entries and similarity search, and a frontend for user interaction.
+The framework consists of backend services for managing cache entries and similarity search, and a frontend for user interaction. Below is a detailed flowchart of the components and their interactions.
 
 ```mermaid
-graph TD
-    A[User Input] --> B[Frontend UI]
-    B --> C[API Service]
-    C --> D[Backend Controller]
-    D --> E[Database with Text2SQLCache]
-    D --> F[Similarity Search Module]
-    F --> E
-    E --> G[Embeddings]
-    F --> H[LLM Service for New Queries]
-    H --> E
-    D --> I[Cache Management]
-    I --> E
-    subgraph Backend
-        D
-        F
-        H
-        I
+flowchart TD
+    %% Main Flow
+    Client(Client Application) -->|NL Query Request| FastAPI[FastAPI Backend]
+    FastAPI -->|/v1/complete| NLQueryHandler[NL Query Handler]
+    
+    %% Core NL Cache Framework Components
+    subgraph "NL Cache Framework"
+        NLQueryHandler -->|Check Cache| Controller[Text2SQLController]
+        Controller -->|Search Query| SimilarityUtil[Text2SQLSimilarity]
+        Controller -->|CRUD Operations| DBModels[Database Models]
+        Controller -->|Entity Handling| EntitySub[Text2SQLEntitySubstitution]
+        
+        %% Similarity Component
+        SimilarityUtil -->|Vector Embeddings| SentenceTransformer[Sentence Transformer]
+        SimilarityUtil -->|String Similarity| SequenceMatcher[Sequence Matcher]
+        
+        %% Entity Substitution Component
+        EntitySub -->|Extract Placeholders| Templates[(Templates)]
+        EntitySub -->|Extract Entities| NLQuery[(NL Queries)]
+        EntitySub -->|Apply Substitution| CompletedTemplate[(Completed Templates)]
     end
-    subgraph Frontend
-        B
-        C
+    
+    %% Database
+    subgraph "Database"
+        DBModels -->|Store/Retrieve| CacheEntries[(Text2SQLCache)]
+        DBModels -->|Log Usage| UsageLog[(UsageLog)]
     end
+    
+    %% Response Paths
+    NLQueryHandler -->|Cache Hit| CacheHitResponse[Cache Hit Response]
+    NLQueryHandler -->|Cache Miss| CacheMissResponse[Cache Miss Response]
+    
+    CacheHitResponse --> ResponseToClient[Response to Client]
+    CacheMissResponse --> ResponseToClient
+    
+    %% Other API Endpoints
+    FastAPI -->|/v1/cache| CacheManagement[Cache Management]
+    CacheManagement -->|CRUD Operations| Controller
+    
+    %% API Routes Legend
+    classDef apiEndpoint fill:#f9f,stroke:#333,stroke-width:2px;
+    class FastAPI,CacheManagement,NLQueryHandler apiEndpoint;
+    
+    %% Component Legend
+    classDef framework fill:#bbf,stroke:#333,stroke-width:1px;
+    class Controller,SimilarityUtil,EntitySub,DBModels framework;
+    
+    %% Database Legend
+    classDef db fill:#bfb,stroke:#333,stroke-width:1px;
+    class CacheEntries,UsageLog db;
 ```
 
 ## Sequence Flow
