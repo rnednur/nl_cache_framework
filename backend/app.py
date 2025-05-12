@@ -26,17 +26,17 @@ from llm_service import LLMService
 # Add parent directory to path to ensure imports work
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-# Import the NL cache framework
+# Import the ThinkForge framework
 try:
-    from nl_cache_framework import (
+    from thinkforge import (
         Text2SQLController,
         TemplateType,
         Base,
         Text2SQLEntitySubstitution,
     )
-    from nl_cache_framework.models import Text2SQLCache, UsageLog
+    from thinkforge.models import Text2SQLCache, UsageLog
 except ImportError as e:
-    print(f"Error importing nl_cache_framework: {e}")
+    print(f"Error importing thinkforge: {e}")
     print("Make sure the framework is installed with: pip install -e .")
     print(f"Current sys.path: {sys.path}")
     raise
@@ -67,7 +67,7 @@ def get_controller(db_session):
     global controller_instance, db_for_controller, similarity_util
     if similarity_util is None:
         logger.info("Initializing shared similarity utility")
-        from nl_cache_framework import Text2SQLSimilarity
+        from thinkforge import Text2SQLSimilarity
         similarity_util = Text2SQLSimilarity(model_name=DEFAULT_MODEL_NAME)
     if controller_instance is None:
         logger.info("Initializing singleton Text2SQLController instance")
@@ -107,8 +107,8 @@ class EntitySubstitutionRequest(BaseModel):
 
 # Initialize FastAPI application
 app = FastAPI(
-    title="NL Cache MCP Server",
-    description="Model Context Protocol server for NL cache framework",
+    title="ThinkForge MCP Server",
+    description="Model Context Protocol server for ThinkForge",
     version="0.1.0",
 )
 
@@ -165,7 +165,7 @@ async def health_check(db: Session = Depends(get_db)):
 
     return {
         "status": "healthy",
-        "service": "nl-cache-mcp",
+        "service": "thinkforge-mcp",
         "dependencies": {
             "database": db_status,
         },
