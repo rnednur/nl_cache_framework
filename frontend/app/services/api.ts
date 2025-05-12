@@ -218,12 +218,35 @@ const api = {
   },
   
   // Get cache statistics
-  async getCacheStats(templateType?: string): Promise<CacheStats> {
+  async getCacheStats(
+    templateType?: string,
+    catalogType?: string, 
+    catalogSubtype?: string, 
+    catalogName?: string
+  ): Promise<CacheStats> {
     try {
       let url = `${API_BASE}/v1/cache/stats`;
+      const params = new URLSearchParams();
       
       if (templateType && templateType !== 'all') {
-        url += `?template_type=${encodeURIComponent(templateType)}`;
+        params.append('template_type', templateType);
+      }
+      
+      if (catalogType) {
+        params.append('catalog_type', catalogType);
+      }
+      
+      if (catalogSubtype) {
+        params.append('catalog_subtype', catalogSubtype);
+      }
+      
+      if (catalogName) {
+        params.append('catalog_name', catalogName);
+      }
+      
+      // Add query parameters if any exist
+      if (params.toString()) {
+        url += `?${params.toString()}`;
       }
       
       const response = await fetch(url);
@@ -373,16 +396,30 @@ const api = {
   // Get usage logs
   async getUsageLogs(page: number = 1, pageSize: number = 10): Promise<{ items: UsageLog[], total: number }> {
     try {
-      const response = await fetch(`${API_BASE}/v1/usage_logs?page=${page}&page_size=${pageSize}`);
+      const response = await fetch(`${API_BASE}/v1/usage_logs?page=${page}&page_size=${pageSize}&order_by=timestamp&order_desc=true`);
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       
-      return await response.json();
+      const data = await response.json();
+      console.log("Raw usage logs API response:", data);
+      
+      // Handle different API response formats
+      if (data && Array.isArray(data.items)) {
+        return data;
+      } else if (data && Array.isArray(data.logs)) {
+        return { items: data.logs, total: data.total_count || data.logs.length };
+      } else if (data && Array.isArray(data)) {
+        // If response is just an array
+        return { items: data, total: data.length };
+      } else {
+        console.warn("Unexpected usage logs API response format:", data);
+        return { items: [], total: 0 };
+      }
     } catch (error) {
       console.error('Error fetching usage logs:', error);
-      throw error;
+      return { items: [], total: 0 }; // Return empty result instead of throwing
     }
   },
   

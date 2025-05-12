@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import api from "../../../services/api";
 import { CacheEntryForm } from "./CacheEntryForm";
 import { useRouter } from "next/navigation";
+import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 
 export default function CacheEntryDetail({ params }: { params: { id: string } }) {
   const router = useRouter();
@@ -49,17 +51,29 @@ export default function CacheEntryDetail({ params }: { params: { id: string } })
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold tracking-tight">Cache Entry Details</h1>
+        <h1 className="text-3xl font-bold tracking-tight">View Cache Entry</h1>
       </div>
-      <CacheEntryForm
-        nlQuery={entry.nl_query}
-        template={entry.template}
-        templateType={entry.template_type}
-        reasoningTrace={entry.reasoning_trace || ""}
-        tags={entry.tags || []}
-        readOnly={true}
-        error={null}
-      />
+      <Card className="shadow-sm">
+        <CacheEntryForm
+          nlQuery={entry.nl_query}
+          template={entry.template}
+          templateType={entry.template_type}
+          reasoningTrace={entry.reasoning_trace || ""}
+          tags={entry.tags || []}
+          status={entry.status || 'active'}
+          readOnly={true}
+          error={null}
+        >
+          <div className="flex justify-end border-t pt-6 mt-6 px-6 pb-6">
+            <Button 
+              onClick={() => router.push("/cache-entries")}
+              className="px-8"
+            >
+              OK
+            </Button>
+          </div>
+        </CacheEntryForm>
+      </Card>
     </div>
   );
 } 

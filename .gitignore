@@ -133,6 +133,10 @@ mcp_cache.db
 *.log
 .DS_Store
 
+# ThinkForge specific
+thinkforge.egg-info/
+nl_cache_framework.egg-info/
+
 # Large binary files
 frontend/node_modules/@next/swc-darwin-arm64/next-swc.darwin-arm64.node
 venv/lib/python3.11/site-packages/torch/lib/libtorch_cpu.dylib

@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../..
 import { Switch } from "../../components/ui/switch"
 import { Label } from "../../components/ui/label"
 import api, { CacheItem, CatalogValues } from "../../services/api"
+import { toast } from "react-hot-toast"
 
 export default function CacheEntries() {
   const [entries, setEntries] = useState<CacheItem[]>([])
@@ -113,8 +114,19 @@ export default function CacheEntries() {
         )
         setEntries(data.items)
         setTotalEntries(data.total)
+
+        // If the current page is now empty and we're not on the first page,
+        // go to the previous page
+        if (data.items.length === 0 && currentPage > 1) {
+          setCurrentPage(currentPage - 1)
+        }
+
+        // Show success message
+        toast.success("Cache entry deleted successfully")
       } catch (error) {
         console.error(`Failed to delete cache entry with ID ${id}:`, error)
+        // Show error message
+        toast.error("Failed to delete cache entry")
       }
     }
   }
@@ -122,8 +134,8 @@ export default function CacheEntries() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold tracking-tight">Cache Entries</h1>
-        <Button asChild>
+        <h1 className="text-3xl font-bold tracking-tight text-neutral-200">Cache Entries</h1>
+        <Button asChild className="bg-[#3B4BF6] hover:bg-[#2b3bdc] text-white">
           <Link href="/cache-entries/create">
             <PlusCircle className="mr-2 h-4 w-4" />
             Create Entry
@@ -131,10 +143,10 @@ export default function CacheEntries() {
         </Button>
       </div>
       
-      <Card>
+      <Card className="bg-neutral-900 border-neutral-700 shadow-sm">
         <CardHeader className="pb-3">
-          <CardTitle>Filters</CardTitle>
-          <CardDescription>
+          <CardTitle className="text-neutral-200">Filters</CardTitle>
+          <CardDescription className="text-neutral-400">
             Filter cache entries by template type or search for specific queries
           </CardDescription>
         </CardHeader>
@@ -148,53 +160,59 @@ export default function CacheEntries() {
                   setCurrentPage(1)
                 }}
               >
-                <SelectTrigger>
+                <SelectTrigger className="bg-neutral-800 border-neutral-700 text-neutral-300">
                   <SelectValue placeholder="All template types" />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All template types</SelectItem>
-                  <SelectItem value="sql">SQL</SelectItem>
-                  <SelectItem value="url">URL</SelectItem>
-                  <SelectItem value="api">API</SelectItem>
-                  <SelectItem value="workflow">Workflow</SelectItem>
-                  <SelectItem value="graphql">GraphQL</SelectItem>
-                  <SelectItem value="regex">Regex</SelectItem>
-                  <SelectItem value="script">Script</SelectItem>
-                  <SelectItem value="nosql">NoSQL</SelectItem>
-                  <SelectItem value="cli">CLI</SelectItem>
+                <SelectContent className="bg-neutral-800 border-neutral-700 text-neutral-300">
+                  <SelectItem value="all" className="text-neutral-300">All template types</SelectItem>
+                  <SelectItem value="sql" className="text-neutral-300">SQL</SelectItem>
+                  <SelectItem value="url" className="text-neutral-300">URL</SelectItem>
+                  <SelectItem value="api" className="text-neutral-300">API</SelectItem>
+                  <SelectItem value="workflow" className="text-neutral-300">Workflow</SelectItem>
+                  <SelectItem value="graphql" className="text-neutral-300">GraphQL</SelectItem>
+                  <SelectItem value="regex" className="text-neutral-300">Regex</SelectItem>
+                  <SelectItem value="script" className="text-neutral-300">Script</SelectItem>
+                  <SelectItem value="nosql" className="text-neutral-300">NoSQL</SelectItem>
+                  <SelectItem value="cli" className="text-neutral-300">CLI</SelectItem>
+                  <SelectItem value="reasoning_steps" className="text-neutral-300">Reasoning Steps</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             
             <form onSubmit={handleSearch} className="flex w-full sm:w-2/3 gap-2">
               <div className="relative flex-1">
-                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-neutral-400" />
                 <Input
                   placeholder="Search queries..."
-                  className="pl-8"
+                  className="pl-8 bg-neutral-800 border-neutral-700 text-neutral-300 focus-visible:ring-[#3B4BF6] placeholder:text-neutral-500"
                   value={searchInputValue}
                   onChange={(e) => setSearchInputValue(e.target.value)}
                 />
               </div>
-              <Button type="submit">Search</Button>
+              <Button type="submit" className="bg-[#3B4BF6] hover:bg-[#2b3bdc] text-white">Search</Button>
             </form>
           </div>
           
           <div className="flex items-center space-x-2 mt-4">
-            <Switch
-              id="similarity-search"
-              checked={useSimilaritySearch}
-              onCheckedChange={setUseSimilaritySearch}
-            />
-            <Label htmlFor="similarity-search">Use similarity search</Label>
+            <div 
+              className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#121212] border border-neutral-800 cursor-pointer"
+              onClick={() => setUseSimilaritySearch(!useSimilaritySearch)}
+            >
+              <div className={`w-10 h-6 rounded-full relative ${useSimilaritySearch ? 'bg-[#3B4BF6]' : 'bg-neutral-700'}`}>
+                <div 
+                  className={`absolute w-4 h-4 rounded-full bg-white top-1 transition-all duration-200 ${useSimilaritySearch ? 'left-5' : 'left-1'}`}
+                ></div>
+              </div>
+              <span className="text-white text-sm font-medium">Use similarity search</span>
+            </div>
           </div>
         </CardContent>
       </Card>
       
-      <div className="rounded-md border">
+      <div className="rounded-md overflow-hidden">
         <div className="relative w-full overflow-auto">
           <table className="w-full caption-bottom text-sm">
-            <thead className="border-b bg-muted/50">
+            <thead className="bg-[#151515] text-neutral-300">
               <tr>
                 <th className="h-10 px-4 text-left font-medium w-[40%]">Query</th>
                 <th className="h-10 px-4 text-left font-medium w-[15%]">Template Type</th>
@@ -203,27 +221,27 @@ export default function CacheEntries() {
                 <th className="h-10 px-4 text-left font-medium w-[15%]">Actions</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="bg-[#1a1a1a] text-neutral-200">
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="h-24 text-center">
+                  <td colSpan={5} className="h-24 text-center text-neutral-400">
                     Loading cache entries...
                   </td>
                 </tr>
               ) : entries.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="h-24 text-center">
+                  <td colSpan={5} className="h-24 text-center text-neutral-400">
                     No cache entries found.
                   </td>
                 </tr>
               ) : (
                 entries.map((entry) => (
-                  <tr key={entry.id} className="border-b transition-colors hover:bg-muted/50">
+                  <tr key={entry.id} className="transition-colors hover:bg-[#222222] border-b border-[#222222]">
                     <td className="p-4 align-middle w-[40%]">
                       <div className="truncate font-medium">
                         <Link 
                           href={`/cache-entries/${entry.id}`}
-                          className="hover:underline"
+                          className="hover:underline text-neutral-200"
                         >
                           {entry.nl_query}
                         </Link>
@@ -238,13 +256,13 @@ export default function CacheEntries() {
                           entry.tags.map((tag) => (
                             <span 
                               key={tag} 
-                              className="inline-flex items-center rounded-full bg-muted px-2 py-1 text-xs"
+                              className="inline-flex items-center rounded-full bg-neutral-700 px-2 py-1 text-xs text-neutral-300"
                             >
                               {tag}
                             </span>
                           ))
                         ) : (
-                          <span className="text-muted-foreground text-xs">No tags</span>
+                          <span className="text-neutral-500 text-xs">No tags</span>
                         )}
                       </div>
                     </td>
@@ -253,7 +271,7 @@ export default function CacheEntries() {
                     </td>
                     <td className="p-4 align-middle w-[15%]">
                       <div className="flex items-center gap-2">
-                        <Button variant="ghost" size="icon" asChild>
+                        <Button variant="ghost" size="icon" asChild className="hover:bg-neutral-700 text-neutral-400">
                           <Link href={`/cache-entries/${entry.id}/edit`}>
                             <Edit className="h-4 w-4" />
                             <span className="sr-only">Edit</span>
@@ -263,6 +281,7 @@ export default function CacheEntries() {
                           variant="ghost" 
                           size="icon"
                           onClick={() => handleDeleteEntry(entry.id)}
+                          className="hover:bg-neutral-700 text-neutral-400"
                         >
                           <Trash2 className="h-4 w-4" />
                           <span className="sr-only">Delete</span>
@@ -276,10 +295,10 @@ export default function CacheEntries() {
           </table>
         </div>
         
-        <div className="flex items-center justify-between px-4 py-4 border-t">
-          <div className="text-sm text-muted-foreground">
-            Showing <span className="font-medium">{entries.length}</span> of{" "}
-            <span className="font-medium">{totalEntries}</span> entries
+        <div className="flex items-center justify-between px-4 py-4 border-t border-[#222222] bg-[#151515]">
+          <div className="text-sm text-neutral-400">
+            Showing <span className="font-medium text-neutral-300">{entries.length}</span> of{" "}
+            <span className="font-medium text-neutral-300">{totalEntries}</span> entries
           </div>
           
           <div className="flex items-center space-x-2">
@@ -288,19 +307,21 @@ export default function CacheEntries() {
               size="sm" 
               onClick={handlePreviousPage}
               disabled={currentPage === 1}
+              className="border-neutral-600 text-neutral-300 hover:bg-neutral-800 hover:text-neutral-200"
             >
               <ChevronLeft className="h-4 w-4 mr-1" />
               Previous
             </Button>
-            <div className="text-sm">
-              Page <span className="font-medium">{currentPage}</span> of{" "}
-              <span className="font-medium">{totalPages || 1}</span>
+            <div className="text-sm text-neutral-400">
+              Page <span className="font-medium text-neutral-300">{currentPage}</span> of{" "}
+              <span className="font-medium text-neutral-300">{totalPages || 1}</span>
             </div>
             <Button 
               variant="outline" 
               size="sm" 
               onClick={handleNextPage}
               disabled={currentPage >= totalPages}
+              className="border-neutral-600 text-neutral-300 hover:bg-neutral-800 hover:text-neutral-200"
             >
               Next
               <ChevronRight className="h-4 w-4 ml-1" />

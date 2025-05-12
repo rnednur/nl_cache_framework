@@ -20,7 +20,7 @@ if os.path.isfile(readme_path):
 
 # Get version from __init__.py
 __version__ = ""
-init_path = os.path.join(lib_folder, "nl_cache_framework", "__init__.py")
+init_path = os.path.join(lib_folder, "thinkforge", "__init__.py")
 if os.path.isfile(init_path):
     with open(init_path, "r", encoding="utf-8") as f:
         for line in f:
@@ -34,16 +34,16 @@ if not __version__:
     __version__ = "0.0.1"
 
 setup(
-    name="nl_cache_framework",
+    name="thinkforge",
     version=__version__,
     packages=find_packages(),
     include_package_data=True,
     description="A reusable framework for caching natural language to template translations.",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    author="NL Cache Framework Team",
+    author="ThinkForge Team",
     author_email="contact@example.com",
-    url="https://github.com/example/nl_cache_framework",
+    url="https://github.com/example/thinkforge",
     license="MIT",
     install_requires=install_requires,
     python_requires=">=3.8",

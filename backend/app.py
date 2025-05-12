@@ -173,7 +173,13 @@ async def health_check(db: Session = Depends(get_db)):
 
 
 @app.get("/v1/cache/stats")
-async def get_cache_stats(db: Session = Depends(get_db)):
+async def get_cache_stats(
+    template_type: Optional[str] = None,
+    catalog_type: Optional[str] = None,
+    catalog_subtype: Optional[str] = None,
+    catalog_name: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
     """Get statistics about the cache entries.
 
     Returns:
@@ -184,19 +190,141 @@ async def get_cache_stats(db: Session = Depends(get_db)):
     """
     try:
         controller = get_controller(db)
-        total_count = controller.get_cache_count()
-        valid_count = controller.get_valid_cache_count()
-        template_count = controller.get_template_count()
-        type_counts = controller.get_template_type_counts()
+        
+        # Base query for filtering
+        base_query = db.query(Text2SQLCache)
+        filtered_query = base_query
+        
+        # Apply filters if provided
+        if catalog_type:
+            filtered_query = filtered_query.filter(Text2SQLCache.catalog_type == catalog_type)
+        if catalog_subtype:
+            filtered_query = filtered_query.filter(Text2SQLCache.catalog_subtype == catalog_subtype)
+        if catalog_name:
+            filtered_query = filtered_query.filter(Text2SQLCache.catalog_name == catalog_name)
+            
+        # Get basic stats with filters
+        total_count = filtered_query.count()
+        valid_count = filtered_query.filter(Text2SQLCache.status == "active").count()
+        template_count = filtered_query.filter(Text2SQLCache.is_template == True).count()
+        
+        # Handle type counts with error handling for each template type
+        type_counts = {}
+        for template_type_enum in TemplateType:
+            try:
+                count = filtered_query.filter(
+                    Text2SQLCache.template_type == template_type_enum
+                ).count()
+                type_counts[template_type_enum.value] = count
+            except Exception as e:
+                logger.warning(f"Error getting count for template type {template_type_enum}: {str(e)}")
+                type_counts[template_type_enum.value] = 0
+        
+        # If template_type filter is specified, only return that type count
+        if template_type:
+            for ttype in type_counts.keys():
+                if ttype != template_type:
+                    type_counts[ttype] = 0
+        
+        # Get recent usage data (last 30 days)
+        recent_usage = []
+        try:
+            thirty_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=30)
+            usage_query = db.query(
+                func.date_trunc('day', UsageLog.timestamp).label('date'),
+                func.count(UsageLog.id).label('count')
+            ).filter(
+                UsageLog.timestamp >= thirty_days_ago
+            )
+            
+            # Apply catalog filters to usage logs if specified
+            if catalog_type:
+                usage_query = usage_query.filter(UsageLog.catalog_type == catalog_type)
+            if catalog_subtype:
+                usage_query = usage_query.filter(UsageLog.catalog_subtype == catalog_subtype)
+            if catalog_name:
+                usage_query = usage_query.filter(UsageLog.catalog_name == catalog_name)
+                
+            usage_data = usage_query.group_by(
+                func.date_trunc('day', UsageLog.timestamp)
+            ).order_by(
+                func.date_trunc('day', UsageLog.timestamp)
+            ).all()
+            
+            recent_usage = [
+                {"date": str(entry.date.date()), "count": entry.count}
+                for entry in usage_data
+            ]
+        except Exception as e:
+            logger.warning(f"Error getting recent usage data: {str(e)}")
+            
+        # Get popular entries
+        popular_entries = []
+        try:
+            # Start with the cache entries query that already has catalog filters
+            popular_query = db.query(
+                Text2SQLCache.id,
+                Text2SQLCache.nl_query,
+                func.count(UsageLog.id).label('usage_count')
+            ).join(
+                UsageLog, UsageLog.cache_entry_id == Text2SQLCache.id, isouter=True
+            )
+            
+            # Apply catalog filters if specified (for UsageLog table)
+            if catalog_type:
+                popular_query = popular_query.filter(
+                    or_(
+                        Text2SQLCache.catalog_type == catalog_type,
+                        UsageLog.catalog_type == catalog_type
+                    )
+                )
+            if catalog_subtype:
+                popular_query = popular_query.filter(
+                    or_(
+                        Text2SQLCache.catalog_subtype == catalog_subtype,
+                        UsageLog.catalog_subtype == catalog_subtype
+                    )
+                )
+            if catalog_name:
+                popular_query = popular_query.filter(
+                    or_(
+                        Text2SQLCache.catalog_name == catalog_name,
+                        UsageLog.catalog_name == catalog_name
+                    )
+                )
+                
+            popular_data = popular_query.group_by(
+                Text2SQLCache.id, Text2SQLCache.nl_query
+            ).order_by(
+                func.count(UsageLog.id).desc()
+            ).limit(5).all()
+            
+            popular_entries = [
+                {"id": entry.id, "nl_query": entry.nl_query, "usage_count": entry.usage_count or 0}
+                for entry in popular_data
+            ]
+        except Exception as e:
+            logger.warning(f"Error getting popular entries: {str(e)}")
+        
         return {
             "total_entries": total_count,
             "valid_entries": valid_count,
             "template_entries": template_count,
-            "by_template_type": type_counts
+            "by_template_type": type_counts,
+            "recent_usage": recent_usage,
+            "popular_entries": popular_entries
         }
     except Exception as e:
         logger.error(f"Error in /v1/cache/stats: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Error processing stats: {str(e)}")
+        # Return fallback data on any error
+        return {
+            "total_entries": 0,
+            "valid_entries": 0,
+            "template_entries": 0,
+            "by_template_type": {ttype.value: 0 for ttype in TemplateType},
+            "recent_usage": [],
+            "popular_entries": []
+        }
 
 
 @app.get("/v1/cache/catalogs")
@@ -699,7 +827,7 @@ async def delete_cache_entry_api(entry_id: int, db: Session = Depends(get_db)):
     try:
         # Use controller to delete the query
         controller = get_controller(db)
-        deleted = controller.delete_query(entry_id=entry_id, commit=True)
+        deleted = controller.delete_query(query_id=entry_id)
 
         if not deleted:
             raise HTTPException(status_code=404, detail=f"Cache entry with ID {entry_id} not found or could not be deleted")
@@ -747,6 +875,12 @@ async def test_cache_entry(entry_id: int, db: Session = Depends(get_db)):
                 is_valid = False
                 validation_message = "API template must be valid JSON"
         
+        elif entry.template_type == TemplateType.reasoning_steps:
+            # Basic validation for reasoning steps - should have content
+            if not entry.template.strip():
+                is_valid = False
+                validation_message = "Reasoning Steps template cannot be empty"
+        
         # Update validity in database
         entry.status = "active" if is_valid else "inactive"
         entry.updated_at = datetime.datetime.now()
@@ -769,17 +903,42 @@ async def test_endpoint():
 
 
 @app.get("/v1/usage_logs")
-async def list_usage_logs(page: int = 1, page_size: int = 10, db: Session = Depends(get_db)):
-    """List usage log entries"""
-    logger.info("Received request for /v1/usage_logs")
+async def list_usage_logs(
+    page: int = 1, 
+    page_size: int = 10, 
+    order_by: str = "timestamp", 
+    order_desc: bool = True, 
+    db: Session = Depends(get_db)
+):
+    """List usage log entries with sorting options"""
+    logger.info(f"Received request for /v1/usage_logs with order_by={order_by}, order_desc={order_desc}")
     try:
-        total_count = db.query(UsageLog).count()
-        logs = db.query(UsageLog).offset((page - 1) * page_size).limit(page_size).all()
+        # Build the base query
+        query = db.query(UsageLog)
+        
+        # Apply sorting
+        if order_by == "timestamp":
+            if order_desc:
+                query = query.order_by(UsageLog.timestamp.desc())
+            else:
+                query = query.order_by(UsageLog.timestamp.asc())
+        elif order_by == "id":
+            if order_desc:
+                query = query.order_by(UsageLog.id.desc())
+            else:
+                query = query.order_by(UsageLog.id.asc())
+                
+        # Get total count
+        total_count = query.count()
+        
+        # Apply pagination
+        logs = query.offset((page - 1) * page_size).limit(page_size).all()
+        
         return {
             "total_count": total_count,
             "page": page,
             "page_size": page_size,
-            "logs": [{
+            "items": [{
                 "id": log.id,
                 "cache_entry_id": log.cache_entry_id,
                 "timestamp": log.timestamp,
@@ -789,7 +948,8 @@ async def list_usage_logs(page: int = 1, page_size: int = 10, db: Session = Depe
                 "error_message": log.error_message,
                 "catalog_type": log.catalog_type,
                 "catalog_subtype": log.catalog_subtype,
-                "catalog_name": log.catalog_name
+                "catalog_name": log.catalog_name,
+                "llm_used": getattr(log, "llm_used", False)
             } for log in logs]
         }
     except Exception as e:

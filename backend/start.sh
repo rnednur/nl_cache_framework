@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# This script assumes it is run from the project root (parent of backend/)
+# This script assumes it is run from the backend directory
 
 # Check if Python is installed
 if ! command -v python3 &> /dev/null; then
@@ -9,22 +9,22 @@ if ! command -v python3 &> /dev/null; then
 fi
 
 # Check if the virtual environment exists at the root
-if [ ! -d "venv" ]; then
+if [ ! -d "../venv" ]; then
     echo "Creating virtual environment in project root..."
-    python3 -m venv venv
+    python3 -m venv ../venv
 fi
 
 # Activate the virtual environment
-source venv/bin/activate
+source ../venv/bin/activate
 
 # Install requirements from the backend directory
 echo "Installing requirements..."
-pip install -r backend/requirements.txt
+pip install -r requirements.txt
 
 # Install the NL cache framework from the backend directory
 echo "Installing the NL cache framework (editable)..."
 # Assuming setup.py is in backend/
-pip install -e backend/
+pip install -e .
 
 # Start the server using uvicorn directly
 echo "Starting the MCP server with Uvicorn..."

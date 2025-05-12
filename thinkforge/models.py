@@ -67,6 +67,11 @@ class TemplateType(str, Enum):
     }"""
     NOSQL = "nosql"
     CLI = "cli"
+    PROMPT = "prompt"
+    CONFIGURATION = "configuration"
+    REASONING_STEPS = "reasoning_steps"
+    """Reasoning steps templates capture step-by-step logical reasoning or problem-solving approaches.
+    This can be used for documenting thought processes, mathematical proofs, or decision trees."""
 
 
 class Status(str, Enum):

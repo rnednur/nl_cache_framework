@@ -1,10 +1,10 @@
-# NL Cache Framework
+# ThinkForge
 
 A framework for caching natural language queries and their corresponding structured outputs (like SQL, API calls, etc.) to improve retrieval and performance using similarity search.
 
 ## Overview
 
-The NL Cache Framework is designed to cache natural language (NL) queries and map them to structured outputs such as SQL queries, API calls, URLs, or other templates. It uses embeddings for similarity search to retrieve the most relevant cached entry for a given input query, enhancing response accuracy and speed for applications dealing with natural language processing.
+ThinkForge is designed to cache natural language (NL) queries and map them to structured outputs such as SQL queries, API calls, URLs, or other templates. It uses embeddings for similarity search to retrieve the most relevant cached entry for a given input query, enhancing response accuracy and speed for applications dealing with natural language processing.
 
 ## Data Model
 
@@ -97,8 +97,8 @@ flowchart TD
     Client(Client Application) -->|NL Query Request| FastAPI[FastAPI Backend]
     FastAPI -->|/v1/complete| NLQueryHandler[NL Query Handler]
     
-    %% Core NL Cache Framework Components
-    subgraph "NL Cache Framework"
+    %% Core ThinkForge Components
+    subgraph "ThinkForge"
         NLQueryHandler -->|Check Cache| Controller[Text2SQLController]
         Controller -->|Search Query| SimilarityUtil[Text2SQLSimilarity]
         Controller -->|CRUD Operations| DBModels[Database Models]
@@ -183,12 +183,12 @@ sequenceDiagram
 
 ## Installation
 
-To set up the NL Cache Framework locally, follow these steps:
+To set up ThinkForge locally, follow these steps:
 
 1. **Clone the Repository**:
    ```bash
-   git clone https://github.com/rnednur/nl_cache_framework.git
-   cd nl_cache_framework
+   git clone https://github.com/rnednur/thinkforge.git
+   cd thinkforge
    ```
 
 2. **Backend Setup**:
@@ -210,6 +210,10 @@ To set up the NL Cache Framework locally, follow these steps:
      npm install
      ```
    - Start the frontend development server:
+     ```bash
+     npm run dev
+     ```
+   - Alternatively, you can start the frontend from the root directory:
      ```bash
      npm run dev
      ```

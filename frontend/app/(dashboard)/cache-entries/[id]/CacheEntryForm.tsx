@@ -63,22 +63,52 @@ export function CacheEntryForm({
 }: CacheEntryFormProps) {
   return (
     <Card className="w-full border-0 shadow-none">
-      <CardHeader>
-        <CardTitle>Cache Entry Details</CardTitle>
-        <CardDescription>Enter the details for this cache entry.</CardDescription>
-      </CardHeader>
-      <CardContent className="p-0 space-y-6">
-        <div className="grid gap-4 md:grid-cols-2">
+      <CardContent className="p-4 space-y-8">
+        <div className="grid gap-6 md:grid-cols-3">
           <div className="grid gap-2">
-            <Label htmlFor="nl-query">Natural Language Query</Label>
+            <Label htmlFor="catalogType">Catalog Type</Label>
             <Input
-              id="nl-query"
-              placeholder="Enter natural language query"
-              value={nlQuery}
-              onChange={setNlQuery ? (e) => setNlQuery(e.target.value) : undefined}
+              id="catalogType"
+              placeholder="Enter catalog type"
+              value={catalogType || ""}
+              onChange={setCatalogType ? (e) => setCatalogType(e.target.value || undefined) : undefined}
               disabled={readOnly}
             />
           </div>
+          <div className="grid gap-2">
+            <Label htmlFor="catalogSubtype">Catalog Subtype</Label>
+            <Input
+              id="catalogSubtype"
+              placeholder="Enter catalog subtype"
+              value={catalogSubtype || ""}
+              onChange={setCatalogSubtype ? (e) => setCatalogSubtype(e.target.value || undefined) : undefined}
+              disabled={readOnly}
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="catalogName">Catalog Name</Label>
+            <Input
+              id="catalogName"
+              placeholder="Enter catalog name"
+              value={catalogName || ""}
+              onChange={setCatalogName ? (e) => setCatalogName(e.target.value || undefined) : undefined}
+              disabled={readOnly}
+            />
+          </div>
+        </div>
+        
+        <div className="grid gap-2">
+          <Label htmlFor="nl-query">Natural Language Query</Label>
+          <Input
+            id="nl-query"
+            placeholder="Enter natural language query"
+            value={nlQuery}
+            onChange={setNlQuery ? (e) => setNlQuery(e.target.value) : undefined}
+            disabled={readOnly}
+          />
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
           <div className="grid gap-2">
             <Label htmlFor="template-type">Template Type</Label>
             <Select
@@ -101,12 +131,10 @@ export function CacheEntryForm({
                 <SelectItem value="cli">CLI</SelectItem>
                 <SelectItem value="prompt">Prompt</SelectItem>
                 <SelectItem value="configuration">Configuration</SelectItem>
+                <SelectItem value="reasoning_steps">Reasoning Steps</SelectItem>
               </SelectContent>
             </Select>
           </div>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-2">
           <div className="grid gap-2">
             <Label htmlFor="status">Status</Label>
             <Select
@@ -123,16 +151,6 @@ export function CacheEntryForm({
                 <SelectItem value="archive">Archive</SelectItem>
               </SelectContent>
             </Select>
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="reasoning">Reasoning Trace</Label>
-            <Input
-              id="reasoning"
-              placeholder="Enter reasoning trace"
-              value={reasoningTrace}
-              onChange={setReasoningTrace ? (e) => setReasoningTrace(e.target.value) : undefined}
-              disabled={readOnly}
-            />
           </div>
         </div>
 
@@ -305,36 +323,67 @@ export function CacheEntryForm({
           </div>
         )}
 
-        <div className="grid gap-4">
-          <div className="grid gap-2">
-            <Label htmlFor="catalogType">Catalog Type</Label>
-            <Input
-              id="catalogType"
-              placeholder="Enter catalog type"
-              value={catalogType || ""}
-              onChange={setCatalogType ? (e) => setCatalogType(e.target.value || undefined) : undefined}
-              disabled={readOnly}
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="catalogSubtype">Catalog Subtype</Label>
-            <Input
-              id="catalogSubtype"
-              placeholder="Enter catalog subtype"
-              value={catalogSubtype || ""}
-              onChange={setCatalogSubtype ? (e) => setCatalogSubtype(e.target.value || undefined) : undefined}
-              disabled={readOnly}
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="catalogName">Catalog Name</Label>
-            <Input
-              id="catalogName"
-              placeholder="Enter catalog name"
-              value={catalogName || ""}
-              onChange={setCatalogName ? (e) => setCatalogName(e.target.value || undefined) : undefined}
-              disabled={readOnly}
-            />
+        <div className="grid gap-2">
+          <Label htmlFor="reasoning">Reasoning Trace</Label>
+          <Textarea
+            id="reasoning"
+            placeholder="Explain how this template relates to the query..."
+            className="min-h-[100px]"
+            value={reasoningTrace}
+            onChange={setReasoningTrace ? (e) => setReasoningTrace(e.target.value) : undefined}
+            disabled={readOnly}
+          />
+        </div>
+
+        <div className="grid gap-2">
+          <Label htmlFor="entity-substitution">Entity Substitution</Label>
+          <Textarea
+            id="entity-substitution"
+            placeholder={!readOnly ? 'e.g., { "city": "New York", "start_date": "2023-01-01" }' : ''}
+            className="min-h-[100px] font-mono text-sm"
+            disabled={readOnly}
+          />
+        </div>
+
+        <div className="grid gap-2">
+          <Label htmlFor="tags">Tags</Label>
+          <div className="flex flex-wrap gap-2">
+            {tags.map((tag) => (
+              <div key={tag} className="flex items-center gap-1 bg-secondary text-secondary-foreground px-3 py-1 rounded-full text-sm">
+                {tag}
+                {!readOnly && removeTag && (
+                  <button
+                    type="button"
+                    onClick={() => removeTag(tag)}
+                    className="text-secondary-foreground/70 hover:text-secondary-foreground"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            ))}
+            {!readOnly && (
+              <div className="flex items-center">
+                <Input
+                  id="tag-input"
+                  placeholder="Add tag..."
+                  value={tagInput || ""}
+                  onChange={setTagInput ? (e) => setTagInput(e.target.value) : undefined}
+                  onKeyDown={handleKeyDown}
+                  className="w-28 h-8 px-2 py-1"
+                  disabled={readOnly}
+                />
+                {addTag && (
+                  <button
+                    type="button"
+                    onClick={addTag}
+                    className="ml-2 text-sm text-primary hover:text-primary/80"
+                  >
+                    Add
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </CardContent>

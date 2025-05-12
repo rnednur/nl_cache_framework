@@ -135,16 +135,11 @@ export default function EditCacheEntry({ params }: { params: { id: string } }) {
         <h1 className="text-3xl font-bold tracking-tight">Edit Cache Entry</h1>
       </div>
       
-      <Card>
+      <Card className="shadow-sm">
         <form onSubmit={handleSubmit}>
-          <CardHeader>
-            <CardTitle>Edit Cache Entry</CardTitle>
-            <CardDescription>Modify the cache entry details below.</CardDescription>
-          </CardHeader>
-          
-          <CardContent className="space-y-6">
+          <CardContent className="p-6 space-y-8">
             {error && (
-              <div className="bg-red-50 text-red-600 p-3 rounded-md border border-red-200 text-sm">
+              <div className="bg-red-50 text-red-600 p-4 rounded-md border border-red-200 text-sm mb-4">
                 {error}
               </div>
             )}
@@ -175,15 +170,16 @@ export default function EditCacheEntry({ params }: { params: { id: string } }) {
               error={error}
               readOnly={false}
             >
-              <CardFooter className="flex justify-end space-x-2 border-t pt-6">
+              <CardFooter className="flex justify-end space-x-4 border-t pt-6 mt-6">
                 <Button 
                   type="button"
                   variant="outline" 
                   onClick={() => router.push("/cache-entries")}
+                  className="px-6"
                 >
                   Cancel
                 </Button>
-                <Button type="submit" disabled={saving}>
+                <Button type="submit" disabled={saving} className="px-6">
                   {saving ? "Saving..." : "Save Changes"}
                 </Button>
               </CardFooter>

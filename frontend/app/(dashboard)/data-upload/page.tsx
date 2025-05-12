@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef } from "react"
-import { Check, CircleAlert, File, Loader2, Upload } from "lucide-react"
+import { Check, AlertCircle, File, Loader2, Upload } from "lucide-react"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../../components/ui/card"
 import { Button } from "../../components/ui/button"
 import { Input } from "../../components/ui/input"
@@ -89,81 +89,84 @@ export default function DataUploadPage() {
   return (
     <div className="container mx-auto py-6 space-y-8">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Data Upload</h1>
+        <h1 className="text-3xl font-bold text-neutral-200">Data Upload</h1>
         <Button 
           variant="outline" 
           onClick={resetForm}
+          className="border-neutral-700 hover:bg-neutral-800 hover:text-neutral-200 text-neutral-300"
         >
           Reset
         </Button>
       </div>
       
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
+        <Card className="bg-neutral-900 border-neutral-700 shadow-sm">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2 text-neutral-200">
               <Upload className="h-5 w-5" />
               CSV Upload
             </CardTitle>
-            <CardDescription>
+            <CardDescription className="text-neutral-400">
               Upload a CSV file to populate the cache with embeddings
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Alert>
-              <File className="h-4 w-4" />
-              <AlertTitle>CSV Format</AlertTitle>
-              <AlertDescription>
-                Your CSV file must include the columns <code>nl_query</code> and <code>template</code>.
-                Optional columns: <code>tags</code>, <code>reasoning_trace</code>, <code>is_template</code>, 
-                <code>catalog_type</code>, <code>catalog_subtype</code>, <code>catalog_name</code>.
+            <Alert className="bg-neutral-800 border-neutral-700">
+              <File className="h-4 w-4 text-neutral-400" />
+              <AlertTitle className="text-neutral-300">CSV Format</AlertTitle>
+              <AlertDescription className="text-neutral-400">
+                Your CSV file must include the columns <code className="text-neutral-300">nl_query</code> and <code className="text-neutral-300">template</code>.
+                Optional columns: <code className="text-neutral-300">tags</code>, <code className="text-neutral-300">reasoning_trace</code>, <code className="text-neutral-300">is_template</code>, 
+                <code className="text-neutral-300">catalog_type</code>, <code className="text-neutral-300">catalog_subtype</code>, <code className="text-neutral-300">catalog_name</code>.
               </AlertDescription>
             </Alert>
             
             <div className="space-y-2">
-              <Label htmlFor="template-type">Template Type</Label>
+              <Label htmlFor="template-type" className="text-neutral-300">Template Type</Label>
               <Select 
                 value={templateType} 
                 onValueChange={setTemplateType}
               >
-                <SelectTrigger id="template-type">
+                <SelectTrigger id="template-type" className="bg-neutral-800 border-neutral-700 text-neutral-300">
                   <SelectValue placeholder="Select template type" />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="sql">SQL</SelectItem>
-                  <SelectItem value="api">API</SelectItem>
-                  <SelectItem value="url">URL</SelectItem>
-                  <SelectItem value="workflow">Workflow</SelectItem>
+                <SelectContent className="bg-neutral-800 border-neutral-700 text-neutral-300">
+                  <SelectItem value="sql" className="text-neutral-300">SQL</SelectItem>
+                  <SelectItem value="api" className="text-neutral-300">API</SelectItem>
+                  <SelectItem value="url" className="text-neutral-300">URL</SelectItem>
+                  <SelectItem value="workflow" className="text-neutral-300">Workflow</SelectItem>
+                  <SelectItem value="reasoning_steps" className="text-neutral-300">Reasoning Steps</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             
             <div className="space-y-2">
-              <Label htmlFor="csv-file">Select CSV File</Label>
+              <Label htmlFor="csv-file" className="text-neutral-300">Select CSV File</Label>
               <Input
                 ref={fileInputRef}
                 id="csv-file"
                 type="file"
                 accept=".csv"
                 onChange={handleFileChange}
+                className="bg-neutral-800 border-neutral-700 text-neutral-300"
               />
               {file && (
-                <p className="text-sm text-slate-600">
+                <p className="text-sm text-neutral-400">
                   Selected file: {file.name} ({Math.round(file.size / 1024)} KB)
                 </p>
               )}
             </div>
             
             {error && (
-              <div className="p-3 border border-red-200 bg-red-50 rounded-md text-red-700 flex gap-2">
-                <CircleAlert className="h-5 w-5 flex-shrink-0" />
+              <div className="p-3 border border-red-700 bg-red-900/30 rounded-md text-red-300 flex gap-2">
+                <AlertCircle className="h-5 w-5 flex-shrink-0" />
                 <p>{error}</p>
               </div>
             )}
           </CardContent>
           <CardFooter>
             <Button
-              className="w-full"
+              className="w-full bg-[#3B4BF6] hover:bg-[#2b3bdc] text-white"
               onClick={handleUpload}
               disabled={!file || isUploading}
             >
@@ -177,46 +180,47 @@ export default function DataUploadPage() {
           </CardFooter>
         </Card>
         
-        <Card>
+        <Card className="bg-neutral-900 border-neutral-700 shadow-sm">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2 text-neutral-200">
               <Upload className="h-5 w-5" />
               Swagger URL Upload
             </CardTitle>
-            <CardDescription>
+            <CardDescription className="text-neutral-400">
               Provide a Swagger URL to generate API templates
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Alert>
-              <File className="h-4 w-4" />
-              <AlertTitle>Swagger Processing</AlertTitle>
-              <AlertDescription>
+            <Alert className="bg-neutral-800 border-neutral-700">
+              <File className="h-4 w-4 text-neutral-400" />
+              <AlertTitle className="text-neutral-300">Swagger Processing</AlertTitle>
+              <AlertDescription className="text-neutral-400">
                 Only GET, PUT, and POST operations will be processed into API templates.
               </AlertDescription>
             </Alert>
             
             <div className="space-y-2">
-              <Label htmlFor="swagger-url">Swagger URL</Label>
+              <Label htmlFor="swagger-url" className="text-neutral-300">Swagger URL</Label>
               <Input
                 id="swagger-url"
                 type="url"
                 placeholder="https://api.example.com/swagger.json"
                 value={swaggerUrl}
                 onChange={(e) => setSwaggerUrl(e.target.value)}
+                className="bg-neutral-800 border-neutral-700 text-neutral-300 placeholder:text-neutral-500"
               />
             </div>
             
             {swaggerError && (
-              <div className="p-3 border border-red-200 bg-red-50 rounded-md text-red-700 flex gap-2">
-                <CircleAlert className="h-5 w-5 flex-shrink-0" />
+              <div className="p-3 border border-red-700 bg-red-900/30 rounded-md text-red-300 flex gap-2">
+                <AlertCircle className="h-5 w-5 flex-shrink-0" />
                 <p>{swaggerError}</p>
               </div>
             )}
           </CardContent>
           <CardFooter>
             <Button
-              className="w-full"
+              className="w-full bg-[#3B4BF6] hover:bg-[#2b3bdc] text-white"
               onClick={handleSwaggerUpload}
               disabled={!swaggerUrl || isSwaggerUploading}
             >
@@ -230,86 +234,78 @@ export default function DataUploadPage() {
           </CardFooter>
         </Card>
         
-        <Card>
+        <Card className="bg-neutral-900 border-neutral-700 shadow-sm">
           <CardHeader>
-            <CardTitle>Results</CardTitle>
-            <CardDescription>
+            <CardTitle className="text-neutral-200">Results</CardTitle>
+            <CardDescription className="text-neutral-400">
               Results of your CSV or Swagger upload
             </CardDescription>
           </CardHeader>
           <CardContent>
             {isUploading && (
-              <div className="flex flex-col items-center justify-center h-60 text-slate-500">
+              <div className="flex flex-col items-center justify-center h-60 text-neutral-400">
                 <Loader2 className="h-8 w-8 animate-spin mb-2" />
                 <p>Processing your file...</p>
               </div>
             )}
             
             {!isUploading && !uploadResult && !error && (
-              <div className="flex flex-col items-center justify-center h-60 text-slate-500">
-                <Upload className="h-8 w-8 mb-2" />
-                <p>Upload a file to see results</p>
+              <div className="flex flex-col items-center justify-center h-60 text-neutral-500">
+                <Upload className="h-16 w-16 mb-2" />
+                <p>Upload a file to see the results</p>
               </div>
             )}
             
-            {!isUploading && uploadResult && (
+            {uploadResult && !isUploading && (
               <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="p-4 border border-green-100 bg-green-50 rounded-md text-green-800">
-                    <p className="text-lg font-semibold">{uploadResult.processed}</p>
-                    <p className="text-sm">Entries processed</p>
+                <div className="flex items-center gap-2 text-green-500 mb-4">
+                  <Check className="h-5 w-5" />
+                  <h3 className="font-medium">Upload successful!</h3>
+                </div>
+                <div className="rounded-md border border-neutral-700 bg-neutral-800 p-4 overflow-auto max-h-[300px]">
+                  <div className="grid grid-cols-2 gap-y-2">
+                    <div className="text-sm font-medium text-neutral-300">Total Entries</div>
+                    <div className="text-sm text-neutral-200">{uploadResult.total_entries}</div>
+                    
+                    <div className="text-sm font-medium text-neutral-300">Successful</div>
+                    <div className="text-sm text-neutral-200">{uploadResult.successful_entries}</div>
+                    
+                    <div className="text-sm font-medium text-neutral-300">Failed</div>
+                    <div className="text-sm text-neutral-200">{uploadResult.failed_entries}</div>
                   </div>
                   
-                  <div className="p-4 border border-red-100 bg-red-50 rounded-md text-red-800">
-                    <p className="text-lg font-semibold">{uploadResult.failed}</p>
-                    <p className="text-sm">Failed entries</p>
-                  </div>
+                  {uploadResult.errors && uploadResult.errors.length > 0 && (
+                    <div className="mt-4 border-t border-neutral-700 pt-4">
+                      <h4 className="text-sm font-medium mb-2 text-neutral-300">Errors</h4>
+                      <ul className="space-y-1 text-xs text-neutral-400">
+                        {uploadResult.errors.map((error, i) => (
+                          <li key={i} className="flex items-start gap-1">
+                            <span className="text-red-400">•</span>
+                            <span>{error}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </div>
                 
-                <div className="border rounded-md overflow-hidden">
-                  <div className="p-3 bg-slate-100 font-medium border-b">
-                    Upload Results
-                  </div>
-                  <div className="max-h-80 overflow-y-auto">
-                    {uploadResult.results.map((result, index) => (
-                      <div 
-                        key={index}
-                        className={`p-3 border-b flex items-start gap-2 ${
-                          index % 2 === 0 ? 'bg-white' : 'bg-slate-50'
-                        } ${
-                          result.status === 'error' ? 'text-red-700' : 'text-slate-800'
-                        }`}
-                      >
-                        {result.status === 'success' ? (
-                          <Check className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
-                        ) : (
-                          <CircleAlert className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
-                        )}
-                        <div>
-                          <p className="text-sm font-medium truncate max-w-md">
-                            {result.nl_query}
-                          </p>
-                          {result.error && (
-                            <p className="text-xs text-red-600 mt-1">{result.error}</p>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                <div className="mt-4 text-sm text-neutral-400">
+                  Successfully processed {uploadResult.successful_entries} of {uploadResult.total_entries} entries.
                 </div>
                 
-                <div className="flex justify-between pt-2">
-                  <Button
-                    variant="outline"
+                <div className="flex justify-end space-x-3 mt-4">
+                  <Button 
+                    variant="outline" 
                     onClick={resetForm}
+                    className="border-neutral-700 hover:bg-neutral-800 hover:text-neutral-200 text-neutral-300"
                   >
-                    Upload Another File
+                    Reset
                   </Button>
-                  
-                  <Button
-                    onClick={() => router.push('/complete-test')}
+                  <Button 
+                    onClick={() => router.push('/cache-entries')}
+                    className="bg-[#3B4BF6] hover:bg-[#2b3bdc] text-white"
                   >
-                    Go to Complete Test
+                    View Cache Entries
                   </Button>
                 </div>
               </div>

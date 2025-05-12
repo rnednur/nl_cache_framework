@@ -22,21 +22,21 @@ with open("../README.md", "r") as f:
     long_description = f.read()
 
 setup(
-    name="nl-cache-mcp",
+    name="thinkforge-mcp",
     version=version,
-    description="Model Context Protocol server for NL Cache Framework",
+    description="Model Context Protocol server for ThinkForge",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    author="NL Cache Framework Team",
+    author="ThinkForge Team",
     author_email="contact@example.com",
-    url="https://github.com/example/nl-cache-mcp",
+    url="https://github.com/example/thinkforge-mcp",
     packages=find_packages(),
     include_package_data=True,
     install_requires=requirements,
     python_requires=">=3.7",
     entry_points={
         "console_scripts": [
-            "nl-cache-mcp=mcp_server.run:run_server",
+            "thinkforge-mcp=mcp_server.run:run_server",
         ],
     },
     classifiers=[

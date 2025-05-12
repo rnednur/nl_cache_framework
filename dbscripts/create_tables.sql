@@ -6,7 +6,7 @@
 CREATE SCHEMA IF NOT EXISTS :"schema_name";
 
 -- Create enum type for template types
-CREATE TYPE :"schema_name".template_type AS ENUM ('sql', 'url', 'api', 'workflow', 'graphql', 'regex', 'script', 'nosql', 'cli', 'prompt', 'configuration');
+CREATE TYPE :"schema_name".template_type AS ENUM ('sql', 'url', 'api', 'workflow', 'graphql', 'regex', 'script', 'nosql', 'cli', 'prompt', 'configuration', 'reasoning_steps');
 
 -- Create enum type for status
 CREATE TYPE :"schema_name".status_type AS ENUM ('pending', 'active', 'archive');

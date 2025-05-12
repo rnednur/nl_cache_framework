@@ -1,5 +1,5 @@
 """
-Natural Language to SQL/Template Caching Framework.
+ThinkForge
 
 This package provides a framework for caching natural language to SQL/template translations,
 with tools for similarity search, entity substitution, and various template types.
