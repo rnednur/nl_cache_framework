@@ -2,15 +2,26 @@
 
 import { useState, useEffect } from "react"
 import { Sparkles, Check, Info, AlertCircle, ArrowLeft, ArrowRight } from "lucide-react"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../../components/ui/card"
-import { Button } from "../../components/ui/button"
-import { Textarea } from "../../components/ui/textarea"
-import { Input } from "../../components/ui/input"
-import { Label } from "../../components/ui/label"
-import { Switch } from "../../components/ui/switch"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs"
-import api, { CompleteRequest, CompleteResponse, CatalogValues } from "../../services/api"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/app/components/ui/card"
+import { Button } from "@/app/components/ui/button"
+import { Textarea } from "@/app/components/ui/textarea"
+import { Input } from "@/app/components/ui/input"
+import { Label } from "@/app/components/ui/label"
+import { Switch } from "@/app/components/ui/switch"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/app/components/ui/select"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs"
+import api, { CompleteRequest, CompleteResponse as ApiCompleteResponse, CatalogValues } from "../../services/api"
+
+// Extended response interface to include UI-specific fields
+interface ExtendedCompleteResponse extends ApiCompleteResponse {
+  success?: boolean;
+  result?: string;
+  processed_prompt?: string;
+  response_time?: number;
+  template_type?: string;
+  llm_used?: boolean;
+  cache_entry_id?: number;
+}
 
 export default function CompleteTestPage() {
   const [prompt, setPrompt] = useState("")
@@ -22,10 +33,10 @@ export default function CompleteTestPage() {
   const [catalogValues, setCatalogValues] = useState<CatalogValues>({ catalog_types: [], catalog_subtypes: [], catalog_names: [] })
   const [loadingCatalogs, setLoadingCatalogs] = useState(false)
   
-  const [result, setResult] = useState<CompleteResponse | null>(null)
+  const [result, setResult] = useState<ExtendedCompleteResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [resultsHistory, setResultsHistory] = useState<CompleteResponse[]>([])
+  const [resultsHistory, setResultsHistory] = useState<ExtendedCompleteResponse[]>([])
   const [currentHistoryIndex, setCurrentHistoryIndex] = useState(-1)
   
   useEffect(() => {
@@ -64,10 +75,20 @@ export default function CompleteTestPage() {
       if (catalogName) request.catalog_name = catalogName
       
       const response = await api.complete(request)
-      setResult(response)
+      
+      // Adapt response to UI expectations
+      const extendedResponse: ExtendedCompleteResponse = {
+        ...response,
+        success: response.cache_hit,
+        result: response.cache_template,
+        processed_prompt: response.user_query,
+        llm_used: useLlm
+      }
+      
+      setResult(extendedResponse)
       
       // Add to history
-      setResultsHistory(prev => [...prev, response])
+      setResultsHistory(prev => [...prev, extendedResponse])
       setCurrentHistoryIndex(prev => prev + 1)
     } catch (err: any) {
       setError(err.message || "An error occurred while processing your request")
@@ -79,15 +100,17 @@ export default function CompleteTestPage() {
   
   const goToPreviousResult = () => {
     if (currentHistoryIndex > 0) {
-      setCurrentHistoryIndex(currentHistoryIndex - 1)
-      setResult(resultsHistory[currentHistoryIndex - 1])
+      const previousIndex = currentHistoryIndex - 1;
+      setCurrentHistoryIndex(previousIndex);
+      setResult(resultsHistory[previousIndex]);
     }
   }
   
   const goToNextResult = () => {
     if (currentHistoryIndex < resultsHistory.length - 1) {
-      setCurrentHistoryIndex(currentHistoryIndex + 1)
-      setResult(resultsHistory[currentHistoryIndex + 1])
+      const nextIndex = currentHistoryIndex + 1;
+      setCurrentHistoryIndex(nextIndex);
+      setResult(resultsHistory[nextIndex]);
     }
   }
   
@@ -291,7 +314,7 @@ export default function CompleteTestPage() {
                     <div className="space-y-1">
                       <div className="flex items-center text-sm text-neutral-200">
                         <h4 className="font-semibold mr-2">Status:</h4>
-                        {result.success ? (
+                        {result.cache_hit ? (
                           <span className="flex items-center text-green-500">
                             <Check className="h-4 w-4 mr-1" />
                             Success
@@ -313,13 +336,13 @@ export default function CompleteTestPage() {
                     </div>
                     
                     <div className="p-4 border border-neutral-700 rounded-md bg-neutral-800 whitespace-pre-wrap text-neutral-200 font-mono overflow-auto max-h-[300px]">
-                      {result.result || "No result returned"}
+                      {result.cache_template || "No result returned"}
                     </div>
                   </TabsContent>
                   
                   <TabsContent value="prompt" className="space-y-4 pt-4">
                     <div className="p-4 border border-neutral-700 rounded-md bg-neutral-800 whitespace-pre-wrap text-neutral-200 font-mono overflow-auto max-h-[300px]">
-                      {result.processed_prompt || prompt}
+                      {result.user_query || prompt}
                     </div>
                   </TabsContent>
                   
@@ -328,7 +351,7 @@ export default function CompleteTestPage() {
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <h4 className="font-semibold text-sm mb-1">Response Time</h4>
-                          <p>{result.response_time}ms</p>
+                          <p>{result.response_time || "N/A"}ms</p>
                         </div>
                         <div>
                           <h4 className="font-semibold text-sm mb-1">Template Type</h4>
@@ -336,16 +359,22 @@ export default function CompleteTestPage() {
                         </div>
                         <div>
                           <h4 className="font-semibold text-sm mb-1">LLM Used</h4>
-                          <p>{result.llm_used ? "Yes" : "No"}</p>
+                          <p>{useLlm ? "Yes" : "No"}</p>
                         </div>
                         <div>
                           <h4 className="font-semibold text-sm mb-1">Cache Hit</h4>
                           <p>{result.cache_hit ? "Yes" : "No"}</p>
                         </div>
-                        {result.cache_entry_id && (
+                        {result.template_id && (
                           <div className="col-span-2">
                             <h4 className="font-semibold text-sm mb-1">Cache Entry ID</h4>
-                            <p>{result.cache_entry_id}</p>
+                            <p>{result.template_id}</p>
+                          </div>
+                        )}
+                        {result.llm_explanation && (
+                          <div className="col-span-2">
+                            <h4 className="font-semibold text-sm mb-1">LLM Explanation</h4>
+                            <p>{result.llm_explanation}</p>
                           </div>
                         )}
                       </div>
@@ -396,6 +425,12 @@ export default function CompleteTestPage() {
                           <div>
                             <h4 className="font-semibold text-sm mb-1">Cached Query</h4>
                             <p>{result.cached_query}</p>
+                          </div>
+                        )}
+                        {result.updated_template && (
+                          <div className="col-span-2">
+                            <h4 className="font-semibold text-sm mb-1">Updated Template</h4>
+                            <p className="font-mono text-xs">{result.updated_template}</p>
                           </div>
                         )}
                       </div>
