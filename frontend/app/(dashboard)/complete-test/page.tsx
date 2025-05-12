@@ -80,7 +80,7 @@ export default function CompleteTestPage() {
       const extendedResponse: ExtendedCompleteResponse = {
         ...response,
         success: response.cache_hit,
-        result: response.cache_template,
+        result: response.updated_template || response.cache_template,
         processed_prompt: response.user_query,
         llm_used: useLlm
       }
@@ -336,7 +336,7 @@ export default function CompleteTestPage() {
                     </div>
                     
                     <div className="p-4 border border-neutral-700 rounded-md bg-neutral-800 whitespace-pre-wrap text-neutral-200 font-mono overflow-auto max-h-[300px]">
-                      {result.cache_template || "No result returned"}
+                      {result.updated_template || result.cache_template || "No result returned"}
                     </div>
                   </TabsContent>
                   
