@@ -153,16 +153,17 @@ export default function CompleteTestPage() {
               </div>
               
               <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-2 py-2">
                   <Switch
                     id="use-llm"
                     checked={useLlm}
                     onCheckedChange={setUseLlm}
+                    className="data-[state=checked]:bg-blue-600"
                   />
-                  <Label htmlFor="use-llm" className="cursor-pointer text-neutral-300">
+                  <Label htmlFor="use-llm" className="cursor-pointer text-neutral-200">
                     Enable LLM Enhancement
                   </Label>
-                  <span className="text-xs text-neutral-500 ml-2">
+                  <span className="text-xs text-neutral-400 ml-2">
                     (Uses Gemini Flash 2.5 to analyze search results)
                   </span>
                 </div>
