@@ -5,7 +5,7 @@ This script listens on standard input for JSON-RPC like messages conforming
 to the Model Context Protocol, processes them, and writes responses to
 standard output.
 
-It relies on the nl_cache_framework and database configuration from the backend.
+It relies on the thinkforge and database configuration from the backend.
 """
 
 import sys
@@ -38,13 +38,13 @@ try:
     from sqlalchemy.orm import Session
     # Import necessary components from the backend and framework
     from backend.database import SessionLocal # Get the session factory
-    from nl_cache_framework import Text2SQLController, TemplateType
+    from thinkforge.controller import Text2SQLController, TemplateType
     # Import models for potential type checking or direct use if needed
-    # from nl_cache_framework.models import Text2SQLCache, UsageLog
+    # from thinkforge.models import Text2SQLCache, UsageLog
 except ImportError as e:
-    logger.error(f"Failed to import necessary modules: {e}. Ensure dependencies are installed and PYTHONPATH is correct.", exc_info=True)
+    logger.error(f"Failed to import necessary modules: {e}. Ensure 'thinkforge' is installed or in PYTHONPATH.", exc_info=True)
     # Write an error message to stdout in case of import failure, then exit
-    error_response = json.dumps({"jsonrpc": "2.0", "error": {"code": -32000, "message": f"Server setup error: {e}"}, "id": None})
+    error_response = json.dumps({"jsonrpc": "2.0", "error": {"code": -32000, "message": f"Server setup error: Failed to import thinkforge. Ensure it is installed or in PYTHONPATH. Error: {e}"}, "id": None})
     print(error_response, flush=True)
     sys.exit(1)
 
@@ -201,6 +201,30 @@ tools_registry: Dict[str, Dict[str, Any]] = {
                 "id": {"type": "integer"}
             }
         }
+    },
+    "complete_nl_cache": {
+        "description": "Provides autocompletion suggestions for partial natural language queries based on existing cache entries.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "partial_query": {"type": "string", "description": "The partial natural language query to complete."},
+                "limit": {"type": "integer", "description": "The maximum number of suggestions to return.", "default": 5}
+            },
+            "required": ["partial_query"]
+        },
+        "output_schema": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer"},
+                    "nl_query": {"type": "string"},
+                    "template": {"type": "string"},
+                    "template_type": {"type": "string"},
+                    "similarity": {"type": "number"}
+                }
+            }
+        }
     }
 }
 
@@ -296,7 +320,7 @@ def handle_call_tool(request: Dict[str, Any], db: Session) -> Dict[str, Any]:
         # Using controller method if available, otherwise direct query
         # entry = controller.get_query_by_id(entry_id)
         # Direct query for now:
-        from nl_cache_framework.models import Text2SQLCache # Import model locally if needed
+        from thinkforge.models import Text2SQLCache # Import model locally if needed
         entry = db.query(Text2SQLCache).filter(Text2SQLCache.id == entry_id).first()
 
         return entry.to_dict() if entry else None # Return dict or null
@@ -339,6 +363,32 @@ def handle_call_tool(request: Dict[str, Any], db: Session) -> Dict[str, Any]:
             raise ValueError(f"Cache entry with ID {entry_id} not found or could not be deleted")
 
         return {"status": "deleted", "id": entry_id}
+
+    elif tool_name == "complete_nl_cache":
+        if 'partial_query' not in arguments:
+            raise ValueError("Missing required argument 'partial_query' for complete_nl_cache")
+        
+        partial_query = arguments['partial_query']
+        limit = arguments.get('limit', tools_registry[tool_name]['input_schema']['properties']['limit']['default'])
+        
+        # Call the controller's process_completion method for better autocompletion
+        completion_result = controller.process_completion(
+            query=partial_query,
+            similarity_threshold=0.5,  # Lower threshold for autocompletion
+            use_llm=False  # Default to not using LLM for simplicity
+        )
+        
+        # Extract relevant information from the completion result
+        if completion_result.get('cache_hit', False):
+            return [{
+                'id': completion_result.get('template_id'),
+                'nl_query': completion_result.get('cached_query', ''),
+                'template': completion_result.get('cache_template', ''),
+                'template_type': '',  # Not directly available in result
+                'similarity': completion_result.get('similarity_score', 0.0)
+            }]
+        else:
+            return []  # Return empty list if no cache hit
 
     else:
         raise NotImplementedError(f"Tool '{tool_name}' is registered but not implemented.")

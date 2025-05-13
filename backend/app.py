@@ -28,13 +28,12 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 # Import the ThinkForge framework
 try:
-    from thinkforge import (
+    from thinkforge.controller import (
         Text2SQLController,
         TemplateType,
-        Base,
         Text2SQLEntitySubstitution,
     )
-    from thinkforge.models import Text2SQLCache, UsageLog
+    from thinkforge.models import Text2SQLCache, UsageLog, Base
 except ImportError as e:
     print(f"Error importing thinkforge: {e}")
     print("Make sure the framework is installed with: pip install -e .")
@@ -392,206 +391,23 @@ async def complete(
 
     # --- Cache Interaction ---
     controller = get_controller(db)
-    entity_sub = Text2SQLEntitySubstitution()
-
-    response_data = {}
-    final_result = ""
-    cache_hit = False
-    similarity_score = 0.0
-    explanation = None
 
     # Use provided similarity threshold or default
     threshold = similarity_threshold if similarity_threshold is not None else SIMILARITY_THRESHOLD
 
-    # Check cache
     try:
-        # Get multiple results to allow LLM to choose from them if use_llm is enabled
-        limit = 5 if use_llm else 1  
-        cache_results = controller.search_query(
-            nl_query=query, 
-            similarity_threshold=threshold, 
-            limit=limit,
+        response_data = controller.process_completion(
+            query=query,
+            similarity_threshold=threshold,
+            use_llm=use_llm,
             catalog_type=catalog_type,
             catalog_subtype=catalog_subtype,
             catalog_name=catalog_name
         )
+        return response_data
     except Exception as e:
-        # Log controller search error specifically
-        logger.error(f"Cache search failed for query '{query[:50]}...': {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Error searching cache")
-
-    # Process results
-    if not cache_results or len(cache_results) == 0:
-        # No matches found
-        logger.info(f"No cache matches for query: {query[:50]}...")
-        response_data = {
-            "cache_template": "No cached template found for this query.",
-            "cache_hit": False,
-            "similarity_score": 0.0,
-            "template_id": None,
-            "cached_query": None,
-            "user_query": query,
-            "updated_template": None,
-            "llm_explanation": "No similar query found in cache.",
-        }
-    else:
-        # LLM-based enhancement if requested and we have multiple results
-        updated_query = None
-        if use_llm and len(cache_results) > 0:
-            # Check if LLM service is configured
-            if not LLMService.is_configured():
-                logger.warning("LLM enhancement requested but service not configured")
-                response_data = {
-                    "warning": "LLM enhancement was requested but the service is not configured. Set OPENROUTER_API_KEY in .env file.",
-                }
-                # Continue with standard processing without LLM
-                best_match = cache_results[0]
-                similarity_score = best_match.get("similarity", 0.0)
-            else:
-                try:
-                    logger.info(f"Using LLM enhancement for query: {query[:50]}...")
-                    # Initialize LLM service with the correct model from environment variable
-                    llm_service = LLMService(model=os.getenv("OPENROUTER_MODEL", "google/gemini-pro"))
-                    llm_result = llm_service.can_answer_with_context(
-                        query=query,
-                        context_entries=cache_results,
-                        similarity_threshold=threshold
-                    )
-                    
-                    can_answer = llm_result.get("can_answer", False)
-                    explanation = llm_result.get("explanation", "")
-                    selected_entry_id = llm_result.get("selected_entry_id")
-                    updated_query = llm_result.get("updated_query")
-                    
-                    if can_answer and selected_entry_id:
-                        # Find the selected entry
-                        selected_entry = next(
-                            (entry for entry in cache_results if entry.get("id") == selected_entry_id), 
-                            None
-                        )
-                        if selected_entry:
-                            # Use the selected entry as our best match
-                            best_match = selected_entry
-                            similarity_score = selected_entry.get("similarity", 0.0)
-                            logger.info(
-                                f"LLM selected cache entry: {selected_entry_id} for query: {query[:50]}..."
-                            )
-                        else:
-                            # Fall back to first result if entry not found
-                            best_match = cache_results[0]
-                            similarity_score = best_match.get("similarity", 0.0)
-                    else:
-                        # LLM determined we can't answer or failed - use first result
-                        best_match = cache_results[0]
-                        similarity_score = best_match.get("similarity", 0.0)
-                except Exception as e:
-                    logger.error(f"LLM processing failed: {e}", exc_info=True)
-                    # Fall back to best match without LLM
-                    best_match = cache_results[0]
-                    similarity_score = best_match.get("similarity", 0.0)
-        else:
-            # Without LLM, just use the top result
-            best_match = cache_results[0]
-            similarity_score = best_match.get("similarity", 0.0)
-        
-        # We have a match - either from LLM selection or top result
-        cache_hit = True
-        logger.info(
-            f"Cache hit for query: {query[:50]}... (score: {similarity_score:.4f})"
-        )
-
-        # If we have an updated query from LLM, log it
-        if updated_query:
-            logger.info(f"Updated query from LLM: {updated_query}")
-
-        # Get the template
-        template_id = best_match.get("id")
-        template = best_match.get("template", "")
-        is_template = best_match.get("is_template", False)
-
-        # For templates with entity substitutions
-        if is_template:
-            # Entity substitution
-            try:
-                # Extract entities from the query
-                # If LLM provided an updated query, use it for entity extraction
-                extraction_query = updated_query if updated_query else query
-                extracted_entities = entity_sub.extract_entities(
-                    extraction_query, best_match.get("entity_replacements", {})
-                )
-
-                # Apply substitution
-                substitution_result = controller.apply_entity_substitution(
-                    template_id=template_id,
-                    new_entity_values=extracted_entities,
-                )
-
-                final_result = substitution_result.get("substituted_template", template)
-                logger.debug(f"Applied entity substitution. Result: {final_result[:50]}...")
-
-            except Exception as e:
-                logger.error(f"Entity substitution failed: {e}", exc_info=True)
-                # Fall back to the raw template
-                final_result = template
-                logger.warning(f"Falling back to raw template: {template[:50]}...")
-        else:
-            # Regular template, no substitution needed
-            final_result = template
-
-    # Prepare final response
-    if cache_hit:
-        response_data = {
-            "cache_template": final_result,
-            "cache_hit": True,
-            "similarity_score": similarity_score,
-            "template_id": template_id,
-            "cached_query": best_match.get("nl_query", ""),
-            "user_query": query,
-            "updated_template": updated_query if updated_query else final_result,
-            "llm_explanation": explanation if explanation else "Retrieved from cache based on similarity.",
-        }
-    else:
-        response_data = {
-            "cache_template": "No cached template found for this query.",
-            "cache_hit": False,
-            "similarity_score": 0.0,
-            "template_id": None,
-            "cached_query": None,
-            "user_query": query,
-            "updated_template": None,
-            "llm_explanation": "No similar query found in cache.",
-        }
-
-    # Record the usage in UsageLog with detailed information for both hits and misses
-    try:
-        from datetime import datetime
-        template_id = None
-        if cache_hit and 'best_match' in locals():
-            template_id = best_match.get("id")
-        
-        usage_log = UsageLog(
-            cache_entry_id=template_id,
-            prompt=query,
-            timestamp=datetime.utcnow(),
-            success_status=cache_hit,
-            similarity_score=similarity_score if cache_hit else 0.0,
-            error_message=None,
-            catalog_type=catalog_type,
-            catalog_subtype=catalog_subtype,
-            catalog_name=catalog_name,
-            llm_used=use_llm
-        )
-        db.add(usage_log)
-        # Commit to ensure the log is saved
-        db.commit()
-    except Exception as log_error:
-        logger.warning(f"Failed to log cache usage with details: {log_error}")
-        try:
-            db.rollback()  # Rollback on logging error to keep the database consistent
-        except:
-            pass  # Swallow potential rollback errors
-
-    return response_data
+        logger.error(f"Error processing completion request: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error processing completion: {str(e)}")
 
 
 @app.get("/v1/cache/search")

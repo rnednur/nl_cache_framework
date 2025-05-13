@@ -4,36 +4,55 @@ import pytest
 from unittest.mock import MagicMock, patch
 from sqlalchemy.orm import Session
 import numpy as np
+import json
 
 # Import from the library package
-from nl_cache_framework.controller import Text2SQLController
-from nl_cache_framework.similarity import Text2SQLSimilarity
-from nl_cache_framework.models import Text2SQLCache, TemplateType
+from thinkforge.controller import Text2SQLController
+from thinkforge.similarity import Text2SQLSimilarity
+from thinkforge.models import Text2SQLCache, TemplateType, Status
 
 # Sample data for mocking DB returns
 SAMPLE_CACHE_ENTRY_EXACT = Text2SQLCache(
     id=1,
-    nl_query="Show top 5 sales",
-    template="SELECT * FROM sales ORDER BY amount DESC LIMIT 5",
+    nl_query="Show me all customers in New York",
+    template="SELECT * FROM customers WHERE city = 'New York';",
     template_type=TemplateType.SQL,
-    is_template=False,
-    tags=["sales", "top"],
-    vector_embedding=None,  # Mock simply for now
-    is_valid=True,
-    usage_count=10,
+    status=Status.ACTIVE,
+    vector_embedding=[0.1] * 768,  # Simplified embedding
 )
 
 SAMPLE_CACHE_ENTRY_TEMPLATE = Text2SQLCache(
-    id=2,
-    nl_query="Revenue for date",
-    template="SELECT SUM(revenue) FROM facts WHERE date = :date_val",
+    id=3,
+    nl_query="Show sales for {client}",
+    template="SELECT * FROM sales WHERE client = :client;",
     template_type=TemplateType.SQL,
     is_template=True,
-    entity_replacements={"date_1": {"placeholder": ":date_val", "type": "date"}},
-    tags=["revenue", "date"],
-    vector_embedding=None,  # Mock simply for now
-    is_valid=True,
-    usage_count=5,
+    entity_replacements={"client": {"placeholder": ":client", "type": "string"}},
+    status=Status.ACTIVE,
+    vector_embedding=[0.2] * 768,
+)
+
+SAMPLE_CACHE_ENTRY_SIMILAR = Text2SQLCache(
+    id=2,
+    nl_query="List all clients in NY",
+    template="SELECT * FROM customers WHERE state = 'NY';",
+    template_type=TemplateType.SQL,
+    status=Status.ACTIVE,
+    vector_embedding=[0.11] * 768,  # Slightly different embedding
+)
+
+SAMPLE_CACHE_ENTRY_WORKFLOW = Text2SQLCache(
+    id=4,
+    nl_query="Run sales report workflow",
+    template=json.dumps({
+        "steps": [
+            {"cache_id": 1, "type": "sequential", "description": "Fetch data"},
+            {"cache_id": 2, "type": "sequential", "description": "Process data"}
+        ]
+    }),
+    template_type=TemplateType.WORKFLOW,
+    status=Status.ACTIVE,
+    vector_embedding=[0.3] * 768,
 )
 
 
@@ -80,7 +99,7 @@ def text2sql_controller(
     """Provides a Text2SQLController instance with mocked dependencies."""
     # Patch the Text2SQLSimilarity instantiation within the controller's scope
     with patch(
-        "nl_cache_framework.controller.Text2SQLSimilarity",
+        "thinkforge.controller.Text2SQLSimilarity",
         return_value=mock_similarity_util,
     ):
         controller = Text2SQLController(db_session=mock_db_session)

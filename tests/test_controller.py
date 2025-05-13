@@ -6,8 +6,8 @@ import requests
 from unittest.mock import patch
 
 # Import the controller and model
-from nl_cache_framework.controller import Text2SQLController
-from nl_cache_framework.models import Text2SQLCache, TemplateType
+from thinkforge.controller import Text2SQLController
+from thinkforge.models import Text2SQLCache, TemplateType
 
 # Fixtures are automatically used from conftest.py
 
@@ -1566,3 +1566,134 @@ def test_save_load_report_integration(_, __, test_controller):
     """Integration test for saving and loading reports."""
     # Arrange
     report_data = {"key": "value"}
+
+
+def test_add_stagehand_workflow(text2sql_controller, mock_db_session):
+    """
+    Test adding a workflow entry with Stagehand steps for browser-based automation.
+    """
+    nl_query = "Automate login to a website"
+    workflow_template = {
+        "steps": [
+            {"cache_id": 0, "type": "sequential", "description": "Open browser", "stagehand_action": "open_browser", "params": {"browser": "chrome"}},
+            {"cache_id": 0, "type": "sequential", "description": "Navigate to test page", "stagehand_action": "navigate", "params": {"url": "https://www.w3schools.com/html/html_forms.asp"}},
+            {"cache_id": 0, "type": "sequential", "description": "Enter first name", "stagehand_action": "input_text", "params": {"selector": "#fname", "text": "John"}},
+            {"cache_id": 0, "type": "sequential", "description": "Enter last name", "stagehand_action": "input_text", "params": {"selector": "#lname", "text": "Doe"}},
+            {"cache_id": 0, "type": "sequential", "description": "Click submit button", "stagehand_action": "click", "params": {"selector": "input[type='submit']"}}
+        ]
+    }
+    reasoning_trace = "The workflow was created to automate the login process by opening a browser, navigating to the login page, entering credentials, and submitting the form."
+    
+    result = text2sql_controller.add_query(
+        nl_query=nl_query,
+        template=json.dumps(workflow_template),
+        template_type=TemplateType.WORKFLOW,
+        reasoning_trace=reasoning_trace,
+        tags=["stagehand", "automation", "browser"]
+    )
+    
+    assert result is not None
+    print(f"Test result content: {result}")
+    assert result['nl_query'] == nl_query
+    assert result['template_type'] == TemplateType.WORKFLOW
+    assert result['reasoning_trace'] == reasoning_trace
+    assert "stagehand" in result['tags']
+    
+    # Verify the stored template
+    stored_template = json.loads(result['template'])
+    assert len(stored_template['steps']) == 5
+    assert stored_template['steps'][0]['description'] == "Open browser"
+    assert stored_template['steps'][0]['stagehand_action'] == "open_browser"
+    
+    print("Successfully verified Stagehand workflow data structure")
+
+
+def test_execute_stagehand_workflow(text2sql_controller, mock_db_session):
+    """
+    Test executing a workflow entry with Stagehand steps for browser-based automation.
+    This is a demonstration of how Stagehand steps could be run using Selenium, not a primary feature.
+    """
+    try:
+        from selenium import webdriver
+        from selenium.webdriver.common.by import By
+        from selenium.webdriver.chrome.options import Options
+    except ImportError:
+        pytest.skip("Selenium not installed, skipping Stagehand execution test")
+
+    # Reuse the workflow from test_add_stagehand_workflow or create a new one
+    nl_query = "Automate login to a website"
+    workflow_template = {
+        "steps": [
+            {"cache_id": 0, "type": "sequential", "description": "Open browser", "stagehand_action": "open_browser", "params": {"browser": "chrome"}},
+            {"cache_id": 0, "type": "sequential", "description": "Navigate to test page", "stagehand_action": "navigate", "params": {"url": "https://www.w3schools.com/html/html_forms.asp"}},
+            {"cache_id": 0, "type": "sequential", "description": "Enter first name", "stagehand_action": "input_text", "params": {"selector": "#fname", "text": "John"}},
+            {"cache_id": 0, "type": "sequential", "description": "Enter last name", "stagehand_action": "input_text", "params": {"selector": "#lname", "text": "Doe"}},
+            {"cache_id": 0, "type": "sequential", "description": "Click submit button", "stagehand_action": "click", "params": {"selector": "input[type='submit']"}}
+        ]
+    }
+    reasoning_trace = "The workflow was created to automate the login process by opening a browser, navigating to the login page, entering credentials, and submitting the form."
+    
+    result = text2sql_controller.add_query(
+        nl_query=nl_query,
+        template=json.dumps(workflow_template),
+        template_type=TemplateType.WORKFLOW,
+        reasoning_trace=reasoning_trace,
+        tags=["stagehand", "automation", "browser"]
+    )
+    
+    assert result is not None
+    assert result['nl_query'] == nl_query
+    assert result['template_type'] == TemplateType.WORKFLOW
+    
+    # Extract the workflow steps
+    workflow = json.loads(result['template'])
+    steps = workflow['steps']
+    
+    # Simulate executing Stagehand steps (in a real environment, this would interact with a browser)
+    print("Simulating Stagehand workflow execution...")
+    driver = None
+    try:
+        # Set up Selenium WebDriver (using Chrome as an example)
+        chrome_options = Options()
+        chrome_options.add_argument("--headless")  # Run in headless mode for testing
+        driver = webdriver.Chrome(options=chrome_options)
+        
+        for step in steps:
+            action = step.get('stagehand_action')
+            params = step.get('params', {})
+            description = step.get('description', 'Unknown action')
+            
+            print(f"Executing step: {description}")
+            
+            if action == "open_browser":
+                print(f"Opening browser: {params.get('browser', 'default')}")
+                # Browser is already opened via WebDriver
+            elif action == "navigate":
+                url = params.get('url', '')
+                print(f"Navigating to: {url}")
+                driver.get(url)
+            elif action == "input_text":
+                selector = params.get('selector', '')
+                text = params.get('text', '')
+                print(f"Entering text '{text}' into element with selector '{selector}'")
+                try:
+                    element = driver.find_element(By.CSS_SELECTOR, selector)
+                    element.send_keys(text)
+                except Exception as e:
+                    print(f"Error entering text: {e}")
+            elif action == "click":
+                selector = params.get('selector', '')
+                print(f"Clicking element with selector '{selector}'")
+                try:
+                    element = driver.find_element(By.CSS_SELECTOR, selector)
+                    element.click()
+                except Exception as e:
+                    print(f"Error clicking element: {e}")
+            else:
+                print(f"Unsupported Stagehand action: {action}")
+    finally:
+        if driver:
+            driver.quit()
+            print("Browser closed")
+    
+    print("Stagehand workflow execution simulation completed")

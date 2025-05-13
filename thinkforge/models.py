@@ -37,6 +37,14 @@ logger.info(f"Using database schema: {DB_SCHEMA}")
 # Alternatively, the application could provide its own Base.
 Base = declarative_base()
 
+# Define USE_PG_VECTOR at module level for import
+try:
+    from pgvector.sqlalchemy import Vector
+    import os
+    USE_PG_VECTOR = os.getenv('USE_PG_VECTOR', 'false').lower() == 'true'
+except ImportError:
+    USE_PG_VECTOR = False
+
 
 class TemplateType(str, Enum):
     """Enumeration for the types of templates supported by the cache."""
@@ -52,7 +60,8 @@ class TemplateType(str, Enum):
             {'cache_id': int, 'type': 'sequential' or 'parallel', 'description': str},
             ...
         ]
-    }"""
+    }
+    These workflows can include Stagehand steps for browser-based automation, where each step may define specific browser actions or interactions."""
     GRAPHQL = "graphql"
     REGEX = "regex"
     SCRIPT = "script"
@@ -103,6 +112,11 @@ class Text2SQLCache(Base):
     # Embedding storage using JSONB
     vector_embedding: Optional[list] = Column(JSONB)
     """JSONB list representation of the vector embedding for the nl_query."""
+    
+    # Conditional vector column for pg_vector extension if enabled
+    if USE_PG_VECTOR:
+        pg_vector: Optional[list] = Column(Vector(768))  # Adjust dimension based on your embedding model
+        """Vector column for pg_vector extension when enabled."""
 
     # Template handling fields
     is_template: bool = Column(Boolean, default=False, nullable=False, index=True)
@@ -142,7 +156,13 @@ class Text2SQLCache(Base):
     @property
     def embedding(self) -> Optional[np.ndarray]:
         """Return the vector embedding as a NumPy array."""
-        if self.vector_embedding:
+        if hasattr(self, 'pg_vector') and USE_PG_VECTOR and self.pg_vector is not None:
+            try:
+                return np.array(self.pg_vector, dtype=np.float32)
+            except (TypeError, ValueError):
+                logger.error(f"Could not convert pg_vector to numpy array for ID {self.id}", exc_info=True)
+                return None
+        elif self.vector_embedding:
             try:
                 # Assuming it's stored as a list in JSONB
                 return np.array(self.vector_embedding, dtype=np.float32)
@@ -153,14 +173,19 @@ class Text2SQLCache(Base):
 
     @embedding.setter
     def embedding(self, value: Optional[np.ndarray]):
-        """Set the vector embedding from a NumPy array, storing as list."""
+        """Set the vector embedding from a NumPy array, storing as list or pg_vector."""
         if value is not None:
             try:
-                self.vector_embedding = value.tolist()
+                if hasattr(self, 'pg_vector') and USE_PG_VECTOR:
+                    self.pg_vector = value
+                else:
+                    self.vector_embedding = value.tolist()
             except AttributeError:
                 logger.error(f"Failed to convert numpy array to list for storage for ID {self.id}", exc_info=True)
                 self.vector_embedding = None
         else:
+            if hasattr(self, 'pg_vector') and USE_PG_VECTOR:
+                self.pg_vector = None
             self.vector_embedding = None
 
     def to_dict(self) -> Dict[str, Any]:
@@ -183,7 +208,7 @@ class Text2SQLCache(Base):
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             # Ensure embedding is included, regardless of field name in database
-            "embedding": self.vector_embedding if hasattr(self, 'vector_embedding') else (self.embedding if hasattr(self, 'embedding') else None)
+            "embedding": self.vector_embedding if hasattr(self, 'vector_embedding') and not (hasattr(self, 'pg_vector') and USE_PG_VECTOR) else (self.pg_vector if hasattr(self, 'pg_vector') and USE_PG_VECTOR else None)
         }
         return result
 
@@ -225,7 +250,10 @@ class Text2SQLCache(Base):
             try:
                 # We now store as list, so just assign if it's already a list
                 if isinstance(data["vector_embedding"], list):
-                    instance.vector_embedding = data["vector_embedding"]
+                    if USE_PG_VECTOR and hasattr(instance, 'pg_vector'):
+                        instance.pg_vector = data["vector_embedding"]
+                    else:
+                        instance.vector_embedding = data["vector_embedding"]
                 # If it's an ndarray, use the setter to convert to list
                 elif isinstance(data["vector_embedding"], np.ndarray):
                     instance.embedding = data["vector_embedding"] # Use setter

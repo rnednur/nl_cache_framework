@@ -7,10 +7,18 @@ from sqlalchemy.exc import SQLAlchemyError
 import json
 import datetime
 from scipy.spatial.distance import cosine
+import os
 
 # Local imports within the library
-from .models import Text2SQLCache, TemplateType, Status, CacheAuditLog
+from .models import Text2SQLCache, TemplateType, Status, CacheAuditLog, UsageLog
 from .similarity import Text2SQLSimilarity
+from .entity_substitution import Text2SQLEntitySubstitution
+
+# Import LLM service for enhanced completions
+try:
+    from llm_service import LLMService
+except ImportError:
+    LLMService = None
 
 logger = logging.getLogger(__name__)
 
@@ -271,26 +279,87 @@ class Text2SQLController:
                     c["similarity"] = sim
                     results.append(c)
         elif search_method == "vector":
-            query_emb = self._get_embedding(nl_query)
-            if query_emb is None:
-                logger.warning("Failed to get embedding for query, falling back to string search")
-                results = []
-                for c in candidates:
-                    sim = self._compute_string_similarity(nl_query, c.get("nl_query", ""))
-                    if sim >= similarity_threshold:
-                        c["similarity"] = sim
-                        results.append(c)
+            from thinkforge.models import USE_PG_VECTOR
+            if USE_PG_VECTOR:
+                try:
+                    from pgvector.sqlalchemy import Vector
+                    query_emb = self._get_embedding(nl_query)
+                    if query_emb is None:
+                        logger.warning("Failed to get embedding for query, falling back to string search")
+                        results = []
+                        for c in candidates:
+                            sim = self._compute_string_similarity(nl_query, c.get("nl_query", ""))
+                            if sim >= similarity_threshold:
+                                c["similarity"] = sim
+                                results.append(c)
+                    else:
+                        results = []
+                        # Use pg_vector for similarity search
+                        vector_query = self.session.query(Text2SQLCache).filter(
+                            Text2SQLCache.status == status if status else Text2SQLCache.status == Status.ACTIVE
+                        )
+                        if catalog_type:
+                            vector_query = vector_query.filter(Text2SQLCache.catalog_type == catalog_type)
+                        if catalog_subtype:
+                            vector_query = vector_query.filter(Text2SQLCache.catalog_subtype == catalog_subtype)
+                        if catalog_name:
+                            vector_query = vector_query.filter(Text2SQLCache.catalog_name == catalog_name)
+                        if template_type:
+                            vector_query = vector_query.filter(Text2SQLCache.template_type == template_type)
+                        # Perform vector similarity search using pg_vector
+                        vector_query = vector_query.order_by(Text2SQLCache.pg_vector.cosine_distance(query_emb)).limit(limit * 2)
+                        pg_results = vector_query.all()
+                        for res in pg_results:
+                            res_dict = res.to_dict()
+                            # Calculate similarity for display purposes
+                            sim = self.similarity_util.compute_cosine_similarity(query_emb, res.embedding) if res.embedding is not None else 0.0
+                            if sim >= similarity_threshold:
+                                res_dict["similarity"] = float(sim)
+                                results.append(res_dict)
+                        logger.info(f"Found {len(results)} matches above threshold using pg_vector")
+                except ImportError:
+                    logger.warning("pg_vector not available, falling back to standard vector search")
+                    query_emb = self._get_embedding(nl_query)
+                    if query_emb is None:
+                        logger.warning("Failed to get embedding for query, falling back to string search")
+                        results = []
+                        for c in candidates:
+                            sim = self._compute_string_similarity(nl_query, c.get("nl_query", ""))
+                            if sim >= similarity_threshold:
+                                c["similarity"] = sim
+                                results.append(c)
+                    else:
+                        results = []
+                        valid_indices = [i for i, emb in enumerate(candidate_embeddings_list) if emb is not None]
+                        valid_embs = [candidate_embeddings_list[i] for i in valid_indices]
+                        if valid_embs:
+                            similarities = self.similarity_util.compute_vector_similarities(query_emb, valid_embs)
+                            for idx, sim in zip(valid_indices, similarities):
+                                if sim >= similarity_threshold:
+                                    candidates[idx]["similarity"] = float(sim)
+                                    results.append(candidates[idx])
+                        logger.info(f"Found {len(results)} matches above threshold")
             else:
-                results = []
-                valid_indices = [i for i, emb in enumerate(candidate_embeddings_list) if emb is not None]
-                valid_embs = [candidate_embeddings_list[i] for i in valid_indices]
-                if valid_embs:
-                    similarities = self.similarity_util.compute_vector_similarities(query_emb, valid_embs)
-                    for idx, sim in zip(valid_indices, similarities):
+                query_emb = self._get_embedding(nl_query)
+                if query_emb is None:
+                    logger.warning("Failed to get embedding for query, falling back to string search")
+                    results = []
+                    for c in candidates:
+                        sim = self._compute_string_similarity(nl_query, c.get("nl_query", ""))
                         if sim >= similarity_threshold:
-                            candidates[idx]["similarity"] = float(sim)
-                            results.append(candidates[idx])
-                logger.info(f"Found {len(results)} matches above threshold")
+                            c["similarity"] = sim
+                            results.append(c)
+                else:
+                    results = []
+                    valid_indices = [i for i, emb in enumerate(candidate_embeddings_list) if emb is not None]
+                    valid_embs = [candidate_embeddings_list[i] for i in valid_indices]
+                    if valid_embs:
+                        similarities = self.similarity_util.compute_vector_similarities(query_emb, valid_embs)
+                        for idx, sim in zip(valid_indices, similarities):
+                            if sim >= similarity_threshold:
+                                candidates[idx]["similarity"] = float(sim)
+                                results.append(candidates[idx])
+                    logger.info(f"Found {len(results)} matches above threshold")
         else:
             raise ValueError(f"Unknown search method: {search_method}")
 
@@ -609,10 +678,6 @@ class Text2SQLController:
             SQLAlchemyError: If a database error occurs (session rolled back).
             Exception: If entity substitution processing fails.
         """
-        from .entity_substitution import (
-            Text2SQLEntitySubstitution,
-        )  # Local import to avoid circularity if moved
-
         try:
             cache_entry = (
                 self.session.query(Text2SQLCache)
@@ -987,3 +1052,189 @@ class Text2SQLController:
             )
             self.session.rollback()
             raise
+
+    def process_completion(
+        self,
+        query: str,
+        similarity_threshold: float = 0.85,
+        use_llm: bool = False,
+        catalog_type: Optional[str] = None,
+        catalog_subtype: Optional[str] = None,
+        catalog_name: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Process a completion request using the NL cache.
+
+        Args:
+            query: The natural language query to process.
+            similarity_threshold: The similarity threshold for cache matching.
+            use_llm: If True, use LLM to enhance search results with semantic analysis.
+            catalog_type: Optional catalog type to filter cache entries.
+            catalog_subtype: Optional catalog subtype to filter cache entries.
+            catalog_name: Optional catalog name to filter cache entries.
+
+        Returns:
+            A dictionary containing the completion result and metadata.
+        """
+        entity_sub = Text2SQLEntitySubstitution()
+        response_data = {}
+        final_result = ""
+        cache_hit = False
+        similarity_score = 0.0
+        explanation = None
+
+        # Get multiple results to allow LLM to choose from them if use_llm is enabled
+        limit = 5 if use_llm else 1
+        cache_results = self.search_query(
+            nl_query=query,
+            similarity_threshold=similarity_threshold,
+            limit=limit,
+            catalog_type=catalog_type,
+            catalog_subtype=catalog_subtype,
+            catalog_name=catalog_name
+        )
+
+        if not cache_results or len(cache_results) == 0:
+            logger.info(f"No cache matches for query: {query[:50]}...")
+            response_data = {
+                "cache_template": "No cached template found for this query.",
+                "cache_hit": False,
+                "similarity_score": 0.0,
+                "template_id": None,
+                "cached_query": None,
+                "user_query": query,
+                "updated_template": None,
+                "llm_explanation": "No similar query found in cache.",
+            }
+        else:
+            updated_query = None
+            if use_llm and len(cache_results) > 0:
+                if not LLMService or not LLMService.is_configured():
+                    logger.warning("LLM enhancement requested but service not configured")
+                    response_data = {
+                        "warning": "LLM enhancement was requested but the service is not configured. Set OPENROUTER_API_KEY in .env file.",
+                    }
+                    best_match = cache_results[0]
+                    similarity_score = best_match.get("similarity", 0.0)
+                else:
+                    try:
+                        logger.info(f"Using LLM enhancement for query: {query[:50]}...")
+                        llm_service = LLMService(model=os.getenv("OPENROUTER_MODEL", "google/gemini-pro"))
+                        llm_result = llm_service.can_answer_with_context(
+                            query=query,
+                            context_entries=cache_results,
+                            similarity_threshold=similarity_threshold
+                        )
+
+                        can_answer = llm_result.get("can_answer", False)
+                        explanation = llm_result.get("explanation", "")
+                        selected_entry_id = llm_result.get("selected_entry_id")
+                        updated_query = llm_result.get("updated_query")
+
+                        if can_answer and selected_entry_id:
+                            selected_entry = next(
+                                (entry for entry in cache_results if entry.get("id") == selected_entry_id),
+                                None
+                            )
+                            if selected_entry:
+                                best_match = selected_entry
+                                similarity_score = selected_entry.get("similarity", 0.0)
+                                logger.info(
+                                    f"LLM selected cache entry: {selected_entry_id} for query: {query[:50]}..."
+                                )
+                            else:
+                                best_match = cache_results[0]
+                                similarity_score = best_match.get("similarity", 0.0)
+                        else:
+                            best_match = cache_results[0]
+                            similarity_score = best_match.get("similarity", 0.0)
+                    except Exception as e:
+                        logger.error(f"LLM processing failed: {e}", exc_info=True)
+                        best_match = cache_results[0]
+                        similarity_score = best_match.get("similarity", 0.0)
+            else:
+                best_match = cache_results[0]
+                similarity_score = best_match.get("similarity", 0.0)
+
+            cache_hit = True
+            logger.info(
+                f"Cache hit for query: {query[:50]}... (score: {similarity_score:.4f})"
+            )
+
+            if updated_query:
+                logger.info(f"Updated query from LLM: {updated_query}")
+
+            template_id = best_match.get("id")
+            template = best_match.get("template", "")
+            is_template = best_match.get("is_template", False)
+
+            if is_template:
+                try:
+                    extraction_query = updated_query if updated_query else query
+                    extracted_entities = entity_sub.extract_entities(
+                        extraction_query, best_match.get("entity_replacements", {})
+                    )
+
+                    substitution_result = self.apply_entity_substitution(
+                        template_id=template_id,
+                        new_entity_values=extracted_entities,
+                    )
+
+                    final_result = substitution_result.get("substituted_template", template)
+                    logger.debug(f"Applied entity substitution. Result: {final_result[:50]}...")
+                except Exception as e:
+                    logger.error(f"Entity substitution failed: {e}", exc_info=True)
+                    final_result = template
+                    logger.warning(f"Falling back to raw template: {template[:50]}...")
+            else:
+                final_result = template
+
+        if cache_hit:
+            response_data = {
+                "cache_template": final_result,
+                "cache_hit": True,
+                "similarity_score": similarity_score,
+                "template_id": template_id,
+                "cached_query": best_match.get("nl_query", ""),
+                "user_query": query,
+                "updated_template": updated_query if updated_query else final_result,
+                "llm_explanation": explanation if explanation else "Retrieved from cache based on similarity.",
+            }
+        else:
+            response_data = {
+                "cache_template": "No cached template found for this query.",
+                "cache_hit": False,
+                "similarity_score": 0.0,
+                "template_id": None,
+                "cached_query": None,
+                "user_query": query,
+                "updated_template": None,
+                "llm_explanation": "No similar query found in cache.",
+            }
+
+        try:
+            template_id = None
+            if cache_hit and 'best_match' in locals():
+                template_id = best_match.get("id")
+
+            usage_log = UsageLog(
+                cache_entry_id=template_id,
+                prompt=query,
+                timestamp=datetime.datetime.utcnow(),
+                success_status=cache_hit,
+                similarity_score=similarity_score if cache_hit else 0.0,
+                error_message=None,
+                catalog_type=catalog_type,
+                catalog_subtype=catalog_subtype,
+                catalog_name=catalog_name,
+                llm_used=use_llm
+            )
+            self.session.add(usage_log)
+            self.session.commit()
+        except Exception as log_error:
+            logger.warning(f"Failed to log cache usage with details: {log_error}")
+            try:
+                self.session.rollback()
+            except:
+                pass
+
+        return response_data

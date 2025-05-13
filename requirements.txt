@@ -8,4 +8,5 @@ scikit-learn>=1.0.0
 requests>=2.28.0
 psycopg2-binary>=2.9.3
 openai>=1.4.0
+selenium>=4.11.2
 # Add other direct dependencies if identified, e.g., specific DB drivers are NOT included here. 
