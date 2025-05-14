@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "../../components/ui/button"
@@ -27,6 +27,9 @@ export default function CacheEntries() {
   const [catalogName, setCatalogName] = useState("")
   const [catalogValues, setCatalogValues] = useState<CatalogValues>({ catalog_types: [], catalog_subtypes: [], catalog_names: [] })
   const [loadingCatalogs, setLoadingCatalogs] = useState(false)
+  const tableRef = useRef<HTMLTableElement>(null)
+  const thRefs = useRef<(HTMLTableCellElement | null)[]>(new Array(5).fill(null))
+  const [columnWidths, setColumnWidths] = useState([65, 10, 15, 5, 5])
   
   useEffect(() => {
     /*
@@ -131,6 +134,42 @@ export default function CacheEntries() {
     }
   }
   
+  useEffect(() => {
+    const handleMouseDown = (e: MouseEvent, index: number) => {
+      const startX = e.pageX;
+      const startWidth = thRefs.current[index]?.offsetWidth || 0;
+      const handleMouseMove = (moveEvent: MouseEvent) => {
+        const newWidth = startWidth + (moveEvent.pageX - startX);
+        const totalWidth = thRefs.current.reduce((sum, ref) => sum + (ref?.offsetWidth || 0), 0);
+        const newWidths = [...columnWidths];
+        newWidths[index] = (newWidth / totalWidth) * 100;
+        setColumnWidths(newWidths);
+      };
+      const handleMouseUp = () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    };
+    thRefs.current.forEach((th, index) => {
+      if (th) {
+        th.addEventListener('mousedown', (e) => {
+          if (e.offsetX > th.offsetWidth - 10) {
+            handleMouseDown(e, index);
+          }
+        });
+      }
+    });
+    return () => {
+      thRefs.current.forEach((th) => {
+        if (th) {
+          th.removeEventListener('mousedown', () => {});
+        }
+      });
+    };
+  }, [columnWidths]);
+  
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -211,14 +250,33 @@ export default function CacheEntries() {
       
       <div className="rounded-md overflow-hidden">
         <div className="relative w-full overflow-auto">
-          <table className="w-full caption-bottom text-sm">
+          <style jsx>{`
+            th {
+              position: relative;
+              user-select: none;
+            }
+            th::after {
+              content: '';
+              position: absolute;
+              right: 0;
+              top: 0;
+              height: 100%;
+              width: 5px;
+              background: transparent;
+              cursor: col-resize;
+            }
+            th:hover::after {
+              background: rgba(255, 255, 255, 0.2);
+            }
+          `}</style>
+          <table className="w-full caption-bottom text-sm" ref={tableRef}>
             <thead className="bg-[#151515] text-neutral-300">
               <tr>
-                <th className="h-10 px-4 text-left font-medium w-[40%]">Query</th>
-                <th className="h-10 px-4 text-left font-medium w-[15%]">Template Type</th>
-                <th className="h-10 px-4 text-left font-medium w-[20%]">Tags</th>
-                <th className="h-10 px-4 text-left font-medium w-[10%]">Usage Count</th>
-                <th className="h-10 px-4 text-left font-medium w-[15%]">Actions</th>
+                <th className="h-10 px-4 text-left font-medium" style={{ width: `${columnWidths[0]}%`, minWidth: '200px' }} ref={(el: HTMLTableCellElement | null) => { thRefs.current[0] = el; }}>Query</th>
+                <th className="h-10 px-4 text-left font-medium" style={{ width: `${columnWidths[1]}%`, minWidth: '100px' }} ref={(el: HTMLTableCellElement | null) => { thRefs.current[1] = el; }}>Template Type</th>
+                <th className="h-10 px-4 text-left font-medium" style={{ width: `${columnWidths[2]}%`, minWidth: '100px' }} ref={(el: HTMLTableCellElement | null) => { thRefs.current[2] = el; }}>Tags</th>
+                <th className="h-10 px-4 text-left font-medium" style={{ width: `${columnWidths[3]}%`, minWidth: '80px' }} ref={(el: HTMLTableCellElement | null) => { thRefs.current[3] = el; }}>Usage Count</th>
+                <th className="h-10 px-4 text-left font-medium" style={{ width: `${columnWidths[4]}%`, minWidth: '100px' }} ref={(el: HTMLTableCellElement | null) => { thRefs.current[4] = el; }}>Actions</th>
               </tr>
             </thead>
             <tbody className="bg-[#1a1a1a] text-neutral-200">
@@ -237,7 +295,7 @@ export default function CacheEntries() {
               ) : (
                 entries.map((entry) => (
                   <tr key={entry.id} className="transition-colors hover:bg-[#222222] border-b border-[#222222]">
-                    <td className="p-4 align-middle w-[40%]">
+                    <td className="p-4 align-middle" style={{ width: `${columnWidths[0]}%`, minWidth: '200px' }}>
                       <div className="truncate font-medium">
                         <Link 
                           href={`/cache-entries/${entry.id}`}
@@ -247,10 +305,10 @@ export default function CacheEntries() {
                         </Link>
                       </div>
                     </td>
-                    <td className="p-4 align-middle w-[15%]">
+                    <td className="p-4 align-middle" style={{ width: `${columnWidths[1]}%`, minWidth: '100px' }}>
                       <span className="capitalize">{entry.template_type}</span>
                     </td>
-                    <td className="p-4 align-middle w-[20%]">
+                    <td className="p-4 align-middle" style={{ width: `${columnWidths[2]}%`, minWidth: '100px' }}>
                       <div className="flex flex-wrap gap-1">
                         {entry.tags && entry.tags.length > 0 ? (
                           entry.tags.map((tag) => (
@@ -266,10 +324,10 @@ export default function CacheEntries() {
                         )}
                       </div>
                     </td>
-                    <td className="p-4 align-middle w-[10%]">
+                    <td className="p-4 align-middle" style={{ width: `${columnWidths[3]}%`, minWidth: '80px' }}>
                       {entry.usage_count}
                     </td>
-                    <td className="p-4 align-middle w-[15%]">
+                    <td className="p-4 align-middle" style={{ width: `${columnWidths[4]}%`, minWidth: '100px' }}>
                       <div className="flex items-center gap-2">
                         <Button variant="ghost" size="icon" asChild className="hover:bg-neutral-700 text-neutral-400">
                           <Link href={`/cache-entries/${entry.id}/edit`}>
