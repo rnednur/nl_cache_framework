@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - '8000:8000'
+    volumes:
+      - ./backend:/app
+    environment:
+      - PORT=8000
+      - MCP_DB_URL=sqlite:///./mcp_cache.db
+      - DEFAULT_MODEL_NAME=sentence-transformers/all-mpnet-base-v2
+      - SIMILARITY_THRESHOLD=0.85
+      - SESSION_TTL=3600
+      - SESSION_CLEANUP_INTERVAL=300
+      - PYTHONPATH=/app
+
+  frontend:
+    build: ./frontend
+    ports:
+      - '3000:3000'
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend 

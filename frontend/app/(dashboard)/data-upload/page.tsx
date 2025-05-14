@@ -265,32 +265,18 @@ export default function DataUploadPage() {
                 <div className="rounded-md border border-neutral-700 bg-neutral-800 p-4 overflow-auto max-h-[300px]">
                   <div className="grid grid-cols-2 gap-y-2">
                     <div className="text-sm font-medium text-neutral-300">Total Entries</div>
-                    <div className="text-sm text-neutral-200">{uploadResult.total_entries}</div>
+                    <div className="text-sm text-neutral-200">{uploadResult.processed + uploadResult.failed}</div>
                     
                     <div className="text-sm font-medium text-neutral-300">Successful</div>
-                    <div className="text-sm text-neutral-200">{uploadResult.successful_entries}</div>
+                    <div className="text-sm text-neutral-200">{uploadResult.processed}</div>
                     
                     <div className="text-sm font-medium text-neutral-300">Failed</div>
-                    <div className="text-sm text-neutral-200">{uploadResult.failed_entries}</div>
+                    <div className="text-sm text-neutral-200">{uploadResult.failed}</div>
                   </div>
-                  
-                  {uploadResult.errors && uploadResult.errors.length > 0 && (
-                    <div className="mt-4 border-t border-neutral-700 pt-4">
-                      <h4 className="text-sm font-medium mb-2 text-neutral-300">Errors</h4>
-                      <ul className="space-y-1 text-xs text-neutral-400">
-                        {uploadResult.errors.map((error, i) => (
-                          <li key={i} className="flex items-start gap-1">
-                            <span className="text-red-400">•</span>
-                            <span>{error}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
                 </div>
                 
                 <div className="mt-4 text-sm text-neutral-400">
-                  Successfully processed {uploadResult.successful_entries} of {uploadResult.total_entries} entries.
+                  Successfully processed {uploadResult.processed} of {uploadResult.processed + uploadResult.failed} entries.
                 </div>
                 
                 <div className="flex justify-end space-x-3 mt-4">
