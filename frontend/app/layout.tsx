@@ -8,6 +8,9 @@ const inter = Inter({ subsets: ['latin'] })
 export const metadata: Metadata = {
   title: 'ThinkForge',
   description: 'A web application for managing chain of thought templates',
+  icons: {
+    icon: '/favicon.ico',
+  },
 }
 
 export default function RootLayout({
