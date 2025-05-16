@@ -23,6 +23,11 @@ export default function DataUploadPage() {
   const [isSwaggerUploading, setIsSwaggerUploading] = useState(false)
   const [swaggerError, setSwaggerError] = useState<string | null>(null)
   
+  // Add catalog fields for both CSV and Swagger uploads
+  const [catalogType, setCatalogType] = useState<string>("")
+  const [catalogSubtype, setCatalogSubtype] = useState<string>("")
+  const [catalogName, setCatalogName] = useState<string>("")
+  
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const selectedFile = e.target.files[0]
@@ -47,7 +52,13 @@ export default function DataUploadPage() {
     setError(null)
     
     try {
-      const result = await api.uploadCsv(file, templateType)
+      const result = await api.uploadCsv(
+        file, 
+        templateType,
+        catalogType || undefined,
+        catalogSubtype || undefined,
+        catalogName || undefined
+      )
       setUploadResult(result)
     } catch (err: any) {
       setError(err.message || "An error occurred during upload")
@@ -61,6 +72,9 @@ export default function DataUploadPage() {
     setFile(null)
     setUploadResult(null)
     setError(null)
+    setCatalogType("")
+    setCatalogSubtype("")
+    setCatalogName("")
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
@@ -76,7 +90,13 @@ export default function DataUploadPage() {
     setSwaggerError(null)
     
     try {
-      const result = await api.uploadSwagger(swaggerUrl, templateType)
+      const result = await api.uploadSwagger(
+        swaggerUrl, 
+        templateType, 
+        catalogType || undefined,
+        catalogSubtype || undefined,
+        catalogName || undefined
+      )
       setUploadResult(result)
     } catch (err: any) {
       setSwaggerError(err.message || "An error occurred during Swagger upload")
@@ -84,6 +104,46 @@ export default function DataUploadPage() {
     } finally {
       setIsSwaggerUploading(false)
     }
+  }
+  
+  // Helper function to render catalog fields
+  const renderCatalogFields = () => {
+    return (
+      <div className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="catalog-type" className="text-neutral-300">Catalog Type (Optional)</Label>
+          <Input
+            id="catalog-type"
+            placeholder="E.g., mysql, postgres, api"
+            value={catalogType}
+            onChange={(e) => setCatalogType(e.target.value)}
+            className="bg-neutral-800 border-neutral-700 text-neutral-300 placeholder:text-neutral-500"
+          />
+        </div>
+        
+        <div className="space-y-2">
+          <Label htmlFor="catalog-subtype" className="text-neutral-300">Catalog Subtype (Optional)</Label>
+          <Input
+            id="catalog-subtype"
+            placeholder="E.g., customer, orders, get"
+            value={catalogSubtype}
+            onChange={(e) => setCatalogSubtype(e.target.value)}
+            className="bg-neutral-800 border-neutral-700 text-neutral-300 placeholder:text-neutral-500"
+          />
+        </div>
+        
+        <div className="space-y-2">
+          <Label htmlFor="catalog-name" className="text-neutral-300">Catalog Name (Optional)</Label>
+          <Input
+            id="catalog-name"
+            placeholder="E.g., customer_query, get_orders"
+            value={catalogName}
+            onChange={(e) => setCatalogName(e.target.value)}
+            className="bg-neutral-800 border-neutral-700 text-neutral-300 placeholder:text-neutral-500"
+          />
+        </div>
+      </div>
+    )
   }
   
   return (
@@ -118,6 +178,8 @@ export default function DataUploadPage() {
                 Your CSV file must include the columns <code className="text-neutral-300">nl_query</code> and <code className="text-neutral-300">template</code>.
                 Optional columns: <code className="text-neutral-300">tags</code>, <code className="text-neutral-300">reasoning_trace</code>, <code className="text-neutral-300">is_template</code>, 
                 <code className="text-neutral-300">catalog_type</code>, <code className="text-neutral-300">catalog_subtype</code>, <code className="text-neutral-300">catalog_name</code>.
+                <br /><br />
+                You can also specify default catalog values below, but values in the CSV file will take precedence.
               </AlertDescription>
             </Alert>
             
@@ -139,6 +201,8 @@ export default function DataUploadPage() {
                 </SelectContent>
               </Select>
             </div>
+            
+            {renderCatalogFields()}
             
             <div className="space-y-2">
               <Label htmlFor="csv-file" className="text-neutral-300">Select CSV File</Label>
@@ -196,6 +260,9 @@ export default function DataUploadPage() {
               <AlertTitle className="text-neutral-300">Swagger Processing</AlertTitle>
               <AlertDescription className="text-neutral-400">
                 Only GET, PUT, and POST operations will be processed into API templates.
+                <br /><br />
+                You can specify catalog values below to categorize all entries. By default, catalog_type will be 'api', 
+                catalog_subtype will be the HTTP method (get, post, put), and catalog_name will be the operationId.
               </AlertDescription>
             </Alert>
             
@@ -210,6 +277,8 @@ export default function DataUploadPage() {
                 className="bg-neutral-800 border-neutral-700 text-neutral-300 placeholder:text-neutral-500"
               />
             </div>
+            
+            {renderCatalogFields()}
             
             {swaggerError && (
               <div className="p-3 border border-red-700 bg-red-900/30 rounded-md text-red-300 flex gap-2">

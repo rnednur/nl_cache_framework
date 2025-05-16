@@ -48,10 +48,9 @@ except ImportError:
 
 class TemplateType(str, Enum):
     """Enumeration for the types of templates supported by the cache."""
-    SQL = "sql"
-    URL = "url"
-    API = "api"
-    sql = "sql"
+    SQL = "sql"  # SQL query templates
+    URL = "url"  # URL templates for API calls
+    API = "api"  # API templates from Swagger/OpenAPI specs
     WORKFLOW = "workflow"
     """Workflow templates store a JSON structure defining a series of steps referencing other cache entries.
     Expected JSON format in the 'template' field:

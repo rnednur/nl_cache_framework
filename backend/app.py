@@ -47,6 +47,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger("mcp_server")
 
+# Add a file handler to write logs to a file
+file_handler = logging.FileHandler('swagger_upload.log')
+file_handler.setLevel(logging.DEBUG)
+file_handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
+logger.addHandler(file_handler)
+
 # Create database tables
 Base.metadata.create_all(bind=engine)
 
@@ -351,6 +357,38 @@ async def get_catalog_values(db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Error fetching catalog values: {str(e)}")
 
 
+@app.get("/v1/catalog/values")
+async def get_catalog_values(db: Session = Depends(get_db)):
+    """Get distinct catalog values for filtering"""
+    try:
+        # Query for distinct catalog types
+        catalog_types = db.query(Text2SQLCache.catalog_type).distinct().filter(
+            Text2SQLCache.catalog_type.is_not(None)
+        ).all()
+        catalog_types = [t[0] for t in catalog_types if t[0]]
+        
+        # Query for distinct catalog subtypes
+        catalog_subtypes = db.query(Text2SQLCache.catalog_subtype).distinct().filter(
+            Text2SQLCache.catalog_subtype.is_not(None)
+        ).all()
+        catalog_subtypes = [t[0] for t in catalog_subtypes if t[0]]
+        
+        # Query for distinct catalog names
+        catalog_names = db.query(Text2SQLCache.catalog_name).distinct().filter(
+            Text2SQLCache.catalog_name.is_not(None)
+        ).all()
+        catalog_names = [t[0] for t in catalog_names if t[0]]
+        
+        return {
+            "catalog_types": catalog_types,
+            "catalog_subtypes": catalog_subtypes,
+            "catalog_names": catalog_names
+        }
+    except Exception as e:
+        logger.error(f"Error fetching catalog values: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error fetching catalog values: {str(e)}")
+
+
 @app.post("/v1/complete")
 async def complete(
     request: CompleteRequest, 
@@ -477,6 +515,9 @@ async def apply_entity_substitution(
 async def list_cache_entries(
     template_type: Optional[str] = None,
     search_query: Optional[str] = None,
+    catalog_type: Optional[str] = None,
+    catalog_subtype: Optional[str] = None,
+    catalog_name: Optional[str] = None,
     page: int = 1,
     page_size: int = 10,
     db: Session = Depends(get_db),
@@ -485,10 +526,21 @@ async def list_cache_entries(
     # Base query
     query = db.query(Text2SQLCache)
     
-    # Apply filters
+    # Apply template type filter
     if template_type:
         query = query.filter(Text2SQLCache.template_type == template_type)
     
+    # Apply catalog filters if specified
+    if catalog_type:
+        query = query.filter(Text2SQLCache.catalog_type == catalog_type)
+    
+    if catalog_subtype:
+        query = query.filter(Text2SQLCache.catalog_subtype == catalog_subtype)
+    
+    if catalog_name:
+        query = query.filter(Text2SQLCache.catalog_name == catalog_name)
+    
+    # Apply search query filter
     if search_query:
         # Search in nl_query, template and tags
         search_pattern = f"%{search_query}%"
@@ -526,7 +578,12 @@ async def list_cache_entries(
             "tags": entry.tags,
             "created_at": entry.created_at.isoformat() if entry.created_at else None,
             "updated_at": entry.updated_at.isoformat() if entry.updated_at else None,
-            "is_valid": entry.status == "active"
+            "is_valid": entry.status == "active",
+            "catalog_type": entry.catalog_type,
+            "catalog_subtype": entry.catalog_subtype,
+            "catalog_name": entry.catalog_name,
+            "status": entry.status,
+            "usage_count": 0  # Placeholder for now, could be calculated from usage logs
         }
         items.append(item)
     
@@ -608,9 +665,13 @@ async def get_cache_entry(entry_id: int, db: Session = Depends(get_db)):
         "reasoning_trace": entry.reasoning_trace,
         # "database_name": entry.database_name,
         # "schema_name": entry.schema_name,
+        "catalog_type": entry.catalog_type,
+        "catalog_subtype": entry.catalog_subtype, 
+        "catalog_name": entry.catalog_name,
         "created_at": entry.created_at.isoformat() if entry.created_at else None,
         "updated_at": entry.updated_at.isoformat() if entry.updated_at else None,
-        "is_valid": entry.status == "active"
+        "is_valid": entry.status == "active",
+        "status": entry.status
     }
 
 
@@ -777,13 +838,33 @@ async def list_usage_logs(
 async def upload_csv(
     file: UploadFile = File(...),
     template_type: str = "sql",
+    catalog_type: Optional[str] = None,
+    catalog_subtype: Optional[str] = None,
+    catalog_name: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     """
     Upload and process a CSV file to create cache entries.
     
-    The CSV should have at least 'nl_query' and 'template' columns.
-    Additional columns can include 'tags', 'catalog_type', etc.
+    The CSV should have at least 'nl_query' (or 'text_query') and 'template' (or 'sql_command') columns.
+    Any additional columns present in the CSV will be processed if they match valid cache entry fields.
+    
+    Optional parameters:
+    - template_type: Default template type to use if not specified in CSV (default: 'sql')
+    - catalog_type: Default catalog type to assign if not in CSV
+    - catalog_subtype: Default catalog subtype to assign if not in CSV
+    - catalog_name: Default catalog name to assign if not in CSV
+    
+    Supported columns include:
+    - nl_query, text_query: Natural language query
+    - template, sql_command, sql_query: Template content
+    - template_type, type: Type of template (sql, url, api, etc.)
+    - reasoning_trace, reason, explanation: Explanation of the template
+    - tags: Comma-separated list of tags
+    - is_template: Boolean flag for template entries
+    - catalog_type, catalog_subtype, catalog_name: Catalog identifiers
+    - entity_replacements: JSON string of entity replacements
+    - status: Entry status (active, pending, archive)
     """
     
     if not file.filename.endswith('.csv'):
@@ -796,17 +877,49 @@ async def upload_csv(
         csv_io = io.StringIO(csv_text)
         reader = csv.DictReader(csv_io)
         
-        # Validate CSV structure
-        required_fields = ['nl_query', 'template']
-        first_row = next(reader, None)
-        csv_io.seek(0)  # Reset to start for full processing
-        reader = csv.DictReader(csv_io)  # Re-initialize reader
+        # Column name mappings
+        field_mappings = {
+            'text_query': 'nl_query',
+            'sql_command': 'template',
+            'sql_query': 'template',
+            'query': 'nl_query',
+            'command': 'template',
+            'reason': 'reasoning_trace',
+            'explanation': 'reasoning_trace',
+            'type': 'template_type',
+        }
         
-        if not first_row or not all(field in first_row for field in required_fields):
-            raise HTTPException(
-                status_code=400,
-                detail=f"CSV must contain at least these columns: {', '.join(required_fields)}"
-            )
+        # Boolean fields
+        boolean_fields = ['is_template']
+        
+        # Check if required columns exist by checking headers
+        header = reader.fieldnames
+        logger.info(f"CSV headers: {header}")
+        
+        if not header:
+            raise HTTPException(status_code=400, detail="CSV file has no headers")
+        
+        # Map header names using field_mappings
+        mapped_headers = []
+        for h in header:
+            mapped_h = field_mappings.get(h.lower(), h.lower())
+            mapped_headers.append(mapped_h)
+        
+        # Check for required fields after mapping
+        has_query = any(h in mapped_headers for h in ['nl_query'])
+        has_template = any(h in mapped_headers for h in ['template'])
+        
+        if not (has_query and has_template) and not all(h in header for h in ['nl_query', 'template']):
+            # Try original field names as fallback
+            has_query = any(h in header for h in ['text_query', 'nl_query', 'query'])
+            has_template = any(h in header for h in ['sql_command', 'template', 'sql_query', 'command'])
+            
+            if not (has_query and has_template):
+                raise HTTPException(
+                    status_code=400,
+                    detail="CSV must contain at least one query column (nl_query, text_query) "
+                           "and one template column (template, sql_command)"
+                )
         
         # Process each row
         controller = get_controller(db)
@@ -814,50 +927,92 @@ async def upload_csv(
         failed_count = 0
         results = []
         
+        # Reset reader to first row
+        csv_io.seek(0)
+        reader = csv.DictReader(csv_io)
+        
         for row in reader:
             try:
-                # Skip empty rows
-                if not row['nl_query'].strip() or not row['template'].strip():
-                    continue
+                entry_data = {}
                 
-                # Extract fields with defaults
-                nl_query = row['nl_query'].strip()
-                template = row['template'].strip()
-                is_template = row.get('is_template', 'false').lower() == 'true'
+                # Process each field from the row
+                for key, value in row.items():
+                    # Skip empty values
+                    if not value or str(value).strip() == '':
+                        continue
+                    
+                    # Get the mapped field name
+                    field_name = field_mappings.get(key.lower(), key.lower())
+                    
+                    # Handle boolean fields
+                    if field_name in boolean_fields:
+                        entry_data[field_name] = str(value).lower() in ['true', 'yes', 'y', '1']
+                    
+                    # Handle tags as a list if it's comma-separated
+                    elif field_name == 'tags' and isinstance(value, str):
+                        entry_data[field_name] = [tag.strip() for tag in value.split(',') if tag.strip()]
+                    
+                    # Try to parse entity_replacements as JSON if provided
+                    elif field_name == 'entity_replacements' and isinstance(value, str):
+                        try:
+                            entry_data[field_name] = json.loads(value)
+                        except json.JSONDecodeError:
+                            logger.warning(f"Invalid JSON in entity_replacements: {value}")
+                            # Skip this field if JSON is invalid
+                    
+                    # Use the value as-is
+                    else:
+                        entry_data[field_name] = value
                 
-                # Handle optional fields
-                tags = row.get('tags', '').split(',') if row.get('tags') else None
-                tags = [tag.strip() for tag in tags] if tags else None
+                # Ensure we have the required fields
+                if 'nl_query' not in entry_data:
+                    for field in ['text_query', 'query']:
+                        if field in row and row[field].strip():
+                            entry_data['nl_query'] = row[field].strip()
+                            break
+                    if 'nl_query' not in entry_data:
+                        raise ValueError("No natural language query found in row")
                 
-                reasoning_trace = row.get('reasoning_trace', None)
-                entity_replacements = None  # Would need to parse JSON if provided
+                if 'template' not in entry_data:
+                    for field in ['sql_command', 'sql_query', 'command']:
+                        if field in row and row[field].strip():
+                            entry_data['template'] = row[field].strip()
+                            break
+                    if 'template' not in entry_data:
+                        raise ValueError("No template found in row")
                 
-                catalog_type = row.get('catalog_type', None)
-                catalog_subtype = row.get('catalog_subtype', None)
-                catalog_name = row.get('catalog_name', None)
+                # Use template type from CSV or fall back to endpoint param
+                template_type_value = entry_data.get('template_type', template_type).lower()
                 
-                # Add to cache with embeddings
                 try:
-                    template_type_enum = TemplateType(template_type.lower())
+                    template_type_enum = TemplateType(template_type_value)
                 except ValueError:
+                    logger.warning(f"Invalid template type '{template_type_value}', defaulting to 'sql'")
                     template_type_enum = TemplateType.sql
                 
+                # Use catalog values from CSV if present, otherwise use function parameters as defaults
+                entry_catalog_type = entry_data.get('catalog_type') or catalog_type
+                entry_catalog_subtype = entry_data.get('catalog_subtype') or catalog_subtype
+                entry_catalog_name = entry_data.get('catalog_name') or catalog_name
+                
+                # Extract fields for add_query method
                 new_entry = controller.add_query(
-                    nl_query=nl_query,
-                    template=template,
+                    nl_query=entry_data.get('nl_query'),
+                    template=entry_data.get('template'),
                     template_type=template_type_enum,
-                    reasoning_trace=reasoning_trace,
-                    is_template=is_template,
-                    entity_replacements=entity_replacements,
-                    tags=tags,
-                    catalog_type=catalog_type,
-                    catalog_subtype=catalog_subtype,
-                    catalog_name=catalog_name,
+                    reasoning_trace=entry_data.get('reasoning_trace'),
+                    is_template=entry_data.get('is_template', False),
+                    entity_replacements=entry_data.get('entity_replacements'),
+                    tags=entry_data.get('tags'),
+                    catalog_type=entry_catalog_type,
+                    catalog_subtype=entry_catalog_subtype,
+                    catalog_name=entry_catalog_name,
+                    status=entry_data.get('status', 'active'),
                 )
                 
                 results.append({
                     "id": new_entry.get("id"),
-                    "nl_query": nl_query,
+                    "nl_query": entry_data.get('nl_query'),
                     "status": "success"
                 })
                 processed_count += 1
@@ -865,7 +1020,7 @@ async def upload_csv(
             except Exception as e:
                 logger.error(f"Error processing row: {str(e)}")
                 results.append({
-                    "nl_query": row.get('nl_query', 'unknown'),
+                    "nl_query": row.get('nl_query', row.get('text_query', 'unknown')),
                     "status": "error",
                     "error": str(e)
                 })
@@ -887,30 +1042,53 @@ async def upload_csv(
 async def upload_swagger(
     swagger_url: str = Body(..., embed=True),
     template_type: str = "api",
+    catalog_type: Optional[str] = Body(None, embed=True),
+    catalog_subtype: Optional[str] = Body(None, embed=True),
+    catalog_name: Optional[str] = Body(None, embed=True),
     db: Session = Depends(get_db)
 ):
     """
     Process a Swagger URL to generate natural language queries and API templates using an LLM.
     Only GET, PUT, and POST operations are processed.
+    
+    Optional parameters:
+    - catalog_type: Catalog type to assign to all entries (default: 'api')
+    - catalog_subtype: Catalog subtype to assign to all entries (default: method name)
+    - catalog_name: Catalog name to assign to all entries (default: operationId)
     """
+    logger.info(f"Received Swagger upload request for URL: {swagger_url}")
     try:
         # Fetch Swagger JSON
-        response = requests.get(swagger_url)
+        logger.info(f"Attempting to fetch Swagger JSON from: {swagger_url} with 10-second timeout")
+        response = requests.get(swagger_url, timeout=10)  # Add a 10-second timeout
         if response.status_code != 200:
+            logger.error(f"Failed to fetch Swagger JSON. Status code: {response.status_code}")
             raise HTTPException(status_code=400, detail=f"Failed to fetch Swagger JSON from {swagger_url}")
         
-        swagger_data = response.json()
+        logger.info(f"Successfully fetched Swagger JSON. Content length: {len(response.text)}")
+        
+        try:
+            swagger_data = response.json()
+            logger.info(f"Successfully parsed Swagger JSON")
+        except Exception as e:
+            logger.error(f"Failed to parse Swagger JSON: {str(e)}")
+            raise HTTPException(status_code=400, detail=f"Invalid JSON in Swagger response: {str(e)}")
+        
         controller = get_controller(db)
         processed_count = 0
         failed_count = 0
         results = []
         
         # Process paths for GET, PUT, POST operations
+        paths_count = len(swagger_data.get('paths', {}))
+        logger.info(f"Processing {paths_count} paths from Swagger definition")
+        
         for path, methods in swagger_data.get('paths', {}).items():
             for method, details in methods.items():
                 if method.lower() not in ['get', 'put', 'post']:
                     continue
                 
+                logger.debug(f"Processing {method.upper()} {path}")
                 try:
                     # Generate natural language query and reasoning trace using LLM
                     operation_id = details.get('operationId', f"{method.upper()} {path}")
@@ -932,23 +1110,43 @@ async def upload_swagger(
                     reasoning_trace = f"This template was generated from Swagger for {method.upper()} operation on {path}."
                     
                     # Add to cache
-                    new_entry = controller.add_query(
-                        nl_query=nl_query,
-                        template=template_str,
-                        template_type=TemplateType.api,
-                        reasoning_trace=reasoning_trace,
-                        is_template=False,
-                        catalog_type='api',
-                        catalog_subtype=method.lower(),
-                        catalog_name=operation_id
-                    )
-                    
-                    results.append({
-                        "id": new_entry.get("id"),
-                        "nl_query": nl_query,
-                        "status": "success"
-                    })
-                    processed_count += 1
+                    logger.info(f"Attempting to add to cache: {method.upper()} {path} with template_type={TemplateType.API}")
+                    try:
+                        # Use user-specified catalog values if provided, otherwise use defaults
+                        entry_catalog_type = catalog_type or 'api'
+                        entry_catalog_subtype = catalog_subtype or method.lower()
+                        entry_catalog_name = catalog_name or operation_id
+                        
+                        new_entry = controller.add_query(
+                            nl_query=nl_query,
+                            template=template_str,
+                            template_type=TemplateType.API,
+                            reasoning_trace=reasoning_trace,
+                            is_template=False,
+                            catalog_type=entry_catalog_type,
+                            catalog_subtype=entry_catalog_subtype,
+                            catalog_name=entry_catalog_name
+                        )
+                        
+                        logger.info(f"Successfully added to cache: {method.upper()} {path} with ID {new_entry.get('id', 'unknown')}")
+                        
+                        results.append({
+                            "id": new_entry.get("id"),
+                            "nl_query": nl_query,
+                            "status": "success"
+                        })
+                        processed_count += 1
+                    except Exception as add_error:
+                        logger.error(f"Error adding query to cache: {str(add_error)}", exc_info=True)
+                        results.append({
+                            "nl_query": f"{method.upper()} {path}",
+                            "status": "error",
+                            "error": f"Cache error: {str(add_error)}"
+                        })
+                        failed_count += 1
+                        continue
+                        
+                    logger.debug(f"Successfully processed {method.upper()} {path}")
                 except Exception as e:
                     logger.error(f"Error processing {method} {path}: {str(e)}")
                     results.append({
@@ -958,15 +1156,89 @@ async def upload_swagger(
                     })
                     failed_count += 1
         
+        logger.info(f"Swagger processing complete. Processed: {processed_count}, Failed: {failed_count}")
         return {
             "status": "completed",
             "processed": processed_count,
             "failed": failed_count,
             "results": results
         }
+    except requests.exceptions.Timeout:
+        logger.error(f"Timeout while fetching Swagger JSON from {swagger_url}")
+        raise HTTPException(status_code=504, detail=f"Timeout while fetching Swagger JSON from {swagger_url}")
+    except requests.exceptions.ConnectionError:
+        logger.error(f"Connection error while fetching Swagger JSON from {swagger_url}")
+        raise HTTPException(status_code=502, detail=f"Connection error while fetching Swagger JSON from {swagger_url}")
     except Exception as e:
         logger.error(f"Error processing Swagger URL: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error processing Swagger URL: {str(e)}")
+
+
+@app.post("/v1/generate/reasoning_trace")
+async def generate_reasoning_trace(
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """Generate a reasoning trace for a cache entry using LLM.
+    
+    Takes natural language query and template and returns a reasoning trace that
+    explains how the template addresses the query.
+    """
+    try:
+        data = await request.json()
+        nl_query = data.get('nl_query')
+        template = data.get('template')
+        template_type = data.get('template_type', 'sql')
+        
+        if not nl_query or not template:
+            raise HTTPException(status_code=400, detail="nl_query and template are required")
+        
+        # Check if LLM service is available
+        if not LLMService or not LLMService.is_configured():
+            raise HTTPException(
+                status_code=400, 
+                detail="LLM service is not configured. Set OPENROUTER_API_KEY in .env file."
+            )
+        
+        # Create LLM service instance
+        llm_service = LLMService(model=os.environ.get("OPENROUTER_MODEL", "google/gemini-pro"))
+        
+        # Prepare prompt for reasoning trace generation
+        prompt = f"""You are an expert in explaining how database queries, APIs, or other templates address natural language questions.
+
+Natural Language Query: "{nl_query}"
+
+Template ({template_type}): 
+{template}
+
+Provide a clear, concise explanation of how this template addresses the natural language query. 
+Explain the logic, approach, and any transformations or calculations involved.
+Focus on helping a non-technical user understand the relationship between their question and the provided solution.
+
+Your explanation should be:
+1. Clear and concise (2-4 paragraphs)
+2. Technically accurate
+3. Focused on how the template addresses the specific query
+"""
+        
+        # Make the API call using the OpenAI client
+        response = llm_service.client.chat.completions.create(
+            model=llm_service.model,
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant that explains technical solutions clearly."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3,
+        )
+        
+        # Extract content from the response
+        reasoning_trace = response.choices[0].message.content
+        
+        return {"reasoning_trace": reasoning_trace}
+    
+    except Exception as e:
+        logger.error(f"Error generating reasoning trace: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error generating reasoning trace: {str(e)}")
 
 
 if __name__ == "__main__":

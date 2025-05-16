@@ -113,7 +113,10 @@ const api = {
     page: number = 1, 
     pageSize: number = 10,
     templateType?: string,
-    searchQuery?: string
+    searchQuery?: string,
+    catalogType?: string,
+    catalogSubtype?: string,
+    catalogName?: string
   ): Promise<{ items: CacheItem[], total: number }> {
     try {
       let url = `${API_BASE}/v1/cache?page=${page}&page_size=${pageSize}`;
@@ -124,6 +127,18 @@ const api = {
       
       if (searchQuery) {
         url += `&search_query=${encodeURIComponent(searchQuery)}`;
+      }
+      
+      if (catalogType) {
+        url += `&catalog_type=${encodeURIComponent(catalogType)}`;
+      }
+      
+      if (catalogSubtype) {
+        url += `&catalog_subtype=${encodeURIComponent(catalogSubtype)}`;
+      }
+      
+      if (catalogName) {
+        url += `&catalog_name=${encodeURIComponent(catalogName)}`;
       }
       
       const response = await fetch(url);
@@ -148,7 +163,14 @@ const api = {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       
-      return await response.json();
+      const data = await response.json();
+      
+      // Add logging to see if catalog fields are missing
+      if (data.catalog_type === undefined && data.catalog_subtype === undefined && data.catalog_name === undefined) {
+        console.warn('Backend API does not include catalog fields in response');
+      }
+      
+      return data;
     } catch (error) {
       console.error(`Error fetching cache entry with ID ${id}:`, error);
       throw error;
@@ -288,10 +310,10 @@ const api = {
     }
   },
   
-  // Get distinct catalog values
+  // Get catalog values for filtering
   async getCatalogValues(): Promise<CatalogValues> {
     try {
-      const response = await fetch(`${API_BASE}/v1/cache/catalogs`);
+      const response = await fetch(`${API_BASE}/v1/catalog/values`);
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -455,13 +477,20 @@ const api = {
         url += `?${params.toString()}`;
       }
       
+      // Add timeout handling
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+      
       const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ prompt: request.prompt }),
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId);
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -469,20 +498,42 @@ const api = {
       }
       
       return await response.json();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error with completion request:', error);
+      
+      if (error.name === 'AbortError') {
+        throw new Error('Request timed out. The server took too long to respond.');
+      }
+      
       throw error;
     }
   },
 
   // Upload CSV file to create cache entries
-  async uploadCsv(file: File, templateType: string = 'sql'): Promise<CsvUploadResponse> {
+  async uploadCsv(
+    file: File, 
+    templateType: string = 'sql',
+    catalogType?: string,
+    catalogSubtype?: string,
+    catalogName?: string
+  ): Promise<CsvUploadResponse> {
     try {
       const formData = new FormData();
       formData.append('file', file);
       
-      // Add template_type as a query parameter
-      const url = `${API_BASE}/v1/upload/csv?template_type=${encodeURIComponent(templateType)}`;
+      // Build URL with query parameters
+      let url = `${API_BASE}/v1/upload/csv?template_type=${encodeURIComponent(templateType)}`;
+      
+      // Add catalog parameters if provided
+      if (catalogType) {
+        url += `&catalog_type=${encodeURIComponent(catalogType)}`;
+      }
+      if (catalogSubtype) {
+        url += `&catalog_subtype=${encodeURIComponent(catalogSubtype)}`;
+      }
+      if (catalogName) {
+        url += `&catalog_name=${encodeURIComponent(catalogName)}`;
+      }
       
       const response = await fetch(url, {
         method: 'POST',
@@ -502,19 +553,42 @@ const api = {
   },
 
   // Upload Swagger URL to generate API templates
-  async uploadSwagger(swaggerUrl: string, templateType: string = 'api'): Promise<CsvUploadResponse> {
+  async uploadSwagger(
+    swaggerUrl: string, 
+    templateType: string = 'api',
+    catalogType?: string,
+    catalogSubtype?: string,
+    catalogName?: string
+  ): Promise<CsvUploadResponse> {
     try {
-      const url = `${API_BASE}/v1/upload/swagger`;
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 seconds timeout
-      const response = await fetch(url, {
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30-second timeout
+      
+      // Create request body with all parameters
+      const requestBody: any = { 
+        swagger_url: swaggerUrl 
+      };
+      
+      // Add catalog parameters if provided
+      if (catalogType) {
+        requestBody.catalog_type = catalogType;
+      }
+      if (catalogSubtype) {
+        requestBody.catalog_subtype = catalogSubtype;
+      }
+      if (catalogName) {
+        requestBody.catalog_name = catalogName;
+      }
+      
+      const response = await fetch(`${API_BASE}/v1/upload/swagger`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ swagger_url: swaggerUrl, template_type: templateType }),
+        body: JSON.stringify(requestBody),
         signal: controller.signal
       });
+      
       clearTimeout(timeoutId);
       
       if (!response.ok) {
@@ -523,11 +597,41 @@ const api = {
       }
       
       return await response.json();
-    } catch (error: unknown) {
+    } catch (error: any) {
       console.error('Error uploading Swagger URL:', error);
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error('Request timed out. Please check your internet connection or try again later.');
+      
+      if (error.name === 'AbortError') {
+        throw new Error('Request timed out. The server took too long to respond.');
       }
+      
+      throw error;
+    }
+  },
+  
+  // Generate reasoning trace using LLM
+  async generateReasoningTrace(nl_query: string, template: string, template_type: string): Promise<string> {
+    try {
+      const response = await fetch(`${API_BASE}/v1/generate/reasoning_trace`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          nl_query,
+          template,
+          template_type
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      return data.reasoning_trace;
+    } catch (error) {
+      console.error('Error generating reasoning trace:', error);
       throw error;
     }
   }
