@@ -74,24 +74,44 @@ export default function CompleteTestPage() {
       if (catalogSubtype) request.catalog_subtype = catalogSubtype
       if (catalogName) request.catalog_name = catalogName
       
-      const response = await api.complete(request)
+      // Add timeout handling
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
       
-      // Adapt response to UI expectations
-      const extendedResponse: ExtendedCompleteResponse = {
-        ...response,
-        success: response.cache_hit,
-        result: response.updated_template || response.cache_template,
-        processed_prompt: response.user_query,
-        llm_used: useLlm
+      try {
+        const response = await api.complete(request);
+        clearTimeout(timeoutId);
+        
+        // Adapt response to UI expectations
+        const extendedResponse: ExtendedCompleteResponse = {
+          ...response,
+          success: response.cache_hit,
+          result: response.updated_template || response.cache_template,
+          processed_prompt: response.user_query,
+          llm_used: useLlm
+        }
+        
+        setResult(extendedResponse)
+        
+        // Add to history
+        setResultsHistory(prev => [...prev, extendedResponse])
+        setCurrentHistoryIndex(prev => prev + 1)
+      } catch (fetchError: any) {
+        clearTimeout(timeoutId);
+        
+        if (fetchError.name === 'AbortError') {
+          setError("Request timed out. The server took too long to respond.");
+        } else {
+          throw fetchError; // Let the outer catch handle other types of errors
+        }
       }
-      
-      setResult(extendedResponse)
-      
-      // Add to history
-      setResultsHistory(prev => [...prev, extendedResponse])
-      setCurrentHistoryIndex(prev => prev + 1)
     } catch (err: any) {
-      setError(err.message || "An error occurred while processing your request")
+      console.error("API request failed:", err);
+      if (err instanceof TypeError && err.message.includes('Failed to fetch')) {
+        setError("Cannot connect to the backend server. Please check if the server is running.");
+      } else {
+        setError(err.message || "An error occurred while processing your request");
+      }
       setResult(null)
     } finally {
       setLoading(false)

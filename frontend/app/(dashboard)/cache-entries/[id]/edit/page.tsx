@@ -12,12 +12,14 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import api, { CacheEntryCreate, CacheItem } from "../../../../services/api"
 import { Label } from "../../../../components/ui/label"
 import { CacheEntryForm } from "../CacheEntryForm"
+import { toast } from "../../../../components/ui/use-toast"
 
 export default function EditCacheEntry({ params }: { params: { id: string } }) {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isGeneratingReasoning, setIsGeneratingReasoning] = useState(false)
   
   // Form state
   const [nlQuery, setNlQuery] = useState("")
@@ -57,6 +59,40 @@ export default function EditCacheEntry({ params }: { params: { id: string } }) {
     fetchEntry()
   }, [params.id])
   
+  const handleGenerateReasoning = async () => {
+    if (!nlQuery.trim() || !template.trim()) {
+      toast({
+        title: "Missing information",
+        description: "Both Natural Language Query and Template are required to generate reasoning.",
+        variant: "destructive"
+      })
+      return
+    }
+    
+    setIsGeneratingReasoning(true)
+    try {
+      const generatedReasoning = await api.generateReasoningTrace(
+        nlQuery, 
+        template,
+        templateType
+      )
+      setReasoningTrace(generatedReasoning)
+      toast({
+        title: "Reasoning generated",
+        description: "AI has generated a reasoning trace for your query and template."
+      })
+    } catch (err) {
+      console.error("Failed to generate reasoning:", err)
+      toast({
+        title: "Failed to generate reasoning",
+        description: err instanceof Error ? err.message : "An error occurred while generating reasoning.",
+        variant: "destructive"
+      })
+    } finally {
+      setIsGeneratingReasoning(false)
+    }
+  }
+  
   const addTag = () => {
     if (tagInput.trim() !== "" && !tags.includes(tagInput.trim())) {
       setTags([...tags, tagInput.trim()])
@@ -80,6 +116,13 @@ export default function EditCacheEntry({ params }: { params: { id: string } }) {
     
     // Debug log
     console.log("Submitting with nlQuery:", nlQuery)
+    console.log("Catalog values:", { 
+      catalogType, 
+      catalogSubtype, 
+      catalogName, 
+      type: typeof catalogType, 
+      isUndefined: catalogType === undefined 
+    })
 
     if (!nlQuery.trim() || !template.trim()) {
       setError("Natural Language Query and Template are required.")
@@ -90,6 +133,11 @@ export default function EditCacheEntry({ params }: { params: { id: string } }) {
     setError(null)
     
     try {
+      // Prepare the catalog fields, ensuring they're either valid strings or undefined
+      const catalogTypeValue = catalogType?.trim() || undefined
+      const catalogSubtypeValue = catalogSubtype?.trim() || undefined
+      const catalogNameValue = catalogName?.trim() || undefined
+      
       const entry: Partial<CacheEntryCreate> = {
         nl_query: nlQuery,
         template: template,
@@ -97,9 +145,9 @@ export default function EditCacheEntry({ params }: { params: { id: string } }) {
         is_template: true,
         tags: tags.length > 0 ? tags : undefined,
         reasoning_trace: reasoningTrace || undefined,
-        catalog_type: catalogType || undefined,
-        catalog_subtype: catalogSubtype || undefined,
-        catalog_name: catalogName || undefined,
+        catalog_type: catalogTypeValue,
+        catalog_subtype: catalogSubtypeValue,
+        catalog_name: catalogNameValue,
         status: status
       }
       
@@ -169,6 +217,8 @@ export default function EditCacheEntry({ params }: { params: { id: string } }) {
               handleKeyDown={handleKeyDown}
               error={error}
               readOnly={false}
+              onGenerateReasoning={handleGenerateReasoning}
+              isGeneratingReasoning={isGeneratingReasoning}
             >
               <CardFooter className="flex justify-end space-x-4 border-t pt-6 mt-6">
                 <Button 

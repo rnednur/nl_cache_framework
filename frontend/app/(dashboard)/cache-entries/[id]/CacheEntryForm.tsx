@@ -32,6 +32,8 @@ interface CacheEntryFormProps {
   error?: string | null;
   readOnly?: boolean;
   children?: React.ReactNode;
+  onGenerateReasoning?: () => void;
+  isGeneratingReasoning?: boolean;
 }
 
 export function CacheEntryForm({
@@ -60,6 +62,8 @@ export function CacheEntryForm({
   error,
   readOnly,
   children,
+  onGenerateReasoning,
+  isGeneratingReasoning,
 }: CacheEntryFormProps) {
   return (
     <Card className="w-full border-0 shadow-none">
@@ -71,7 +75,7 @@ export function CacheEntryForm({
               id="catalogType"
               placeholder="Enter catalog type"
               value={catalogType || ""}
-              onChange={setCatalogType ? (e) => setCatalogType(e.target.value || undefined) : undefined}
+              onChange={setCatalogType ? (e) => setCatalogType(e.target.value ? e.target.value : undefined) : undefined}
               disabled={readOnly}
             />
           </div>
@@ -81,7 +85,7 @@ export function CacheEntryForm({
               id="catalogSubtype"
               placeholder="Enter catalog subtype"
               value={catalogSubtype || ""}
-              onChange={setCatalogSubtype ? (e) => setCatalogSubtype(e.target.value || undefined) : undefined}
+              onChange={setCatalogSubtype ? (e) => setCatalogSubtype(e.target.value ? e.target.value : undefined) : undefined}
               disabled={readOnly}
             />
           </div>
@@ -91,7 +95,7 @@ export function CacheEntryForm({
               id="catalogName"
               placeholder="Enter catalog name"
               value={catalogName || ""}
-              onChange={setCatalogName ? (e) => setCatalogName(e.target.value || undefined) : undefined}
+              onChange={setCatalogName ? (e) => setCatalogName(e.target.value ? e.target.value : undefined) : undefined}
               disabled={readOnly}
             />
           </div>
@@ -325,14 +329,34 @@ export function CacheEntryForm({
 
         <div className="grid gap-2">
           <Label htmlFor="reasoning">Reasoning Trace</Label>
-          <Textarea
-            id="reasoning"
-            placeholder="Explain how this template relates to the query..."
-            className="min-h-[100px]"
-            value={reasoningTrace}
-            onChange={setReasoningTrace ? (e) => setReasoningTrace(e.target.value) : undefined}
-            disabled={readOnly}
-          />
+          <div className="flex gap-2">
+            <Textarea
+              id="reasoning"
+              placeholder="Explain how this template relates to the query..."
+              className="min-h-[100px] flex-1"
+              value={reasoningTrace}
+              onChange={setReasoningTrace ? (e) => setReasoningTrace(e.target.value) : undefined}
+              disabled={readOnly}
+            />
+            {!readOnly && setReasoningTrace && (
+              <Button 
+                type="button" 
+                className="h-10 whitespace-nowrap" 
+                variant="outline"
+                onClick={onGenerateReasoning}
+                disabled={!nlQuery.trim() || !template.trim() || isGeneratingReasoning}
+              >
+                {isGeneratingReasoning ? (
+                  <>
+                    <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
+                    Generating...
+                  </>
+                ) : (
+                  "Generate with AI"
+                )}
+              </Button>
+            )}
+          </div>
         </div>
 
         <div className="grid gap-2">

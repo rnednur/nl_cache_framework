@@ -22,14 +22,14 @@ export default function CacheEntries() {
   const [searchQuery, setSearchQuery] = useState("")
   const [searchInputValue, setSearchInputValue] = useState("")
   const [useSimilaritySearch, setUseSimilaritySearch] = useState(false)
-  const [catalogType, setCatalogType] = useState("")
-  const [catalogSubtype, setCatalogSubtype] = useState("")
-  const [catalogName, setCatalogName] = useState("")
+  const [catalogType, setCatalogType] = useState("all")
+  const [catalogSubtype, setCatalogSubtype] = useState("all")
+  const [catalogName, setCatalogName] = useState("all")
   const [catalogValues, setCatalogValues] = useState<CatalogValues>({ catalog_types: [], catalog_subtypes: [], catalog_names: [] })
   const [loadingCatalogs, setLoadingCatalogs] = useState(false)
   const tableRef = useRef<HTMLTableElement>(null)
-  const thRefs = useRef<(HTMLTableCellElement | null)[]>(new Array(5).fill(null))
-  const [columnWidths, setColumnWidths] = useState([65, 10, 15, 5, 5])
+  const thRefs = useRef<(HTMLTableCellElement | null)[]>(new Array(6).fill(null))
+  const [columnWidths, setColumnWidths] = useState([60, 10, 10, 10, 5, 5])
   
   useEffect(() => {
     /*
@@ -50,6 +50,22 @@ export default function CacheEntries() {
   }, [])
   
   useEffect(() => {
+    // Uncomment this to fetch catalog values
+    const fetchCatalogValues = async () => {
+      setLoadingCatalogs(true)
+      try {
+        const values = await api.getCatalogValues()
+        setCatalogValues(values)
+      } catch (err) {
+        console.error("Failed to fetch catalog values", err)
+      } finally {
+        setLoadingCatalogs(false)
+      }
+    }
+    fetchCatalogValues()
+  }, [])
+  
+  useEffect(() => {
     const fetchEntries = async () => {
       setLoading(true)
       try {
@@ -59,7 +75,10 @@ export default function CacheEntries() {
             searchQuery,
             templateType === "all" ? undefined : templateType,
             0.7,
-            10
+            10,
+            catalogType === "all" ? undefined : catalogType,
+            catalogSubtype === "all" ? undefined : catalogSubtype,
+            catalogName === "all" ? undefined : catalogName
           )
           setEntries(results)
           setTotalEntries(results.length)
@@ -69,7 +88,10 @@ export default function CacheEntries() {
             currentPage, 
             pageSize,
             templateType === "all" ? undefined : templateType,
-            searchQuery || undefined
+            searchQuery || undefined,
+            catalogType === "all" ? undefined : catalogType,
+            catalogSubtype === "all" ? undefined : catalogSubtype,
+            catalogName === "all" ? undefined : catalogName
           )
           setEntries(data.items)
           setTotalEntries(data.total)
@@ -82,7 +104,7 @@ export default function CacheEntries() {
     }
     
     fetchEntries()
-  }, [currentPage, pageSize, templateType, searchQuery, useSimilaritySearch])
+  }, [currentPage, pageSize, templateType, searchQuery, useSimilaritySearch, catalogType, catalogSubtype, catalogName])
   
   const totalPages = Math.ceil(totalEntries / pageSize)
   
@@ -113,7 +135,10 @@ export default function CacheEntries() {
           currentPage,
           pageSize,
           templateType === "all" ? undefined : templateType,
-          searchQuery || undefined
+          searchQuery || undefined,
+          catalogType === "all" ? undefined : catalogType,
+          catalogSubtype === "all" ? undefined : catalogSubtype,
+          catalogName === "all" ? undefined : catalogName
         )
         setEntries(data.items)
         setTotalEntries(data.total)
@@ -190,59 +215,138 @@ export default function CacheEntries() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="w-full sm:w-1/3">
-              <Select
-                value={templateType}
-                onValueChange={(value) => {
-                  setTemplateType(value)
-                  setCurrentPage(1)
-                }}
-              >
-                <SelectTrigger className="bg-neutral-800 border-neutral-700 text-neutral-300">
-                  <SelectValue placeholder="All template types" />
-                </SelectTrigger>
-                <SelectContent className="bg-neutral-800 border-neutral-700 text-neutral-300">
-                  <SelectItem value="all" className="text-neutral-300">All template types</SelectItem>
-                  <SelectItem value="sql" className="text-neutral-300">SQL</SelectItem>
-                  <SelectItem value="url" className="text-neutral-300">URL</SelectItem>
-                  <SelectItem value="api" className="text-neutral-300">API</SelectItem>
-                  <SelectItem value="workflow" className="text-neutral-300">Workflow</SelectItem>
-                  <SelectItem value="graphql" className="text-neutral-300">GraphQL</SelectItem>
-                  <SelectItem value="regex" className="text-neutral-300">Regex</SelectItem>
-                  <SelectItem value="script" className="text-neutral-300">Script</SelectItem>
-                  <SelectItem value="nosql" className="text-neutral-300">NoSQL</SelectItem>
-                  <SelectItem value="cli" className="text-neutral-300">CLI</SelectItem>
-                  <SelectItem value="reasoning_steps" className="text-neutral-300">Reasoning Steps</SelectItem>
-                </SelectContent>
-              </Select>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="w-full sm:w-1/3">
+                <Select
+                  value={templateType}
+                  onValueChange={(value) => {
+                    setTemplateType(value)
+                    setCurrentPage(1)
+                  }}
+                >
+                  <SelectTrigger className="bg-neutral-800 border-neutral-700 text-neutral-300">
+                    <SelectValue placeholder="All template types" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-neutral-800 border-neutral-700 text-neutral-300">
+                    <SelectItem value="all" className="text-neutral-300">All template types</SelectItem>
+                    <SelectItem value="sql" className="text-neutral-300">SQL</SelectItem>
+                    <SelectItem value="url" className="text-neutral-300">URL</SelectItem>
+                    <SelectItem value="api" className="text-neutral-300">API</SelectItem>
+                    <SelectItem value="workflow" className="text-neutral-300">Workflow</SelectItem>
+                    <SelectItem value="graphql" className="text-neutral-300">GraphQL</SelectItem>
+                    <SelectItem value="regex" className="text-neutral-300">Regex</SelectItem>
+                    <SelectItem value="script" className="text-neutral-300">Script</SelectItem>
+                    <SelectItem value="nosql" className="text-neutral-300">NoSQL</SelectItem>
+                    <SelectItem value="cli" className="text-neutral-300">CLI</SelectItem>
+                    <SelectItem value="reasoning_steps" className="text-neutral-300">Reasoning Steps</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <form onSubmit={handleSearch} className="flex w-full sm:w-2/3 gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-neutral-400" />
+                  <Input
+                    placeholder="Search queries..."
+                    className="pl-8 bg-neutral-800 border-neutral-700 text-neutral-300 focus-visible:ring-[#3B4BF6] placeholder:text-neutral-500"
+                    value={searchInputValue}
+                    onChange={(e) => setSearchInputValue(e.target.value)}
+                  />
+                </div>
+                <Button type="submit" className="bg-[#3B4BF6] hover:bg-[#2b3bdc] text-white">Search</Button>
+              </form>
             </div>
             
-            <form onSubmit={handleSearch} className="flex w-full sm:w-2/3 gap-2">
-              <div className="relative flex-1">
-                <Search className="absolute left-2 top-2.5 h-4 w-4 text-neutral-400" />
-                <Input
-                  placeholder="Search queries..."
-                  className="pl-8 bg-neutral-800 border-neutral-700 text-neutral-300 focus-visible:ring-[#3B4BF6] placeholder:text-neutral-500"
-                  value={searchInputValue}
-                  onChange={(e) => setSearchInputValue(e.target.value)}
-                />
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="w-full sm:w-1/3">
+                <label className="text-xs text-neutral-400 block mb-1">Catalog Type</label>
+                <Select
+                  value={catalogType}
+                  onValueChange={(value) => {
+                    setCatalogType(value)
+                    setCatalogSubtype("all")
+                    setCatalogName("all")
+                    setCurrentPage(1)
+                  }}
+                >
+                  <SelectTrigger className="bg-neutral-800 border-neutral-700 text-neutral-300">
+                    <SelectValue placeholder="All catalog types" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-neutral-800 border-neutral-700 text-neutral-300">
+                    <SelectItem value="all" className="text-neutral-300">All catalog types</SelectItem>
+                    {catalogValues.catalog_types.map((type) => (
+                      <SelectItem key={type} value={type} className="text-neutral-300">{type}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-              <Button type="submit" className="bg-[#3B4BF6] hover:bg-[#2b3bdc] text-white">Search</Button>
-            </form>
-          </div>
+              
+              <div className="w-full sm:w-1/3">
+                <label className="text-xs text-neutral-400 block mb-1">Catalog Subtype</label>
+                <Select
+                  value={catalogSubtype}
+                  onValueChange={(value) => {
+                    setCatalogSubtype(value)
+                    setCurrentPage(1)
+                  }}
+                  disabled={catalogType === "all"}
+                >
+                  <SelectTrigger className="bg-neutral-800 border-neutral-700 text-neutral-300">
+                    <SelectValue placeholder="All subtypes" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-neutral-800 border-neutral-700 text-neutral-300">
+                    <SelectItem value="all" className="text-neutral-300">All subtypes</SelectItem>
+                    {catalogValues.catalog_subtypes
+                      .filter(subtype => catalogType !== "all" && subtype.startsWith(catalogType))
+                      .map((subtype) => (
+                        <SelectItem key={subtype} value={subtype} className="text-neutral-300">{subtype}</SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="w-full sm:w-1/3">
+                <label className="text-xs text-neutral-400 block mb-1">Catalog Name</label>
+                <Select
+                  value={catalogName}
+                  onValueChange={(value) => {
+                    setCatalogName(value)
+                    setCurrentPage(1)
+                  }}
+                  disabled={catalogType === "all"}
+                >
+                  <SelectTrigger className="bg-neutral-800 border-neutral-700 text-neutral-300">
+                    <SelectValue placeholder="All names" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-neutral-800 border-neutral-700 text-neutral-300">
+                    <SelectItem value="all" className="text-neutral-300">All names</SelectItem>
+                    {catalogValues.catalog_names
+                      .filter(name => catalogType !== "all" && name.startsWith(catalogType))
+                      .map((name) => (
+                        <SelectItem key={name} value={name} className="text-neutral-300">{name}</SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            
+            <div className="text-xs text-neutral-500 mt-1 italic">
+              Note: Catalog fields may not be available in the current API version. You can still create and edit entries with catalog values.
+            </div>
           
-          <div className="flex items-center space-x-2 mt-4">
-            <div 
-              className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#121212] border border-neutral-800 cursor-pointer"
-              onClick={() => setUseSimilaritySearch(!useSimilaritySearch)}
-            >
-              <div className={`w-10 h-6 rounded-full relative ${useSimilaritySearch ? 'bg-[#3B4BF6]' : 'bg-neutral-700'}`}>
-                <div 
-                  className={`absolute w-4 h-4 rounded-full bg-white top-1 transition-all duration-200 ${useSimilaritySearch ? 'left-5' : 'left-1'}`}
-                ></div>
+            <div className="flex items-center space-x-2">
+              <div 
+                className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#121212] border border-neutral-800 cursor-pointer"
+                onClick={() => setUseSimilaritySearch(!useSimilaritySearch)}
+              >
+                <div className={`w-10 h-6 rounded-full relative ${useSimilaritySearch ? 'bg-[#3B4BF6]' : 'bg-neutral-700'}`}>
+                  <div 
+                    className={`absolute w-4 h-4 rounded-full bg-white top-1 transition-all duration-200 ${useSimilaritySearch ? 'left-5' : 'left-1'}`}
+                  ></div>
+                </div>
+                <span className="text-white text-sm font-medium">Use similarity search</span>
               </div>
-              <span className="text-white text-sm font-medium">Use similarity search</span>
             </div>
           </div>
         </CardContent>
@@ -274,21 +378,22 @@ export default function CacheEntries() {
               <tr>
                 <th className="h-10 px-4 text-left font-medium" style={{ width: `${columnWidths[0]}%`, minWidth: '200px' }} ref={(el: HTMLTableCellElement | null) => { thRefs.current[0] = el; }}>Query</th>
                 <th className="h-10 px-4 text-left font-medium" style={{ width: `${columnWidths[1]}%`, minWidth: '100px' }} ref={(el: HTMLTableCellElement | null) => { thRefs.current[1] = el; }}>Template Type</th>
-                <th className="h-10 px-4 text-left font-medium" style={{ width: `${columnWidths[2]}%`, minWidth: '100px' }} ref={(el: HTMLTableCellElement | null) => { thRefs.current[2] = el; }}>Tags</th>
-                <th className="h-10 px-4 text-left font-medium" style={{ width: `${columnWidths[3]}%`, minWidth: '80px' }} ref={(el: HTMLTableCellElement | null) => { thRefs.current[3] = el; }}>Usage Count</th>
-                <th className="h-10 px-4 text-left font-medium" style={{ width: `${columnWidths[4]}%`, minWidth: '100px' }} ref={(el: HTMLTableCellElement | null) => { thRefs.current[4] = el; }}>Actions</th>
+                <th className="h-10 px-4 text-left font-medium" style={{ width: `${columnWidths[2]}%`, minWidth: '100px' }} ref={(el: HTMLTableCellElement | null) => { thRefs.current[2] = el; }}>Catalog Type</th>
+                <th className="h-10 px-4 text-left font-medium" style={{ width: `${columnWidths[3]}%`, minWidth: '100px' }} ref={(el: HTMLTableCellElement | null) => { thRefs.current[3] = el; }}>Tags</th>
+                <th className="h-10 px-4 text-left font-medium" style={{ width: `${columnWidths[4]}%`, minWidth: '80px' }} ref={(el: HTMLTableCellElement | null) => { thRefs.current[4] = el; }}>Usage Count</th>
+                <th className="h-10 px-4 text-left font-medium" style={{ width: `${columnWidths[5]}%`, minWidth: '100px' }} ref={(el: HTMLTableCellElement | null) => { thRefs.current[5] = el; }}>Actions</th>
               </tr>
             </thead>
             <tbody className="bg-[#1a1a1a] text-neutral-200">
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="h-24 text-center text-neutral-400">
+                  <td colSpan={6} className="h-24 text-center text-neutral-400">
                     Loading cache entries...
                   </td>
                 </tr>
               ) : entries.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="h-24 text-center text-neutral-400">
+                  <td colSpan={6} className="h-24 text-center text-neutral-400">
                     No cache entries found.
                   </td>
                 </tr>
@@ -309,6 +414,13 @@ export default function CacheEntries() {
                       <span className="capitalize">{entry.template_type}</span>
                     </td>
                     <td className="p-4 align-middle" style={{ width: `${columnWidths[2]}%`, minWidth: '100px' }}>
+                      <span className="capitalize">
+                        {entry.catalog_type || 
+                          <span className="text-neutral-500 text-xs">Not specified</span>
+                        }
+                      </span>
+                    </td>
+                    <td className="p-4 align-middle" style={{ width: `${columnWidths[3]}%`, minWidth: '100px' }}>
                       <div className="flex flex-wrap gap-1">
                         {entry.tags && entry.tags.length > 0 ? (
                           entry.tags.map((tag) => (
@@ -324,10 +436,10 @@ export default function CacheEntries() {
                         )}
                       </div>
                     </td>
-                    <td className="p-4 align-middle" style={{ width: `${columnWidths[3]}%`, minWidth: '80px' }}>
+                    <td className="p-4 align-middle" style={{ width: `${columnWidths[4]}%`, minWidth: '80px' }}>
                       {entry.usage_count}
                     </td>
-                    <td className="p-4 align-middle" style={{ width: `${columnWidths[4]}%`, minWidth: '100px' }}>
+                    <td className="p-4 align-middle" style={{ width: `${columnWidths[5]}%`, minWidth: '100px' }}>
                       <div className="flex items-center gap-2">
                         <Button variant="ghost" size="icon" asChild className="hover:bg-neutral-700 text-neutral-400">
                           <Link href={`/cache-entries/${entry.id}/edit`}>

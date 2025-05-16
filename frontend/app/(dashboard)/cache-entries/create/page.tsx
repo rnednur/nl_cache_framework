@@ -56,6 +56,11 @@ export default function CreateCacheEntry() {
     setError(null)
     
     try {
+      // Prepare the catalog fields, ensuring they're either valid strings or undefined
+      const catalogTypeValue = catalogType?.trim() || undefined
+      const catalogSubtypeValue = catalogSubtype?.trim() || undefined
+      const catalogNameValue = catalogName?.trim() || undefined
+      
       const entry: CacheEntryCreate = {
         nl_query: nlQuery,
         template,
@@ -63,11 +68,14 @@ export default function CreateCacheEntry() {
         reasoning_trace: reasoningTrace || undefined,
         is_template: true,
         tags: tags.length > 0 ? tags : undefined,
-        catalog_type: catalogType || undefined,
-        catalog_subtype: catalogSubtype || undefined,
-        catalog_name: catalogName || undefined,
+        catalog_type: catalogTypeValue,
+        catalog_subtype: catalogSubtypeValue,
+        catalog_name: catalogNameValue,
         status: status
       }
+      
+      // Debug log
+      console.log("Create entry:", entry)
       
       await api.createCacheEntry(entry)
       router.push("/cache-entries")

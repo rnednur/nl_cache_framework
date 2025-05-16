@@ -438,12 +438,12 @@ class Text2SQLController:
                     if embedding_array is not None:
                         old_embedding = cache_entry.embedding
                         cache_entry.embedding = embedding_array
-                        changes.append(("embedding", old_embedding, embedding_array))
+                        # Don't add embedding changes to the audit log as they're too large and cause serialization issues
                     changes.append(("nl_query", cache_entry.nl_query, new_nl_query))
 
             # Apply other updates
             for field, new_value in updates.items():
-                if hasattr(cache_entry, field):
+                if hasattr(cache_entry, field) and field != "embedding":
                     old_value = getattr(cache_entry, field)
                     if old_value != new_value:
                         setattr(cache_entry, field, new_value)
@@ -458,6 +458,16 @@ class Text2SQLController:
             # Log changes to audit log if there are any
             if changes:
                 for field, old_val, new_val in changes:
+                    # Skip embedding field to prevent serialization issues
+                    if field == "embedding":
+                        continue
+                        
+                    # Convert numpy arrays to lists if encountered
+                    if isinstance(old_val, np.ndarray):
+                        old_val = "numpy_array_data"  # Just store a placeholder instead of actual data
+                    if isinstance(new_val, np.ndarray):
+                        new_val = "numpy_array_data"  # Just store a placeholder instead of actual data
+                        
                     audit_log = CacheAuditLog(
                         cache_entry_id=cache_entry.id,
                         changed_field=field,
