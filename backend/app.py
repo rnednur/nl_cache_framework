@@ -334,14 +334,7 @@ async def get_cache_stats(
 
 @app.get("/v1/cache/catalogs")
 async def get_catalog_values(db: Session = Depends(get_db)):
-    """Get distinct catalog types, subtypes, and names from the cache entries.
-
-    Returns:
-        JSON response with lists of distinct catalog_type, catalog_subtype, and catalog_name values.
-
-    Raises:
-        HTTPException(500): If an error occurs while fetching catalog values.
-    """
+    """Get unique catalog values for filtering cache entries"""
     try:
         controller = get_controller(db)
         catalog_types = controller.get_distinct_values("catalog_type")
@@ -355,6 +348,74 @@ async def get_catalog_values(db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Error in /v1/cache/catalogs: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error fetching catalog values: {str(e)}")
+
+
+@app.get("/v1/cache/compatible")
+async def get_compatible_cache_entries(
+    catalog_type: Optional[str] = None,
+    catalog_subtype: Optional[str] = None,
+    catalog_name: Optional[str] = None,
+    exclude_ids: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """
+    Get cache entries that can be used as workflow steps.
+    Optionally filter by catalog fields and exclude certain IDs.
+    """
+    # Base query for all cache entries that can be used as steps
+    # Generally, any active cache entry can be a step in a workflow
+    query = db.query(Text2SQLCache).filter(Text2SQLCache.status == "active")
+    
+    # Apply catalog filters if specified
+    # Include entries with matching catalog_type OR where catalog_type is NULL
+    if catalog_type:
+        query = query.filter(or_(
+            Text2SQLCache.catalog_type == catalog_type,
+            Text2SQLCache.catalog_type == None  # Also include entries with NULL catalog_type
+        ))
+    
+    if catalog_subtype:
+        query = query.filter(or_(
+            Text2SQLCache.catalog_subtype == catalog_subtype,
+            Text2SQLCache.catalog_subtype == None  # Also include entries with NULL catalog_subtype
+        ))
+    
+    if catalog_name:
+        query = query.filter(or_(
+            Text2SQLCache.catalog_name == catalog_name,
+            Text2SQLCache.catalog_name == None  # Also include entries with NULL catalog_name
+        ))
+    
+    # If exclude_ids is provided, exclude those entries
+    if exclude_ids:
+        try:
+            ids_to_exclude = [int(id_str) for id_str in exclude_ids.split(',') if id_str.strip()]
+            if ids_to_exclude:
+                query = query.filter(Text2SQLCache.id.notin_(ids_to_exclude))
+        except ValueError:
+            # If any ID is not a valid integer, log but continue
+            logger.warning(f"Invalid ID format in exclude_ids: {exclude_ids}")
+    
+    # Execute query, limited to a reasonable number to prevent overloading the UI
+    cache_entries = query.limit(100).all()
+    
+    # Process entries for response
+    result = []
+    for entry in cache_entries:
+        # Convert SQLAlchemy model to dictionary
+        item = {
+            "id": entry.id,
+            "nl_query": entry.nl_query,
+            "template": entry.template,
+            "template_type": entry.template_type,
+            "catalog_type": entry.catalog_type,
+            "catalog_subtype": entry.catalog_subtype,
+            "catalog_name": entry.catalog_name,
+            "status": entry.status
+        }
+        result.append(item)
+    
+    return result
 
 
 @app.get("/v1/catalog/values")

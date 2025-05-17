@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Label } from "../../../components/ui/label";
 import { Button } from "../../../components/ui/button";
 import React from "react";
+import WorkflowBuilder from "../../../../components/ui/WorkflowBuilder";
 
 interface CacheEntryFormProps {
   nlQuery: string;
@@ -191,15 +192,48 @@ export function CacheEntryForm({
               <Textarea
                 id="template"
                 placeholder='e.g., {\n  "steps": [\n    {\n      "type": "api",\n      "url": "https://api.example.com/step1"\n    },\n    {\n      "type": "transform",\n      "operation": "filter"\n    }\n  ]\n}'
-                className="min-h-[200px] font-mono text-sm"
+                className="min-h-[100px] font-mono text-sm"
                 value={template}
                 onChange={setTemplate ? (e) => setTemplate(e.target.value) : undefined}
                 disabled={readOnly}
               />
               {templateType === 'workflow' && !readOnly && (
                 <p className="text-sm text-muted-foreground mt-1">
-                  For workflows, use the step builder below to define the template.
+                  Define the workflow visually using the builder below. The JSON template will be updated.
                 </p>
+              )}
+              {templateType === 'workflow' && !readOnly && (
+                <div className="mt-4">
+                  <WorkflowBuilder
+                    catalogType={catalogType || undefined}
+                    catalogSubType={catalogSubtype || undefined}
+                    catalogName={catalogName || undefined}
+                    initialNodes={(() => {
+                      try {
+                        if (!template) return undefined;
+                        const parsed = JSON.parse(template);
+                        return Array.isArray(parsed.nodes) ? parsed.nodes : undefined;
+                      } catch (e) {
+                        return undefined; // Or provide default nodes
+                      }
+                    })()}
+                    initialEdges={(() => {
+                      try {
+                        if (!template) return undefined;
+                        const parsed = JSON.parse(template);
+                        return Array.isArray(parsed.edges) ? parsed.edges : undefined;
+                      } catch (e) {
+                        return undefined; // Or provide default edges
+                      }
+                    })()}
+                    onWorkflowChange={(nodes, edges) => {
+                      if (setTemplate) {
+                        // Update the main template state with the workflow structure
+                        setTemplate(JSON.stringify({ nodes, edges }, null, 2));
+                      }
+                    }}
+                  />
+                </div>
               )}
               {templateType === 'workflow' && template.trim() && !readOnly && (() => {
                 try {
@@ -307,25 +341,6 @@ export function CacheEntryForm({
             />
           )}
         </div>
-
-        {templateType === 'workflow' && (
-          <div className="grid gap-4 mt-4">
-            <Label>Workflow Steps</Label>
-            <CardDescription>Define the steps of the workflow by referencing other cache entries.</CardDescription>
-            <div className="border rounded-md p-4 space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Step builder UI will be implemented here to add/edit steps with cache ID, type (sequential/parallel), and description.
-              </p>
-              {readOnly ? (
-                <p className="text-sm">Viewing mode for workflow steps will display the JSON structure or a visual representation.</p>
-              ) : (
-                <Button variant="outline" size="sm" disabled={readOnly}>
-                  Add Step (Coming Soon)
-                </Button>
-              )}
-            </div>
-          </div>
-        )}
 
         <div className="grid gap-2">
           <Label htmlFor="reasoning">Reasoning Trace</Label>

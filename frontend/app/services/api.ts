@@ -634,6 +634,52 @@ const api = {
       console.error('Error generating reasoning trace:', error);
       throw error;
     }
+  },
+
+  // Get compatible cache entries for workflow steps
+  async getCompatibleCacheEntries(
+    catalogType?: string,
+    catalogSubtype?: string,
+    catalogName?: string,
+    excludeIds: number[] = []
+  ): Promise<CacheItem[]> {
+    try {
+      let url = `${API_BASE}/v1/cache/compatible`;
+      
+      const params = new URLSearchParams();
+      
+      if (catalogType) {
+        params.append('catalog_type', catalogType);
+      }
+      
+      if (catalogSubtype) {
+        params.append('catalog_subtype', catalogSubtype);
+      }
+      
+      if (catalogName) {
+        params.append('catalog_name', catalogName);
+      }
+      
+      if (excludeIds.length > 0) {
+        params.append('exclude_ids', excludeIds.join(','));
+      }
+      
+      // Only add the '?' if we have parameters
+      if (params.toString()) {
+        url += `?${params.toString()}`;
+      }
+      
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching compatible cache entries:', error);
+      return []; // Return empty array on error
+    }
   }
 };
 
