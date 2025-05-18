@@ -6,6 +6,7 @@ import { CacheEntryForm } from "./CacheEntryForm";
 import { useRouter } from "next/navigation";
 import { Button } from "../../../components/ui/button";
 import { Card } from "../../../components/ui/card";
+import { CacheBreadcrumbs } from "@/components/ui/CacheBreadcrumbs";
 
 export default function CacheEntryDetail({ params }: { params: { id: string } }) {
   const router = useRouter();
@@ -50,6 +51,15 @@ export default function CacheEntryDetail({ params }: { params: { id: string } })
 
   return (
     <div className="space-y-6">
+      <CacheBreadcrumbs 
+        items={[
+          { label: "Dashboard", href: "/dashboard" },
+          { label: "Cache Entries", href: "/cache-entries" },
+          { label: `Cache Entry #${params.id}` }
+        ]}
+        className="mb-2"
+      />
+    
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold tracking-tight">View Cache Entry</h1>
       </div>
@@ -59,7 +69,7 @@ export default function CacheEntryDetail({ params }: { params: { id: string } })
           template={entry.template}
           templateType={entry.template_type}
           reasoningTrace={entry.reasoning_trace || ""}
-          tags={entry.tags || []}
+          tags={entry.tags || {}}
           status={entry.status || 'active'}
           readOnly={true}
           error={null}

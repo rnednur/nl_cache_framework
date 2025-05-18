@@ -23,24 +23,50 @@ export default function CreateCacheEntry() {
   const [status, setStatus] = useState('active')
   
   // Tags handling
-  const [tags, setTags] = useState<string[]>([])
-  const [tagInput, setTagInput] = useState("")
+  const [tags, setTags] = useState<Record<string, string[]>>({})
+  const [tagNameInput, setTagNameInput] = useState("")
+  const [tagValueInput, setTagValueInput] = useState("")
   
-  const addTag = () => {
-    if (tagInput.trim() && !tags.includes(tagInput.trim())) {
-      setTags([...tags, tagInput.trim()])
+  const addTag = (name: string, value: string) => {
+    if (name.trim() === "") return;
+    
+    const newTags = { ...tags };
+    
+    // If the tag name doesn't exist yet, create a new array
+    if (!newTags[name]) {
+      newTags[name] = [];
     }
-    setTagInput('')
+    
+    // Only add the value if it's not empty and not already in the array
+    if (value.trim() !== "" && !newTags[name].includes(value)) {
+      newTags[name] = [...newTags[name], value];
+    }
+    
+    setTags(newTags);
+    setTagNameInput("");
+    setTagValueInput("");
   }
   
-  const removeTag = (tag: string) => {
-    setTags(tags.filter(t => t !== tag))
+  const removeTag = (name: string, value: string) => {
+    const newTags = { ...tags };
+    
+    if (newTags[name]) {
+      // Filter out the value from the array
+      newTags[name] = newTags[name].filter(v => v !== value);
+      
+      // If the array is now empty, remove the tag entirely
+      if (newTags[name].length === 0) {
+        delete newTags[name];
+      }
+      
+      setTags(newTags);
+    }
   }
   
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && tagInput.trim()) {
+    if (e.key === 'Enter') {
       e.preventDefault()
-      addTag()
+      addTag(tagNameInput, tagValueInput)
     }
   }
   
@@ -67,7 +93,7 @@ export default function CreateCacheEntry() {
         template_type: templateType,
         reasoning_trace: reasoningTrace || undefined,
         is_template: true,
-        tags: tags.length > 0 ? tags : undefined,
+        tags: Object.keys(tags).length > 0 ? tags : undefined,
         catalog_type: catalogTypeValue,
         catalog_subtype: catalogSubtypeValue,
         catalog_name: catalogNameValue,
@@ -122,8 +148,10 @@ export default function CreateCacheEntry() {
               tags={tags}
               addTag={addTag}
               removeTag={removeTag}
-              tagInput={tagInput}
-              setTagInput={setTagInput}
+              tagNameInput={tagNameInput}
+              setTagNameInput={setTagNameInput}
+              tagValueInput={tagValueInput}
+              setTagValueInput={setTagValueInput}
               handleKeyDown={handleKeyDown}
               error={error}
               readOnly={false}

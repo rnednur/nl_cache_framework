@@ -10,7 +10,7 @@ export interface CacheItem {
   is_template: boolean;
   reasoning_trace?: string;
   entity_replacements?: Record<string, any>;
-  tags?: string[];
+  tags?: Record<string, string[]>;
   catalog_type?: string;
   catalog_subtype?: string;
   catalog_name?: string;
@@ -58,6 +58,7 @@ export interface CompleteRequest {
   catalog_subtype?: string;
   catalog_name?: string;
   similarity_threshold?: number;
+  limit?: number;
 }
 
 export interface CompleteResponse {
@@ -70,6 +71,9 @@ export interface CompleteResponse {
   updated_template?: string;
   llm_explanation?: string;
   warning?: string;
+  considered_entries?: number[];  // Array of all considered cache entry IDs
+  cache_entry_id?: number;  // ID of the matched cache entry
+  is_confident?: boolean;  // Whether the LLM is confident in the response
 }
 
 // Create cache entry interface
@@ -80,7 +84,7 @@ export interface CacheEntryCreate {
   reasoning_trace?: string;
   is_template: boolean;
   entity_replacements?: Record<string, any>;
-  tags?: string[];
+  tags?: Record<string, string[]>;
   catalog_type?: string;
   catalog_subtype?: string;
   catalog_name?: string;
@@ -116,7 +120,8 @@ const api = {
     searchQuery?: string,
     catalogType?: string,
     catalogSubtype?: string,
-    catalogName?: string
+    catalogName?: string,
+    ids?: number[]
   ): Promise<{ items: CacheItem[], total: number }> {
     try {
       let url = `${API_BASE}/v1/cache?page=${page}&page_size=${pageSize}`;
@@ -141,6 +146,11 @@ const api = {
         url += `&catalog_name=${encodeURIComponent(catalogName)}`;
       }
       
+      // Add IDs filter if provided
+      if (ids && ids.length > 0) {
+        url += `&ids=${ids.join(',')}`;
+      }
+      
       const response = await fetch(url);
       
       if (!response.ok) {
@@ -157,19 +167,31 @@ const api = {
   // Get a single cache entry by ID
   async getCacheEntry(id: number): Promise<CacheItem> {
     try {
-      const response = await fetch(`${API_BASE}/v1/cache/${id}`);
+      const url = `${API_BASE}/v1/cache/${id}`;
+      console.log(`Fetching cache entry with ID ${id}`);
       
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      // Try to use fetchWithDebug if it's available, otherwise fallback to regular fetch
+      let data;
+      try {
+        const { fetchWithDebug } = await import('../lib/fetch-with-debug');
+        data = await fetchWithDebug(url);
+      } catch (importError) {
+        console.log('Using fallback fetch method');
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        data = await response.json();
       }
-      
-      const data = await response.json();
       
       // Add logging to see if catalog fields are missing
       if (data.catalog_type === undefined && data.catalog_subtype === undefined && data.catalog_name === undefined) {
         console.warn('Backend API does not include catalog fields in response');
       }
       
+      console.log(`Successfully fetched cache entry ${id}:`, data);
       return data;
     } catch (error) {
       console.error(`Error fetching cache entry with ID ${id}:`, error);
@@ -472,6 +494,10 @@ const api = {
         params.append('similarity_threshold', request.similarity_threshold.toString());
       }
       
+      if (request.limit) {
+        params.append('limit', request.limit.toString());
+      }
+      
       // Add query parameters if any
       if (params.toString()) {
         url += `?${params.toString()}`;
@@ -679,6 +705,24 @@ const api = {
     } catch (error) {
       console.error('Error fetching compatible cache entries:', error);
       return []; // Return empty array on error
+    }
+  },
+
+  // Get bulk cache entries by ID
+  async getBulkCacheEntries(ids: number[]): Promise<CacheItem[]> {
+    if (!ids || ids.length === 0) return [];
+    
+    try {
+      console.log(`Fetching multiple cache entries: ${ids.join(', ')}`);
+      
+      // Use the existing getCacheEntries method with a high page size to include all IDs
+      const result = await this.getCacheEntries(1, Math.max(ids.length, 50), undefined, undefined, undefined, undefined, undefined, ids);
+      
+      console.log(`Fetched ${result.items.length} of ${ids.length} requested entries`);
+      return result.items;
+    } catch (error) {
+      console.error('Error fetching bulk cache entries:', error);
+      return [];
     }
   }
 };

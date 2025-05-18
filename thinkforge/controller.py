@@ -103,7 +103,7 @@ class Text2SQLController:
         template_type: str = TemplateType.SQL,
         entity_replacements: Optional[Dict[str, Any]] = None,
         reasoning_trace: Optional[str] = None,
-        tags: Optional[List[str]] = None,
+        tags: Optional[Dict[str, List[str]]] = None,
         catalog_type: Optional[str] = None,
         catalog_subtype: Optional[str] = None,
         catalog_name: Optional[str] = None,
@@ -119,7 +119,7 @@ class Text2SQLController:
             template_type: Type of the template (sql, url, api, workflow).
             entity_replacements: Optional dictionary of entity replacements.
             reasoning_trace: Optional explanation of the template.
-            tags: Optional list of tags for categorization.
+            tags: Optional dictionary of tags for categorization.
             catalog_type: Optional catalog type to filter by.
             catalog_subtype: Optional catalog subtype to filter by.
             catalog_name: Optional catalog name to filter by.
@@ -610,7 +610,8 @@ class Text2SQLController:
         Get valid queries by tags, optionally filtering by template type.
 
         Args:
-            tags: List of tags to search for.
+            tags: List of tags to search for in format "name:value". If no colon is present,
+                 it will search for the tag name in all keys.
             template_type: Optional template type filter.
             match_all: If True, all tags must match; if False, any tag may match.
 
@@ -627,7 +628,7 @@ class Text2SQLController:
         try:
             # Base query for valid entries and optional template type
             base_query = self.session.query(Text2SQLCache).filter(
-                Text2SQLCache.is_valid
+                Text2SQLCache.status == Status.ACTIVE
             )
             if template_type:
                 base_query = base_query.filter(
@@ -635,28 +636,47 @@ class Text2SQLController:
                 )
 
             # Fetch all potential candidates first
-            # Optimization: If DB supports JSONB/Array containment (like PostgreSQL), use that.
-            # For SQLite/simple JSON, we filter in Python.
             candidate_entries = base_query.all()
 
             results = []
-            search_tags_set = set(tags)
+            
+            # Parse the search tags into name-value pairs
+            parsed_search_tags = []
+            for tag in tags:
+                if ':' in tag:
+                    name, value = tag.split(':', 1)
+                    parsed_search_tags.append((name, value))
+                else:
+                    # If no colon, search for this as a key name
+                    parsed_search_tags.append((tag, None))
 
             for entry in candidate_entries:
-                entry_tags = entry.tags or []  # entry.tags should be a list
-                if isinstance(entry_tags, list):
-                    entry_tags_set = set(entry_tags)
-                    # Check tag condition
-                    if match_all:
-                        if search_tags_set.issubset(entry_tags_set):
-                            results.append(entry.to_dict())
-                    else:
-                        if not search_tags_set.isdisjoint(entry_tags_set):
-                            results.append(entry.to_dict())
-                else:
+                entry_tags = entry.tags or {}  # entry.tags should be a dict
+                
+                if not isinstance(entry_tags, dict):
                     logger.warning(
-                        f"Tags field for entry ID {entry.id} is not a list: {type(entry.tags)}. Skipping tag match."
+                        f"Tags field for entry ID {entry.id} is not a dict: {type(entry.tags)}. Skipping tag match."
                     )
+                    continue
+                
+                # Check if the entry matches the required tags
+                matches = []
+                
+                for tag_name, tag_value in parsed_search_tags:
+                    if tag_value is None:
+                        # Just look for the tag name as a key
+                        tag_match = tag_name in entry_tags
+                    else:
+                        # Look for the value in the list for this tag name
+                        tag_match = tag_name in entry_tags and tag_value in entry_tags.get(tag_name, [])
+                    
+                    matches.append(tag_match)
+                
+                # Determine if this entry should be included based on match_all
+                if match_all and all(matches):
+                    results.append(entry.to_dict())
+                elif not match_all and any(matches):
+                    results.append(entry.to_dict())
 
             return results
 
@@ -1070,7 +1090,8 @@ class Text2SQLController:
         use_llm: bool = False,
         catalog_type: Optional[str] = None,
         catalog_subtype: Optional[str] = None,
-        catalog_name: Optional[str] = None
+        catalog_name: Optional[str] = None,
+        limit: Optional[int] = None
     ) -> Dict[str, Any]:
         """Process a completion request using the NL cache.
 
@@ -1081,6 +1102,7 @@ class Text2SQLController:
             catalog_type: Optional catalog type to filter cache entries.
             catalog_subtype: Optional catalog subtype to filter cache entries.
             catalog_name: Optional catalog name to filter cache entries.
+            limit: Optional number of top similarity results to use, defaults to 5 if use_llm is True, 1 otherwise.
 
         Returns:
             A dictionary containing the completion result and metadata.
@@ -1093,11 +1115,12 @@ class Text2SQLController:
         explanation = None
 
         # Get multiple results to allow LLM to choose from them if use_llm is enabled
-        limit = 5 if use_llm else 1
+        # Use the provided limit or default to 5 if use_llm is True, 1 otherwise
+        search_limit = limit if limit is not None else (5 if use_llm else 1)
         cache_results = self.search_query(
             nl_query=query,
             similarity_threshold=similarity_threshold,
-            limit=limit,
+            limit=search_limit,
             catalog_type=catalog_type,
             catalog_subtype=catalog_subtype,
             catalog_name=catalog_name
@@ -1114,9 +1137,12 @@ class Text2SQLController:
                 "user_query": query,
                 "updated_template": None,
                 "llm_explanation": "No similar query found in cache.",
+                "considered_entries": [],
+                "is_confident": False
             }
         else:
             updated_query = None
+            is_confident = True  # Default confidence level
             if use_llm and len(cache_results) > 0:
                 if not LLMService or not LLMService.is_configured():
                     logger.warning("LLM enhancement requested but service not configured")
@@ -1139,6 +1165,9 @@ class Text2SQLController:
                         explanation = llm_result.get("explanation", "")
                         selected_entry_id = llm_result.get("selected_entry_id")
                         updated_query = llm_result.get("updated_query")
+                        
+                        # Set confidence based on LLM's assessment
+                        is_confident = can_answer
 
                         if can_answer and selected_entry_id:
                             selected_entry = next(
@@ -1208,6 +1237,8 @@ class Text2SQLController:
                 "user_query": query,
                 "updated_template": updated_query if updated_query else final_result,
                 "llm_explanation": explanation if explanation else "Retrieved from cache based on similarity.",
+                "considered_entries": [entry.get("id") for entry in cache_results],
+                "is_confident": is_confident
             }
         else:
             response_data = {
@@ -1219,6 +1250,8 @@ class Text2SQLController:
                 "user_query": query,
                 "updated_template": None,
                 "llm_explanation": "No similar query found in cache.",
+                "considered_entries": [],
+                "is_confident": False
             }
 
         try:

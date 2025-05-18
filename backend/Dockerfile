@@ -16,7 +16,8 @@ RUN pip install --no-cache-dir -e .
 
 # Environment variables
 ENV PORT=8000
-ENV MCP_DB_URL=sqlite:///./mcp_cache.db
+#ENV MCP_DB_URL=sqlite:///./mcp_cache.db
+ENV MCP_DB_URL=postgresql://postgres:postgres@localhost:5432/postgres
 ENV DEFAULT_MODEL_NAME=sentence-transformers/all-mpnet-base-v2
 ENV SIMILARITY_THRESHOLD=0.85
 ENV SESSION_TTL=3600

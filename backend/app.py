@@ -97,7 +97,7 @@ class CacheEntryCreate(BaseModel):
     reasoning_trace: Optional[str] = Field(None, description="Optional explanation of the template")
     is_template: bool = Field(default=False, description="Flag indicating if this entry contains placeholders")
     entity_replacements: Optional[Dict[str, Any]] = Field(None, description="JSON defining placeholder substitutions")
-    tags: Optional[List[str]] = Field(None, description="List of tags for categorization")
+    tags: Optional[Dict[str, List[str]]] = Field(None, description="Dictionary of tags for categorization, with name as key and list of values")
     database_name: Optional[str] = Field(None, description="Target database identifier")
     schema_name: Optional[str] = Field(None, description="Target schema identifier")
     catalog_type: Optional[str] = Field(None, description="Catalog type identifier")
@@ -456,7 +456,8 @@ async def complete(
     catalog_type: Optional[str] = None, 
     catalog_subtype: Optional[str] = None, 
     catalog_name: Optional[str] = None, 
-    similarity_threshold: Optional[float] = None, 
+    similarity_threshold: Optional[float] = None,
+    limit: Optional[int] = None, 
     use_llm: bool = False,
     db: Session = Depends(get_db)
 ):
@@ -473,6 +474,7 @@ async def complete(
         catalog_subtype: Optional catalog subtype to filter cache entries.
         catalog_name: Optional catalog name to filter cache entries.
         similarity_threshold: Optional similarity threshold for cache matching.
+        limit: Optional limit for the number of top similarity results to use.
         use_llm: If True, use LLM to enhance search results with semantic analysis.
         db: The SQLAlchemy Session dependency.
 
@@ -501,7 +503,8 @@ async def complete(
             use_llm=use_llm,
             catalog_type=catalog_type,
             catalog_subtype=catalog_subtype,
-            catalog_name=catalog_name
+            catalog_name=catalog_name,
+            limit=limit
         )
         return response_data
     except Exception as e:

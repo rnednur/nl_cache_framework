@@ -127,8 +127,8 @@ class Text2SQLCache(Base):
     # Metadata fields
     reasoning_trace: Optional[str] = Column(Text)
     """Optional text explaining how the template was derived from the NL query."""
-    tags: Optional[List[str]] = Column(JSON)
-    """Optional list of strings for categorization or filtering."""
+    tags: Optional[Dict[str, List[str]]] = Column(JSON)
+    """Optional name-value pairs for categorization or filtering. Keys are tag names, values are lists of strings."""
     catalog_type: Optional[str] = Column(String, index=True)
     """Optional catalog type for filtering cache entries."""
     catalog_subtype: Optional[str] = Column(String, index=True)

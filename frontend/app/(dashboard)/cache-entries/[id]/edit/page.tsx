@@ -12,7 +12,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import api, { CacheEntryCreate, CacheItem } from "../../../../services/api"
 import { Label } from "../../../../components/ui/label"
 import { CacheEntryForm } from "../CacheEntryForm"
-import { toast } from "../../../../components/ui/use-toast"
+import { toast } from "react-hot-toast"
 
 export default function EditCacheEntry({ params }: { params: { id: string } }) {
   const router = useRouter()
@@ -32,8 +32,9 @@ export default function EditCacheEntry({ params }: { params: { id: string } }) {
   const [status, setStatus] = useState('active')
   
   // Tags handling
-  const [tags, setTags] = useState<string[]>([])
-  const [tagInput, setTagInput] = useState("")
+  const [tags, setTags] = useState<Record<string, string[]>>({})
+  const [tagNameInput, setTagNameInput] = useState("")
+  const [tagValueInput, setTagValueInput] = useState("")
   
   useEffect(() => {
     const fetchEntry = async () => {
@@ -47,7 +48,23 @@ export default function EditCacheEntry({ params }: { params: { id: string } }) {
         setCatalogSubtype(entry.catalog_subtype || undefined)
         setCatalogName(entry.catalog_name || undefined)
         setStatus(entry.status || 'active')
-        setTags(entry.tags || [])
+        
+        // Handle tags - convert from old format if necessary
+        if (entry.tags) {
+          if (Array.isArray(entry.tags)) {
+            // Convert old string[] format to Record<string, string[]>
+            const convertedTags: Record<string, string[]> = {};
+            entry.tags.forEach(tag => {
+              convertedTags[tag] = ['default'];
+            });
+            setTags(convertedTags);
+          } else {
+            // Already in the new format
+            setTags(entry.tags);
+          }
+        } else {
+          setTags({});
+        }
       } catch (err) {
         console.error("Failed to fetch cache entry:", err)
         setError(err instanceof Error ? err.message : "Failed to fetch cache entry")
@@ -61,53 +78,67 @@ export default function EditCacheEntry({ params }: { params: { id: string } }) {
   
   const handleGenerateReasoning = async () => {
     if (!nlQuery.trim() || !template.trim()) {
-      toast({
-        title: "Missing information",
-        description: "Both Natural Language Query and Template are required to generate reasoning.",
-        variant: "destructive"
-      })
-      return
+      toast.error("Both Natural Language Query and Template are required to generate reasoning.");
+      return;
     }
     
-    setIsGeneratingReasoning(true)
+    setIsGeneratingReasoning(true);
     try {
       const generatedReasoning = await api.generateReasoningTrace(
         nlQuery, 
         template,
         templateType
-      )
-      setReasoningTrace(generatedReasoning)
-      toast({
-        title: "Reasoning generated",
-        description: "AI has generated a reasoning trace for your query and template."
-      })
+      );
+      setReasoningTrace(generatedReasoning);
+      toast.success("AI has generated a reasoning trace for your query and template.");
     } catch (err) {
-      console.error("Failed to generate reasoning:", err)
-      toast({
-        title: "Failed to generate reasoning",
-        description: err instanceof Error ? err.message : "An error occurred while generating reasoning.",
-        variant: "destructive"
-      })
+      console.error("Failed to generate reasoning:", err);
+      toast.error(err instanceof Error ? err.message : "An error occurred while generating reasoning.");
     } finally {
-      setIsGeneratingReasoning(false)
+      setIsGeneratingReasoning(false);
     }
+  };
+  
+  const addTag = (name: string, value: string) => {
+    if (name.trim() === "") return;
+    
+    const newTags = { ...tags };
+    
+    // If the tag name doesn't exist yet, create a new array
+    if (!newTags[name]) {
+      newTags[name] = [];
+    }
+    
+    // Only add the value if it's not empty and not already in the array
+    if (value.trim() !== "" && !newTags[name].includes(value)) {
+      newTags[name] = [...newTags[name], value];
+    }
+    
+    setTags(newTags);
+    setTagNameInput("");
+    setTagValueInput("");
   }
   
-  const addTag = () => {
-    if (tagInput.trim() !== "" && !tags.includes(tagInput.trim())) {
-      setTags([...tags, tagInput.trim()])
-      setTagInput("")
+  const removeTag = (name: string, value: string) => {
+    const newTags = { ...tags };
+    
+    if (newTags[name]) {
+      // Filter out the value from the array
+      newTags[name] = newTags[name].filter(v => v !== value);
+      
+      // If the array is now empty, remove the tag entirely
+      if (newTags[name].length === 0) {
+        delete newTags[name];
+      }
+      
+      setTags(newTags);
     }
-  }
-  
-  const removeTag = (tagToRemove: string) => {
-    setTags(tags.filter((tag) => tag !== tagToRemove))
   }
   
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
       e.preventDefault()
-      addTag()
+      addTag(tagNameInput, tagValueInput)
     }
   }
   
@@ -143,7 +174,7 @@ export default function EditCacheEntry({ params }: { params: { id: string } }) {
         template: template,
         template_type: templateType,
         is_template: true,
-        tags: tags.length > 0 ? tags : undefined,
+        tags: Object.keys(tags).length > 0 ? tags : undefined,
         reasoning_trace: reasoningTrace || undefined,
         catalog_type: catalogTypeValue,
         catalog_subtype: catalogSubtypeValue,
@@ -212,11 +243,12 @@ export default function EditCacheEntry({ params }: { params: { id: string } }) {
               tags={tags}
               addTag={addTag}
               removeTag={removeTag}
-              tagInput={tagInput}
-              setTagInput={setTagInput}
+              tagNameInput={tagNameInput}
+              setTagNameInput={setTagNameInput}
+              tagValueInput={tagValueInput}
+              setTagValueInput={setTagValueInput}
               handleKeyDown={handleKeyDown}
-              error={error}
-              readOnly={false}
+              error={null}
               onGenerateReasoning={handleGenerateReasoning}
               isGeneratingReasoning={isGeneratingReasoning}
             >
