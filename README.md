@@ -6,6 +6,17 @@ A framework for caching natural language queries and their corresponding structu
 
 ThinkForge is designed to cache natural language (NL) queries and map them to structured outputs such as SQL queries, API calls, URLs, or other templates. It uses embeddings for similarity search to retrieve the most relevant cached entry for a given input query, enhancing response accuracy and speed for applications dealing with natural language processing.
 
+## Key Features
+
+- **Semantic Similarity Search**: Uses embeddings to find the most relevant cached entries for natural language queries
+- **Multiple Template Types**: Supports SQL, API calls, URLs, and workflow templates
+- **Entity Extraction and Substitution**: Intelligently extracts entities from queries and applies them to templates
+- **Full CRUD API**: Complete REST API for managing cache entries
+- **Interactive Dashboard**: User-friendly interface for managing and testing cache entries
+- **Reasoning Trace Capture**: Records the reasoning process for template generation
+- **Template Validation**: Ensures templates meet quality standards
+- **Usage Tracking**: Logs usage statistics for analytics purposes
+
 ## Data Model
 
 The core data model revolves around the `Text2SQLCache` table, which stores cached entries with their embeddings for similarity search. Below is a detailed view of the data model and related classes.
@@ -181,6 +192,23 @@ sequenceDiagram
     end
 ```
 
+## Technical Implementation
+
+The framework is implemented using the following technologies:
+
+- **Backend**: 
+  - FastAPI for REST API
+  - SQLAlchemy for database ORM
+  - Sentence-Transformers for vector embeddings
+  - PostgreSQL with pgvector for vector storage and similarity search
+  - LLM integration for template generation (supports multiple providers)
+
+- **Frontend**:
+  - Next.js with React
+  - Tailwind CSS for styling
+  - ReactFlow for workflow visualization
+  - Radix UI components
+
 ## Installation
 
 To set up ThinkForge locally, follow these steps:
@@ -218,7 +246,13 @@ To set up ThinkForge locally, follow these steps:
      npm run dev
      ```
 
-4. **Environment Configuration**:
+4. **Docker Setup**:
+   - You can also use Docker Compose to set up the entire stack:
+     ```bash
+     docker-compose up
+     ```
+
+5. **Environment Configuration**:
    - Ensure you have the necessary environment variables set for database connections and model configurations. Refer to `.env.example` for required variables.
 
 ## Usage
@@ -226,6 +260,41 @@ To set up ThinkForge locally, follow these steps:
 - **Access the Application**: Open your browser and navigate to `http://localhost:3000` (or the port specified by your frontend server) to interact with the UI.
 - **Cache Management**: Use the dashboard to view, create, edit, or delete cache entries under `/cache-entries`.
 - **Query Testing**: Test natural language queries at `/complete-test` to see the matched or generated structured outputs.
+- **Bulk Import**: Use the CSV import functionality to bulk load cache entries from CSV files.
+
+## API Reference
+
+The ThinkForge API provides the following endpoints:
+
+- `POST /v1/complete`: Process a natural language query and return the matching structured output
+- `GET /v1/cache`: List all cache entries
+- `POST /v1/cache`: Create a new cache entry
+- `GET /v1/cache/{id}`: Get a specific cache entry
+- `PUT /v1/cache/{id}`: Update a cache entry
+- `DELETE /v1/cache/{id}`: Delete a cache entry
+- `POST /v1/cache/import`: Import cache entries from CSV
+- `GET /v1/cache/stats`: Get usage statistics for cache entries
+
+## Future Enhancements
+
+We have planned several future enhancements for the ThinkForge framework:
+
+- Advanced entity extraction with Named Entity Recognition models
+- Template versioning and history
+- Analytics dashboard for performance monitoring
+- Active learning pipeline for template improvement
+- Template optimization for better performance
+- Advanced security features
+- Workflow orchestration capabilities
+- API gateway integration
+- Template discovery and recommendation system
+- Schema inference for databases
+- Model fine-tuning for domain-specific applications
+- Edge deployment support
+- Explainability features
+- Integration connectors for various databases and services
+
+For a complete list of planned enhancements, see the `future_enhancements.md` file.
 
 ## Contributing
 
