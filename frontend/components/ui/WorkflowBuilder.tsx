@@ -14,12 +14,16 @@ import ReactFlow, {
   BackgroundVariant,
   ReactFlowProvider,
   useReactFlow,
+  Panel,
 } from 'reactflow';
 
 import 'reactflow/dist/style.css';
 import { CompatibleStep } from './StepPalette';
 import BottomStepPalette from './BottomStepPalette';
 import api, { CacheItem } from '../../app/services/api';
+import { Button } from '../../app/components/ui/button';
+import { Wand2 } from 'lucide-react';
+import GenerateWorkflowDialog from './GenerateWorkflowDialog';
 
 // Default initial node if no workflow data is provided
 const defaultInitialNodes: Node[] = [
@@ -59,6 +63,7 @@ const WorkflowBuilderComponent: React.FC<WorkflowBuilderProps> = ({
   const [compatibleSteps, setCompatibleSteps] = useState<CompatibleStep[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [isGenerateDialogOpen, setIsGenerateDialogOpen] = useState<boolean>(false);
 
   useEffect(() => {
     setNodes(propInitialNodes || defaultInitialNodes);
@@ -184,10 +189,19 @@ const WorkflowBuilderComponent: React.FC<WorkflowBuilderProps> = ({
     [screenToFlowPosition, setNodes]
   );
   
+  const handleGeneratedWorkflow = (generatedNodes: any[], generatedEdges: any[]) => {
+    // Reset node counter
+    id = 1;
+    
+    // Set the nodes and edges from the generated workflow
+    setNodes(generatedNodes);
+    setEdges(generatedEdges);
+  };
+  
   return (
     <div className="flex flex-col h-[600px] border rounded-md" ref={reactFlowWrapper}>
       {/* Main Flow Area */}
-      <div className="flex-grow">
+      <div className="flex-grow relative">
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -201,6 +215,22 @@ const WorkflowBuilderComponent: React.FC<WorkflowBuilderProps> = ({
           <Controls />
           <MiniMap />
           <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
+          
+          {/* Generate Workflow Panel */}
+          <Panel position="top-right">
+            <Button 
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                setIsGenerateDialogOpen(true);
+              }}
+              className="flex items-center gap-1"
+              variant="outline"
+            >
+              <Wand2 className="h-4 w-4" />
+              Generate from NL
+            </Button>
+          </Panel>
         </ReactFlow>
       </div>
       
@@ -209,6 +239,16 @@ const WorkflowBuilderComponent: React.FC<WorkflowBuilderProps> = ({
         compatibleSteps={compatibleSteps}
         isLoading={isLoading}
         error={error}
+      />
+      
+      {/* Generate Workflow Dialog */}
+      <GenerateWorkflowDialog
+        open={isGenerateDialogOpen}
+        onOpenChange={setIsGenerateDialogOpen}
+        onWorkflowGenerated={handleGeneratedWorkflow}
+        catalogType={catalogType}
+        catalogSubtype={catalogSubType}
+        catalogName={catalogName}
       />
     </div>
   );

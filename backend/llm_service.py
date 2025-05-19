@@ -4,6 +4,11 @@ import json
 from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
 from openai import OpenAI
+from prompts import (
+    QUERY_MATCHING_PROMPT,
+    WORKFLOW_GENERATION_PROMPT,
+    REASONING_TRACE_PROMPT
+)
 
 # Load environment variables
 load_dotenv()
@@ -87,29 +92,12 @@ class LLMService:
                 context_text += f"Reasoning: {entry.get('reasoning_trace', '')}\n"
             context_text += f"ID: {entry.get('id')}\n\n"
         
-        # Prepare prompt for the LLM
-        prompt = f"""You are an expert in determining whether a user's question can be answered using existing cached entries by translating or adapting the query when possible.
-
-Original user question: "{query}"
-
-Cached entries (sorted by similarity):
-{context_text}
-
-Similarity threshold: {similarity_threshold}
-
-Your task is to determine if the original question can be fully and accurately answered using any of these cached entries, even if slight modifications are needed. 
-Consider:
-1. Does the user question ask for the same fundamental information as any cached entry, even if parameters (like numbers, dates, or specific terms) differ?
-2. Are there any minor differences in intent, scope, or specificity that can be resolved by adapting the cached entry or reformulating the user question?
-3. If there's a close match, could the user question be slightly reformulated or the parameters adjusted to match the cached entry while preserving the core intent?
-
-Output a JSON object with the following fields:
-- can_answer: true/false
-- explanation: brief explanation of your decision
-- updated_query: [if can_answer=true or if adaptation is possible] an updated version of the sql query that better matches the input question and cached entry, adjusting parameters if needed
-- selected_entry_id: [if can_answer=true] the ID of the most appropriate entry
-
-Return ONLY the JSON object and nothing else."""
+        # Prepare prompt for the LLM using the imported prompt template
+        prompt = QUERY_MATCHING_PROMPT.format(
+            query=query,
+            context_text=context_text,
+            similarity_threshold=similarity_threshold
+        )
 
         try:
             # Make the API call using the OpenAI client
@@ -149,4 +137,183 @@ Return ONLY the JSON object and nothing else."""
             return {
                 "can_answer": False,
                 "explanation": f"LLM service error: {str(e)}"
-            } 
+            }
+
+    def generate_workflow(
+        self,
+        nl_query: str,
+        compatible_entries: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """Generate a workflow from a natural language query using available cache entries.
+        
+        Args:
+            nl_query: The natural language query describing the desired workflow.
+            compatible_entries: List of cache entries that can be used as workflow steps.
+            
+        Returns:
+            Dictionary containing:
+                - nodes: Array of workflow nodes
+                - edges: Array of connections between nodes
+                - workflow_template: The compiled workflow template
+                - explanation: Explanation of how the workflow fulfills the request
+        """
+        if not self.api_key:
+            logger.error("OpenRouter API key not set. Cannot generate workflow.")
+            return self._generate_mock_workflow(nl_query, compatible_entries)
+        
+        try:
+            # Create a description of available cache entries/steps
+            entries_description = "\n\n".join([
+                f"Step {i+1}:\nID: {entry['id']}\nDescription: {entry['nl_query']}\nType: {entry['template_type']}"
+                for i, entry in enumerate(compatible_entries[:20])  # Limit to 20 entries to avoid token limits
+            ])
+            
+            # Prepare prompt for workflow generation
+            prompt = WORKFLOW_GENERATION_PROMPT.format(
+                nl_query=nl_query,
+                entries_description=entries_description
+            )
+            
+            # Make the API call
+            logger.info(f"Generating workflow for query: {nl_query}")
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "You are a workflow designer that creates data processing workflows based on user requests."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.3,
+                response_format={"type": "json_object"}
+            )
+            
+            # Parse the response
+            workflow_design = json.loads(response.choices[0].message.content)
+            
+            # Validate required fields
+            required_fields = ["nodes", "edges", "workflow_template", "explanation"]
+            if not all(field in workflow_design for field in required_fields):
+                raise ValueError("LLM response missing required fields")
+            
+            return workflow_design
+            
+        except Exception as e:
+            logger.error(f"Error generating workflow: {str(e)}")
+            return self._generate_mock_workflow(nl_query, compatible_entries)
+
+    def generate_reasoning_trace(
+        self,
+        nl_query: str,
+        template: str,
+        template_type: str
+    ) -> str:
+        """Generate a reasoning trace explaining how a template addresses a query.
+        
+        Args:
+            nl_query: The natural language query.
+            template: The template (SQL, URL, API spec, etc.).
+            template_type: Type of template (sql, url, api, etc.).
+            
+        Returns:
+            A string containing the reasoning trace.
+        """
+        if not self.api_key:
+            logger.error("OpenRouter API key not set. Cannot generate reasoning trace.")
+            return "LLM service not configured. Cannot generate reasoning trace."
+        
+        try:
+            # Prepare prompt for reasoning trace generation
+            prompt = REASONING_TRACE_PROMPT.format(
+                nl_query=nl_query,
+                template_type=template_type,
+                template=template
+            )
+            
+            # Make the API call
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant that explains technical solutions clearly."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.3
+            )
+            
+            return response.choices[0].message.content
+            
+        except Exception as e:
+            logger.error(f"Error generating reasoning trace: {str(e)}")
+            return f"Error generating reasoning trace: {str(e)}"
+
+    def _generate_mock_workflow(
+        self,
+        nl_query: str,
+        compatible_entries: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """Generate a mock workflow for testing purposes.
+        
+        Args:
+            nl_query: The natural language query.
+            compatible_entries: List of available cache entries.
+            
+        Returns:
+            A mock workflow design.
+        """
+        logger.warning("Using mock workflow generation since LLM service is not configured")
+        
+        # Create a simple mock workflow using the first two compatible entries
+        mock_workflow = {
+            "nodes": [
+                {
+                    "id": "step1",
+                    "type": "cacheEntry",
+                    "position": {"x": 100, "y": 100},
+                    "data": {
+                        "cacheEntryId": compatible_entries[0]["id"] if compatible_entries else 1,
+                        "label": "First Step",
+                        "description": compatible_entries[0]["nl_query"] if compatible_entries else "Mock Step 1"
+                    }
+                },
+                {
+                    "id": "step2",
+                    "type": "cacheEntry",
+                    "position": {"x": 400, "y": 100},
+                    "data": {
+                        "cacheEntryId": compatible_entries[1]["id"] if len(compatible_entries) > 1 else 2,
+                        "label": "Second Step",
+                        "description": compatible_entries[1]["nl_query"] if len(compatible_entries) > 1 else "Mock Step 2"
+                    }
+                }
+            ],
+            "edges": [
+                {
+                    "id": "e1-2",
+                    "source": "step1",
+                    "target": "step2",
+                    "label": "Data Flow"
+                }
+            ],
+            "workflow_template": {
+                "steps": [
+                    {
+                        "id": "step1",
+                        "cache_entry_id": compatible_entries[0]["id"] if compatible_entries else 1,
+                        "description": "First step in the workflow"
+                    },
+                    {
+                        "id": "step2",
+                        "cache_entry_id": compatible_entries[1]["id"] if len(compatible_entries) > 1 else 2,
+                        "description": "Second step in the workflow"
+                    }
+                ],
+                "connections": [
+                    {
+                        "from": "step1",
+                        "to": "step2",
+                        "description": "Pass data from step1 to step2"
+                    }
+                ]
+            },
+            "explanation": "This is a mock workflow generated because the LLM service is not properly configured."
+        }
+        
+        return mock_workflow 

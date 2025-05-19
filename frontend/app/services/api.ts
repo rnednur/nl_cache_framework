@@ -110,6 +110,21 @@ export interface CatalogValues {
   catalog_names: string[];
 }
 
+// Workflow generation request/response
+export interface GenerateWorkflowRequest {
+  nl_query: string;
+  catalog_type?: string;
+  catalog_subtype?: string;
+  catalog_name?: string;
+}
+
+export interface GenerateWorkflowResponse {
+  nodes: any[];
+  edges: any[];
+  workflow_template: any;
+  explanation: string;
+}
+
 // API service for cache management
 const api = {
   // Get all cache entries with optional filtering
@@ -724,7 +739,30 @@ const api = {
       console.error('Error fetching bulk cache entries:', error);
       return [];
     }
-  }
+  },
+
+  // Generate a workflow from natural language
+  async generateWorkflowFromNL(request: GenerateWorkflowRequest): Promise<GenerateWorkflowResponse> {
+    try {
+      const response = await fetch(`${API_BASE}/v1/workflows/generate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(request),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error generating workflow from NL:', error);
+      throw error;
+    }
+  },
 };
 
 export default api; 

@@ -1281,3 +1281,189 @@ class Text2SQLController:
                 pass
 
         return response_data
+
+    def design_workflow_with_llm(
+        self,
+        nl_query: str,
+        compatible_entries: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        Use LLM to design a workflow based on a natural language query and available cache entries.
+        
+        Args:
+            nl_query: The natural language query to analyze
+            compatible_entries: List of available cache entries to use as steps
+            
+        Returns:
+            Dictionary containing workflow nodes, edges, and compiled template
+        """
+        import random
+        from typing import List, Dict, Any
+        
+        try:
+            logger.info(f"Designing workflow for query: {nl_query}")
+            logger.info(f"Available cache entries: {len(compatible_entries)}")
+            
+            # Initialize LLM service
+            from backend.llm_service import LLMService
+            llm_service = LLMService()
+            
+            # Generate workflow using LLM service
+            workflow_design = llm_service.generate_workflow(nl_query, compatible_entries)
+            
+            # Convert the workflow design to ReactFlow nodes and edges
+            reactflow_design = self._convert_to_reactflow_format(workflow_design)
+            
+            # Compile the workflow template from nodes and edges (final executable format)
+            from thinkforge.workflow_compiler import compile_workflow_template
+            workflow_template = compile_workflow_template(reactflow_design["nodes"], reactflow_design["edges"])
+            
+            # Build final response
+            response = {
+                "nodes": reactflow_design["nodes"],
+                "edges": reactflow_design["edges"],
+                "workflow_template": workflow_template,
+                "explanation": workflow_design.get("explanation", "")
+            }
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error designing workflow with LLM: {str(e)}", exc_info=True)
+            raise ValueError(f"Failed to design workflow: {str(e)}")
+    
+    def _create_workflow_design_prompt(self, nl_query: str, cache_entries: List[Dict[str, Any]]) -> str:
+        """
+        Create a prompt for the LLM to design a workflow based on the query and available entries.
+        """
+        entries_text = "\n".join([
+            f"- ID: {entry['id']}, Name: {entry['nl_query']}, Type: {entry['template_type']}"
+            for entry in cache_entries
+        ])
+        
+        prompt = f"""
+        You are designing a workflow to solve the following natural language request:
+        
+        REQUEST: {nl_query}
+        
+        Available cache entries that can be used as steps in the workflow:
+        {entries_text}
+        
+        Please design a workflow that solves this request by selecting appropriate steps from the
+        available cache entries and connecting them in a meaningful sequence. For each step, explain
+        how it should be adapted or parameterized to work for this specific request.
+        
+        Your response should be in JSON format as follows:
+        {{
+          "steps": [
+            {{
+              "id": "step1",
+              "cache_entry_id": <entry_id>,
+              "description": "Description of this step",
+              "input_modifications": "Specific modifications or parameters needed for this request",
+              "outputs": ["output1", "output2"]
+            }},
+            ...
+          ],
+          "connections": [
+            {{
+              "from": "step1",
+              "to": "step2",
+              "description": "How output from step1 is used in step2"
+            }},
+            ...
+          ],
+          "explanation": "Overall explanation of how this workflow solves the request"
+        }}
+        
+        Focus on selecting the most appropriate steps and creating a logical flow between them.
+        """
+        
+        return prompt
+    
+    def _parse_workflow_design_response(
+        self, 
+        llm_response: str, 
+        compatible_entries: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        Parse the LLM response and extract the workflow design.
+        """
+        import json
+        import re
+        
+        try:
+            # Try to extract JSON from the response
+            json_match = re.search(r'({[\s\S]*})', llm_response)
+            if json_match:
+                json_str = json_match.group(1)
+                workflow_design = json.loads(json_str)
+                return workflow_design
+            else:
+                raise ValueError("Could not extract JSON from LLM response")
+                
+        except json.JSONDecodeError:
+            logger.error(f"Could not parse LLM response as JSON: {llm_response}")
+            # Fallback to a simple workflow structure if parsing fails
+            return {
+                "steps": [],
+                "connections": [],
+                "explanation": "Failed to parse workflow design from LLM response."
+            }
+    
+    def _convert_to_reactflow_format(self, workflow_design: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Convert the workflow design to ReactFlow nodes and edges.
+        """
+        nodes = []
+        edges = []
+        
+        # Add start node
+        nodes.append({
+            "id": "start",
+            "type": "input",
+            "data": { "label": "Workflow Start" },
+            "position": { "x": 250, "y": 50 }
+        })
+        
+        # Add nodes for each step
+        for i, step in enumerate(workflow_design.get("steps", [])):
+            node = {
+                "id": step.get("id", f"step{i+1}"),
+                "type": "default",
+                "data": {
+                    "label": step.get("description", f"Step {i+1}"),
+                    "originalStepId": step.get("cache_entry_id"),
+                    "originalStepType": "unknown",  # Would be set from cache entry type
+                    "inputModifications": step.get("input_modifications", ""),
+                    "outputs": step.get("outputs", [])
+                },
+                "position": { "x": 250, "y": 150 + (i * 100) }
+            }
+            nodes.append(node)
+        
+        # Add edge from start to first step (if any steps exist)
+        if workflow_design.get("steps"):
+            first_step_id = workflow_design["steps"][0].get("id", "step1")
+            edges.append({
+                "id": f"start-{first_step_id}",
+                "source": "start",
+                "target": first_step_id
+            })
+        
+        # Add edges for connections
+        for i, connection in enumerate(workflow_design.get("connections", [])):
+            edge = {
+                "id": f"edge{i+1}",
+                "source": connection.get("from"),
+                "target": connection.get("to"),
+                "data": {
+                    "description": connection.get("description", "")
+                }
+            }
+            edges.append(edge)
+        
+        return {
+            "nodes": nodes,
+            "edges": edges
+        }
