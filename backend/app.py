@@ -1,9 +1,9 @@
-from fastapi import FastAPI, Depends, HTTPException, Request, Body, UploadFile, File
+from fastapi import FastAPI, Depends, HTTPException, Request, Body, UploadFile, File, Form, BackgroundTasks, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy.orm import Session
-from typing import Optional, Tuple, List, Dict, Any
+from typing import Optional, Tuple, List, Dict, Any, Union
 import uuid
 import logging
 import os
@@ -16,12 +16,16 @@ from pydantic import BaseModel, Field
 import csv
 import io
 import requests
+import traceback
 
 # Import database configuration
 from database import get_db, engine, SessionLocal
 
 # Import LLM service for enhanced completions
 from llm_service import LLMService
+
+# Import prompts
+from prompts import REASONING_TRACE_PROMPT
 
 # Add parent directory to path to ensure imports work
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -109,6 +113,19 @@ class CompleteRequest(BaseModel):
 
 class EntitySubstitutionRequest(BaseModel):
     entity_values: Dict[str, Any] = Field(..., description="Entity values for substitution")
+
+# Workflow generation models
+class GenerateWorkflowRequest(BaseModel):
+    nl_query: str
+    catalog_type: Optional[str] = None
+    catalog_subtype: Optional[str] = None
+    catalog_name: Optional[str] = None
+    
+class GenerateWorkflowResponse(BaseModel):
+    nodes: List[Dict[str, Any]]
+    edges: List[Dict[str, Any]]
+    workflow_template: Dict[str, Any]
+    explanation: str
 
 # Initialize FastAPI application
 app = FastAPI(
@@ -1267,23 +1284,12 @@ async def generate_reasoning_trace(
         # Create LLM service instance
         llm_service = LLMService(model=os.environ.get("OPENROUTER_MODEL", "google/gemini-pro"))
         
-        # Prepare prompt for reasoning trace generation
-        prompt = f"""You are an expert in explaining how database queries, APIs, or other templates address natural language questions.
-
-Natural Language Query: "{nl_query}"
-
-Template ({template_type}): 
-{template}
-
-Provide a clear, concise explanation of how this template addresses the natural language query. 
-Explain the logic, approach, and any transformations or calculations involved.
-Focus on helping a non-technical user understand the relationship between their question and the provided solution.
-
-Your explanation should be:
-1. Clear and concise (2-4 paragraphs)
-2. Technically accurate
-3. Focused on how the template addresses the specific query
-"""
+        # Prepare prompt for reasoning trace generation using the imported prompt template
+        prompt = REASONING_TRACE_PROMPT.format(
+            nl_query=nl_query,
+            template_type=template_type,
+            template=template
+        )
         
         # Make the API call using the OpenAI client
         response = llm_service.client.chat.completions.create(
@@ -1303,6 +1309,113 @@ Your explanation should be:
     except Exception as e:
         logger.error(f"Error generating reasoning trace: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error generating reasoning trace: {str(e)}")
+
+
+@app.post("/v1/workflows/generate", response_model=GenerateWorkflowResponse)
+def generate_workflow(
+    request: GenerateWorkflowRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Generate a workflow from a natural language query using LLM.
+    The LLM will analyze the query, determine necessary steps, and create a workflow.
+    """
+    try:
+        # Directly query the database for compatible cache entries
+        # Base query for all cache entries that can be used as steps
+        query = db.query(Text2SQLCache).filter(Text2SQLCache.status == "active")
+        
+        # Apply catalog filters if specified
+        if request.catalog_type:
+            query = query.filter(or_(
+                Text2SQLCache.catalog_type == request.catalog_type,
+                Text2SQLCache.catalog_type == None  # Also include entries with NULL catalog_type
+            ))
+        
+        if request.catalog_subtype:
+            query = query.filter(or_(
+                Text2SQLCache.catalog_subtype == request.catalog_subtype,
+                Text2SQLCache.catalog_subtype == None  # Also include entries with NULL catalog_subtype
+            ))
+        
+        if request.catalog_name:
+            query = query.filter(or_(
+                Text2SQLCache.catalog_name == request.catalog_name,
+                Text2SQLCache.catalog_name == None  # Also include entries with NULL catalog_name
+            ))
+        
+        # Execute query, limited to a reasonable number to prevent overloading the UI
+        cache_entries = query.limit(100).all()
+        
+        # Process entries for the workflow design
+        compatible_entries = []
+        for entry in cache_entries:
+            # Convert SQLAlchemy model to dictionary
+            item = {
+                "id": entry.id,
+                "nl_query": entry.nl_query,
+                "template": entry.template,
+                "template_type": entry.template_type,
+                "catalog_type": entry.catalog_type,
+                "catalog_subtype": entry.catalog_subtype,
+                "catalog_name": entry.catalog_name,
+                "status": entry.status
+            }
+            compatible_entries.append(item)
+        
+        # Use LLMService directly instead of controller.design_workflow_with_llm
+        from llm_service import LLMService
+        llm_service = LLMService()
+        
+        if not llm_service.is_configured():
+            raise Exception("LLM service is not properly configured. Please check your environment variables.")
+            
+        # Prepare the prompt for the LLM
+        system_prompt = "You are a workflow designer that creates data processing workflows based on user requests."
+        
+        # Create a description of available cache entries/steps
+        entries_description = "\n\n".join([
+            f"Step {i+1}:\nID: {entry['id']}\nDescription: {entry['nl_query']}\nType: {entry['template_type']}"
+            for i, entry in enumerate(compatible_entries[:20])  # Limit to 20 entries to avoid token limits
+        ])
+        
+        user_prompt = f"""
+        Create a workflow to fulfill this request: "{request.nl_query}"
+        
+        Available steps:
+        {entries_description}
+        
+        Respond with a JSON object containing:
+        1. "nodes": Array of nodes with id, type, position, data
+        2. "edges": Array of connections between nodes
+        3. "workflow_template": The compiled workflow template
+        4. "explanation": Explanation of how the workflow fulfills the request
+        """
+        
+        # Call LLM to design the workflow
+        response = llm_service.client.chat.completions.create(
+            model=llm_service.model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.3,
+            response_format={"type": "json_object"}
+        )
+        
+        # Parse the LLM response
+        workflow_design = json.loads(response.choices[0].message.content)
+        
+        # Ensure the response has the required format
+        if not all(key in workflow_design for key in ["nodes", "edges", "workflow_template", "explanation"]):
+            raise Exception("LLM response does not contain all required fields")
+        
+        return workflow_design
+        
+    except Exception as e:
+        logging.error(f"Error generating workflow: {str(e)}")
+        logging.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to generate workflow: {str(e)}")
 
 
 if __name__ == "__main__":
