@@ -92,4 +92,7 @@
     opacity: 1;
     transform: translateY(0);
   }
-} 
+}
+
+/* Import ReactFlow styles */
+@import 'reactflow/dist/style.css'; 

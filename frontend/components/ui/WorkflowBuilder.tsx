@@ -17,7 +17,8 @@ import ReactFlow, {
   Panel,
 } from 'reactflow';
 
-import 'reactflow/dist/style.css';
+// Comment out the CSS import since we've added it to globals.css
+// import 'reactflow/dist/style.css';
 import { CompatibleStep } from './StepPalette';
 import BottomStepPalette from './BottomStepPalette';
 import api, { CacheItem } from '../../app/services/api';
