@@ -188,7 +188,7 @@ const api = {
       // Try to use fetchWithDebug if it's available, otherwise fallback to regular fetch
       let data;
       try {
-        const { fetchWithDebug } = await import('../lib/fetch-with-debug');
+        const { fetchWithDebug } = await import('@/app/lib/fetch-with-debug');
         data = await fetchWithDebug(url);
       } catch (importError) {
         console.log('Using fallback fetch method');
