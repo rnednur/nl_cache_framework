@@ -185,13 +185,9 @@ const api = {
       const url = `${API_BASE}/v1/cache/${id}`;
       console.log(`Fetching cache entry with ID ${id}`);
       
-      // Try to use fetchWithDebug if it's available, otherwise fallback to regular fetch
+      // Using standard fetch instead of fetchWithDebug to avoid module resolution issues
       let data;
       try {
-        const { fetchWithDebug } = await import('../lib/fetch-with-debug');
-        data = await fetchWithDebug(url);
-      } catch (importError) {
-        console.log('Using fallback fetch method');
         const response = await fetch(url);
         
         if (!response.ok) {
@@ -199,6 +195,9 @@ const api = {
         }
         
         data = await response.json();
+      } catch (error) {
+        console.error(`Error fetching cache entry with ID ${id}:`, error);
+        throw error;
       }
       
       // Add logging to see if catalog fields are missing
