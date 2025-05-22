@@ -24,6 +24,105 @@ import api, { UsageLog, CatalogValues } from "../../services/api"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../components/ui/tooltip"
 import Link from "next/link"
 
+// Simple hover component for cache entries
+interface CacheEntryHoverProps {
+  entryId: number;
+  children: React.ReactNode;
+}
+
+function CacheEntryHover({ entryId, children }: CacheEntryHoverProps) {
+  const [isHovering, setIsHovering] = useState(false);
+  const [entryData, setEntryData] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+
+  useEffect(() => {
+    if (isHovering && !entryData && !loading) {
+      setLoading(true);
+      api.getCacheEntry(entryId)
+        .then(data => {
+          setEntryData(data);
+          setLoading(false);
+        })
+        .catch(err => {
+          console.error(`Error fetching cache entry ${entryId}:`, err);
+          setError(`Failed to load entry ${entryId}`);
+          setLoading(false);
+        });
+    }
+  }, [entryId, isHovering, entryData, loading]);
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    setPosition({ x: e.clientX + 10, y: e.clientY + 10 });
+  };
+
+  return (
+    <div
+      className="inline-block"
+      onMouseEnter={() => setIsHovering(true)}
+      onMouseLeave={() => setIsHovering(false)}
+      onMouseMove={handleMouseMove}
+    >
+      {children}
+      
+      {isHovering && (
+        <div 
+          className="fixed z-[9999] bg-neutral-900 border border-blue-600 rounded-md shadow-lg p-4"
+          style={{ 
+            left: `${position.x}px`, 
+            top: `${position.y}px`,
+            maxWidth: "400px",
+            maxHeight: "350px",
+            overflow: "auto",
+            boxShadow: "0 4px 20px rgba(0, 0, 0, 0.3)"
+          }}
+        >
+          {loading ? (
+            <div className="flex items-center justify-center py-4">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-400"></div>
+              <span className="ml-2 text-neutral-400 text-sm">Loading...</span>
+            </div>
+          ) : error ? (
+            <div className="text-red-400 text-sm py-2">{error}</div>
+          ) : entryData ? (
+            <div className="space-y-3">
+              <div>
+                <div className="text-neutral-400 text-xs mb-1">Query:</div>
+                <div className="text-white text-sm">{entryData.nl_query}</div>
+              </div>
+              
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <div className="text-neutral-400 text-xs mb-1">Type:</div>
+                  <div className="text-white text-sm capitalize">{entryData.template_type || "N/A"}</div>
+                </div>
+                <div className="flex-1">
+                  <div className="text-neutral-400 text-xs mb-1">Created:</div>
+                  <div className="text-white text-sm">
+                    {entryData.created_at ? new Date(entryData.created_at).toLocaleString() : "N/A"}
+                  </div>
+                </div>
+              </div>
+              
+              <div>
+                <div className="text-neutral-400 text-xs mb-1">Template:</div>
+                <pre className="text-white text-xs bg-neutral-800 p-2 rounded-md overflow-auto max-h-[100px] whitespace-pre-wrap">{entryData.template}</pre>
+              </div>
+              
+              <div className="pt-2 text-center text-xs text-blue-400">
+                Click to view full details
+              </div>
+            </div>
+          ) : (
+            <div className="text-neutral-400 text-sm py-2">No data available</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function UsageLogs() {
   const [usageLogs, setUsageLogs] = useState<UsageLog[]>([])
   const [loading, setLoading] = useState(true)
@@ -534,30 +633,53 @@ export default function UsageLogs() {
                           </td>
                           <td className="px-4 py-3 text-sm text-neutral-300">
                             {log.prompt 
-                              ? (log.prompt.length > 50 
-                                  ? `${log.prompt.substring(0, 50)}...` 
-                                  : log.prompt) 
-                              : '-'}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-neutral-300">{(log.similarity_score * 100).toFixed(2)}%</td>
-                          <td className="px-4 py-3 text-sm">
-                            {log.cache_entry_id ? (
-                              <TooltipProvider>
+                              ? (
                                 <Tooltip>
                                   <TooltipTrigger asChild>
-                                    <Link 
-                                      href={`/cache-entries/${log.cache_entry_id}`}
-                                      className="text-blue-400 hover:text-blue-300 flex items-center gap-1 transition-colors"
-                                    >
-                                      {log.cache_entry_id}
-                                      <ExternalLink className="h-3 w-3" />
-                                    </Link>
+                                    <div className="cursor-help">
+                                      {log.prompt.length > 50 
+                                        ? `${log.prompt.substring(0, 50)}...` 
+                                        : log.prompt}
+                                    </div>
                                   </TooltipTrigger>
-                                  <TooltipContent className="bg-neutral-800 border-neutral-700 text-neutral-200">
-                                    <p>Click to view cache entry details</p>
+                                  <TooltipContent className="max-w-md">
+                                    {log.prompt}
                                   </TooltipContent>
                                 </Tooltip>
-                              </TooltipProvider>
+                              ) 
+                              : '-'}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-neutral-300">
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div className="cursor-help">
+                                  {(log.similarity_score * 100).toFixed(2)}%
+                                </div>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <div className="space-y-1">
+                                  <p>Match confidence: {(log.similarity_score * 100).toFixed(2)}%</p>
+                                  {log.similarity_score > 0.9 ? 
+                                    <p className="text-green-400 text-xs">Strong match</p> : 
+                                    log.similarity_score > 0.75 ? 
+                                    <p className="text-yellow-400 text-xs">Good match</p> : 
+                                    <p className="text-orange-400 text-xs">Weak match</p>
+                                  }
+                                </div>
+                              </TooltipContent>
+                            </Tooltip>
+                          </td>
+                          <td className="px-4 py-3 text-sm">
+                            {log.cache_entry_id ? (
+                              <CacheEntryHover entryId={log.cache_entry_id}>
+                                <Link 
+                                  href={`/cache-entries/${log.cache_entry_id}`}
+                                  className="text-blue-400 hover:text-blue-300 flex items-center gap-1 transition-colors"
+                                >
+                                  {log.cache_entry_id}
+                                  <ExternalLink className="h-3 w-3" />
+                                </Link>
+                              </CacheEntryHover>
                             ) : (
                               '-'
                             )}
