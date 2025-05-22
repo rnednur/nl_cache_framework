@@ -15,6 +15,9 @@ import ReactFlow, {
   ReactFlowProvider,
   useReactFlow,
   Panel,
+  getConnectedEdges,
+  getNodesBounds,
+  GetViewport,
 } from 'reactflow';
 
 // Comment out the CSS import since we've added it to globals.css
@@ -23,7 +26,7 @@ import { CompatibleStep } from './StepPalette';
 import BottomStepPalette from './BottomStepPalette';
 import api, { CacheItem } from '../../app/services/api';
 import { Button } from '../../app/components/ui/button';
-import { Wand2 } from 'lucide-react';
+import { Wand2, Trash2 } from 'lucide-react';
 import GenerateWorkflowDialog from './GenerateWorkflowDialog';
 
 // Default initial node if no workflow data is provided
@@ -66,9 +69,36 @@ const WorkflowBuilderComponent: React.FC<WorkflowBuilderProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [isGenerateDialogOpen, setIsGenerateDialogOpen] = useState<boolean>(false);
 
+  // Refs to store the previous initial props to compare against
+  const prevPropInitialNodesRef = useRef<Node[] | undefined>();
+  const prevPropInitialEdgesRef = useRef<Edge[] | undefined>();
+  const onWorkflowChangeRef = useRef(onWorkflowChange);
+
   useEffect(() => {
-    setNodes(propInitialNodes || defaultInitialNodes);
-    setEdges(propInitialEdges || []);
+    // Keep the ref updated with the latest callback from props
+    onWorkflowChangeRef.current = onWorkflowChange;
+  }, [onWorkflowChange]);
+
+  useEffect(() => {
+    const propNodesChanged = 
+      JSON.stringify(propInitialNodes || defaultInitialNodes) !== 
+      JSON.stringify(prevPropInitialNodesRef.current || defaultInitialNodes);
+
+    const propEdgesChanged = 
+      JSON.stringify(propInitialEdges || []) !== 
+      JSON.stringify(prevPropInitialEdgesRef.current || []);
+
+    if (propNodesChanged) {
+      setNodes(propInitialNodes || defaultInitialNodes);
+    }
+
+    if (propEdgesChanged) {
+      setEdges(propInitialEdges || []);
+    }
+
+    // Update refs for the next render
+    prevPropInitialNodesRef.current = propInitialNodes;
+    prevPropInitialEdgesRef.current = propInitialEdges;
   }, [propInitialNodes, propInitialEdges, setNodes, setEdges]);
 
   // Fetch compatible cache entries for workflow steps
@@ -141,10 +171,11 @@ const WorkflowBuilderComponent: React.FC<WorkflowBuilderProps> = ({
   }, [catalogType, catalogSubType, catalogName, nodes]);
 
   useEffect(() => {
-    if (onWorkflowChange) {
-      onWorkflowChange(nodes, edges);
+    // Call onWorkflowChange via the ref when nodes or edges change
+    if (onWorkflowChangeRef.current) {
+      onWorkflowChangeRef.current(nodes, edges);
     }
-  }, [nodes, edges, onWorkflowChange]);
+  }, [nodes, edges]);
 
   const onConnect = useCallback(
     (params: Connection) => setEdges((eds) => addEdge(params, eds)),
@@ -173,10 +204,26 @@ const WorkflowBuilderComponent: React.FC<WorkflowBuilderProps> = ({
         y: event.clientY - reactFlowWrapper.current.getBoundingClientRect().top,
       });
 
+      // Clamp position to stay within the wrapper bounds so that the node is visible.
+      const wrapperRect = reactFlowWrapper.current.getBoundingClientRect();
+      const NODE_WIDTH = 150; // approximate default width we use when rendering nodes
+      const NODE_HEIGHT = 75; // average node height – adjust as necessary
+
+      const clampedX = Math.min(
+        Math.max(position.x, 0),
+        wrapperRect.width - NODE_WIDTH
+      );
+      const clampedY = Math.min(
+        Math.max(position.y, 0),
+        wrapperRect.height - NODE_HEIGHT
+      );
+
+      const finalPosition = { x: clampedX, y: clampedY };
+
       const newNode: Node = {
         id: getNextNodeId(),
         type: 'default', // Or a custom type based on draggedStep.type
-        position,
+        position: finalPosition,
         data: { 
             label: `${draggedStep.name} (Type: ${draggedStep.type})`,
             originalStepId: draggedStep.id,
@@ -189,6 +236,22 @@ const WorkflowBuilderComponent: React.FC<WorkflowBuilderProps> = ({
     },
     [screenToFlowPosition, setNodes]
   );
+  
+  const handleDeleteSelected = useCallback(() => {
+    // Prevent deleting start node
+    const nodeIdsToRemove = new Set(nodes.filter(n => n.selected && n.id !== 'start').map(n => n.id));
+    const edgeIdsToRemove = new Set(edges.filter(e => e.selected).map(e => e.id));
+
+    if (nodeIdsToRemove.size === 0 && edgeIdsToRemove.size === 0) return;
+
+    setNodes((nds) => nds.filter((node) => !nodeIdsToRemove.has(node.id)));
+    setEdges((eds) => eds.filter((edge) => {
+      if (edgeIdsToRemove.has(edge.id)) return false;
+      // Remove edges connected to removed nodes
+      if (nodeIdsToRemove.has(edge.source) || nodeIdsToRemove.has(edge.target)) return false;
+      return true;
+    }));
+  }, [nodes, edges]);
   
   const handleGeneratedWorkflow = (generatedNodes: any[], generatedEdges: any[]) => {
     // Reset node counter
@@ -230,6 +293,16 @@ const WorkflowBuilderComponent: React.FC<WorkflowBuilderProps> = ({
             >
               <Wand2 className="h-4 w-4" />
               Generate from NL
+            </Button>
+            <Button
+              onClick={handleDeleteSelected}
+              disabled={nodes.every(n=>!n.selected || n.id==='start') && edges.every(e=>!e.selected)}
+              variant="outline"
+              className="flex items-center gap-1 ml-2"
+              title="Delete Selected (cannot delete Start node)"
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete Selected
             </Button>
           </Panel>
         </ReactFlow>
