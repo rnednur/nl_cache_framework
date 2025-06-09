@@ -18,6 +18,12 @@ export default function CacheEntryDetail({ params }: { params: { id: string } })
     const fetchEntry = async () => {
       try {
         const entry = await api.getCacheEntry(parseInt(params.id));
+        console.log('Fetched cache entry:', entry);
+        console.log('Catalog fields:', {
+          catalog_type: entry.catalog_type,
+          catalog_subtype: entry.catalog_subtype,
+          catalog_name: entry.catalog_name
+        });
         setEntry(entry);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to fetch cache entry");
@@ -69,6 +75,9 @@ export default function CacheEntryDetail({ params }: { params: { id: string } })
           template={entry.template}
           templateType={entry.template_type}
           reasoningTrace={entry.reasoning_trace || ""}
+          catalogType={entry.catalog_type}
+          catalogSubtype={entry.catalog_subtype}
+          catalogName={entry.catalog_name}
           tags={entry.tags || {}}
           status={entry.status || 'active'}
           readOnly={true}

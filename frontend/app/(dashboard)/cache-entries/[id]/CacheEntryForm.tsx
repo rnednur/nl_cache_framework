@@ -70,6 +70,7 @@ export function CacheEntryForm({
   onGenerateReasoning,
   isGeneratingReasoning,
 }: CacheEntryFormProps) {
+  console.log('CacheEntryForm catalog props:', { catalogType, catalogSubtype, catalogName });
   return (
     <Card className="w-full border-0 shadow-none">
       <CardContent className="p-4 space-y-8">
