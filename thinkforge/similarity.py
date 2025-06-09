@@ -181,12 +181,6 @@ class Text2SQLSimilarity:
             score = (similarity + 1) / 2
             logger.debug(f"Normalized score: {score}")
             
-            # 2. Apply non-linear scaling to make the scoring more strict
-            # This will make scores below 0.7 much lower
-            if score < 0.7:
-                score = score * 0.5  # Halve the score for low similarities
-                logger.debug(f"Adjusted score (below 0.7): {score}")
-            
             return score
         except Exception as e:
             logger.error(f"Error computing cosine similarity: {e}", exc_info=True)
