@@ -78,7 +78,7 @@ export default function CacheEntryDetail({ params }: { params: { id: string } })
           catalogType={entry.catalog_type}
           catalogSubtype={entry.catalog_subtype}
           catalogName={entry.catalog_name}
-          tags={entry.tags || {}}
+          tags={entry.tags || null}
           status={entry.status || 'active'}
           readOnly={true}
           error={null}

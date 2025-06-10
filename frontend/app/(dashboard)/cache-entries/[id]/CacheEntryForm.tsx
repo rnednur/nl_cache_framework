@@ -24,9 +24,9 @@ interface CacheEntryFormProps {
   setCatalogName?: (v: string | undefined) => void;
   status: string;
   setStatus?: (v: string) => void;
-  tags: Record<string, string[]>;
-  addTag?: (name: string, value: string) => void;
-  removeTag?: (name: string, value: string) => void;
+  tags: string[] | null;
+  addTag?: (tag: string) => void;
+  removeTag?: (tag: string) => void;
   tagNameInput?: string;
   setTagNameInput?: (v: string) => void;
   tagValueInput?: string;
@@ -392,49 +392,35 @@ export function CacheEntryForm({
         <div className="grid gap-2">
           <Label htmlFor="tags">Tags</Label>
           <div className="flex flex-wrap gap-2">
-            {Object.entries(tags || {}).map(([name, values]) => (
-              <div key={name} className="flex items-center gap-1 bg-secondary text-secondary-foreground px-3 py-1 rounded-full text-sm">
-                {name}
-                {Array.isArray(values) ? values.map((value) => (
-                  <div key={`${name}-${value}`} className="flex items-center gap-1 bg-secondary text-secondary-foreground px-2 py-0.5 rounded-full text-sm">
-                    {value}
-                    {!readOnly && removeTag && (
-                      <button
-                        type="button"
-                        onClick={() => removeTag(name, value)}
-                        className="text-secondary-foreground/70 hover:text-secondary-foreground"
-                      >
-                        ×
-                      </button>
-                    )}
-                  </div>
-                )) : null}
+            {tags && Array.isArray(tags) && tags.map((tag, index) => (
+              <div key={`tag-${index}-${tag}`} className="flex items-center gap-1 bg-secondary text-secondary-foreground px-3 py-1 rounded-full text-sm">
+                {tag}
+                {!readOnly && removeTag && (
+                  <button
+                    type="button"
+                    onClick={() => removeTag(tag)}
+                    className="text-secondary-foreground/70 hover:text-secondary-foreground"
+                  >
+                    ×
+                  </button>
+                )}
               </div>
             ))}
             {!readOnly && (
               <div className="flex items-center">
                 <Input
-                  id="tag-name-input"
-                  placeholder="Add tag name..."
+                  id="tag-input"
+                  placeholder="Add tag..."
                   value={tagNameInput || ""}
                   onChange={setTagNameInput ? (e) => setTagNameInput(e.target.value) : undefined}
                   onKeyDown={handleKeyDown}
-                  className="w-28 h-8 px-2 py-1"
-                  disabled={readOnly}
-                />
-                <Input
-                  id="tag-value-input"
-                  placeholder="Add tag value..."
-                  value={tagValueInput || ""}
-                  onChange={setTagValueInput ? (e) => setTagValueInput(e.target.value) : undefined}
-                  onKeyDown={handleKeyDown}
-                  className="w-28 h-8 px-2 py-1"
+                  className="w-40 h-8 px-2 py-1"
                   disabled={readOnly}
                 />
                 {addTag && (
                   <button
                     type="button"
-                    onClick={() => addTag(tagNameInput || "", tagValueInput || "")}
+                    onClick={() => addTag(tagNameInput || "")}
                     className="ml-2 text-sm text-primary hover:text-primary/80"
                   >
                     Add

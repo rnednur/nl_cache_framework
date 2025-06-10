@@ -422,17 +422,15 @@ export default function CacheEntries() {
                     </td>
                     <td className="p-4 align-middle" style={{ width: `${columnWidths[3]}%`, minWidth: '100px' }}>
                       <div className="flex flex-wrap gap-1">
-                        {entry.tags && Object.keys(entry.tags).length > 0 ? (
-                          Object.entries(entry.tags).flatMap(([key, values]) =>
-                            values.map((value, index) => (
-                              <span 
-                                key={`${key}-${value}-${index}`} 
-                                className="inline-flex items-center rounded-full bg-neutral-700 px-2 py-1 text-xs text-neutral-300"
-                              >
-                                {key}: {value}
-                              </span>
-                            ))
-                          )
+                        {entry.tags && Array.isArray(entry.tags) && entry.tags.length > 0 ? (
+                          entry.tags.map((tag, index) => (
+                            <span 
+                              key={`tag-${index}-${tag}`} 
+                              className="inline-flex items-center rounded-full bg-neutral-700 px-2 py-1 text-xs text-neutral-300"
+                            >
+                              {tag}
+                            </span>
+                          ))
                         ) : (
                           <span className="text-neutral-500 text-xs">No tags</span>
                         )}
