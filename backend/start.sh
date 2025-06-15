@@ -30,4 +30,4 @@ pip install -e .
 echo "Starting the MCP server with Uvicorn..."
 export DEBUG=true
 # PORT environment variable will be used by uvicorn if set, otherwise defaults to 8000
-uvicorn backend.app:app --reload --host 0.0.0.0 --port ${PORT:-8000} 
+uvicorn app:app --reload --host 0.0.0.0 --port ${PORT:-8000} 
