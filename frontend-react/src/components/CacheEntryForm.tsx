@@ -141,6 +141,7 @@ export function CacheEntryForm({
                 <SelectItem value="prompt">Prompt</SelectItem>
                 <SelectItem value="configuration">Configuration</SelectItem>
                 <SelectItem value="reasoning_steps">Reasoning Steps</SelectItem>
+                <SelectItem value="dsl">DSL Components</SelectItem>
               </SelectContent>
             </Select>
           </div>

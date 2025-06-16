@@ -107,8 +107,7 @@ export default function UsageLogs() {
     prompt: 360,
     response: 180,
     similarity: 70,
-    cacheEntryId: 80,
-    consideredEntries: 100,
+    consideredEntries: 180,
     llmUsed: 60,
     confidence: 60,
   });
@@ -418,17 +417,7 @@ export default function UsageLogs() {
                       <GripVertical className="h-3 w-3 text-muted-foreground group-hover:text-blue-500" />
                     </div>
                   </TableHead>
-                  <TableHead style={{ width: columnWidths.cacheEntryId }} className="relative">
-                    <div className="flex items-center gap-2">
-                      <span>Cache Entry ID</span>
-                    </div>
-                    <div 
-                      className="absolute right-0 top-0 w-3 h-full cursor-col-resize hover:bg-blue-500/20 flex items-center justify-center group border-r-2 border-transparent hover:border-blue-500"
-                      onMouseDown={(e) => handleResizeStart('cacheEntryId', e)}
-                    >
-                      <GripVertical className="h-3 w-3 text-muted-foreground group-hover:text-blue-500" />
-                    </div>
-                  </TableHead>
+
                   <TableHead style={{ width: columnWidths.consideredEntries }} className="relative">
                     <div className="flex items-center gap-2">
                       <span>Considered Entries</span>
@@ -486,9 +475,9 @@ export default function UsageLogs() {
               </TableHeader>
               <TableBody>
                 {loading ? (
-                  <TableRow><TableCell className="py-6 px-4 text-center" colSpan={9}>Loading…</TableCell></TableRow>
+                  <TableRow><TableCell className="py-6 px-4 text-center" colSpan={8}>Loading…</TableCell></TableRow>
                 ) : filteredLogs.length === 0 ? (
-                  <TableRow><TableCell className="py-6 px-4 text-center" colSpan={9}>No logs found</TableCell></TableRow>
+                  <TableRow><TableCell className="py-6 px-4 text-center" colSpan={8}>No logs found</TableCell></TableRow>
                 ) : (
                   filteredLogs.map((log) => (
                     <TableRow key={log.id}>
@@ -521,24 +510,27 @@ export default function UsageLogs() {
                       <TableCell style={{ width: columnWidths.similarity, maxWidth: columnWidths.similarity }} className="overflow-hidden">
                         {(log.similarity_score * 100).toFixed(2)}%
                       </TableCell>
-                      <TableCell style={{ width: columnWidths.cacheEntryId, maxWidth: columnWidths.cacheEntryId }} className="overflow-hidden">
-                        {log.cache_entry_id ? (
-                          <CacheEntryHoverTooltip entryId={log.cache_entry_id}>
-                            <Link to={`/cache-entries/${log.cache_entry_id}`} className="text-blue-400 hover:underline" state={{ from: location.pathname }}>
-                              {log.cache_entry_id}
-                            </Link>
-                          </CacheEntryHoverTooltip>
-                        ) : (
-                          "-"
-                        )}
-                      </TableCell>
-                      <TableCell style={{ width: columnWidths.consideredEntries, maxWidth: columnWidths.consideredEntries }} className="overflow-hidden">
-                        {log.considered_entries && log.considered_entries.length > 0 ? (
-                          <span className="bg-blue-600/20 text-blue-400 px-2 py-0.5 rounded-md text-xs" title={log.considered_entries.join(", ")}>
-                            {log.considered_entries.length} entries
-                          </span>
-                        ) : "-"}
-                      </TableCell>
+
+                                              <TableCell style={{ width: columnWidths.consideredEntries, maxWidth: columnWidths.consideredEntries }} className="overflow-hidden">
+                          {log.considered_entries && log.considered_entries.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {log.considered_entries.map((entryId, index) => (
+                                <span key={entryId}>
+                                  <CacheEntryHoverTooltip entryId={entryId}>
+                                    <Link 
+                                      to={`/cache-entries/${entryId}`} 
+                                      className="text-blue-400 hover:underline text-xs" 
+                                      state={{ from: location.pathname }}
+                                    >
+                                      {entryId}
+                                    </Link>
+                                  </CacheEntryHoverTooltip>
+                                  {index < (log.considered_entries?.length || 0) - 1 }
+                                </span>
+                              ))}
+                            </div>
+                          ) : "-"}
+                        </TableCell>
                       <TableCell style={{ width: columnWidths.llmUsed, maxWidth: columnWidths.llmUsed }} className="overflow-hidden">
                         {log.llm_used ? <span className="bg-violet-600/20 text-violet-400 px-2 py-0.5 rounded-md text-xs">Yes</span> : <span className="text-muted-foreground text-xs">No</span>}
                       </TableCell>

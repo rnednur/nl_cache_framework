@@ -80,6 +80,31 @@ class TemplateType(str, Enum):
     REASONING_STEPS = "reasoning_steps"
     """Reasoning steps templates capture step-by-step logical reasoning or problem-solving approaches.
     This can be used for documenting thought processes, mathematical proofs, or decision trees."""
+    DSL = "dsl"
+    """Domain Specific Language components for structured query building.
+    DSL templates store individual query components that can be composed together.
+    Expected JSON format in the 'template' field:
+    {
+        'component_type': 'TABLE' | 'COLUMN' | 'JOIN' | 'FILTER' | 'AGGREGATE' | 'GROUP_BY' | 'ORDER_BY' | 'LIMIT',
+        'component_data': {
+            // Component-specific data structure
+            'table_name': str,          // For TABLE type
+            'column_name': str,         // For COLUMN type  
+            'join_condition': str,      // For JOIN type
+            'filter_condition': str,    // For FILTER type
+            'aggregate_function': str,  // For AGGREGATE type
+            'group_columns': [str],     // For GROUP_BY type
+            'order_columns': [str],     // For ORDER_BY type
+            'limit_count': int          // For LIMIT type
+        },
+        'metadata': {
+            'database_schema': str,
+            'data_type': str,
+            'nullable': bool,
+            'description': str
+        }
+    }
+    This enables compositional query building from reusable semantic components."""
 
 
 class Status(str, Enum):
@@ -283,6 +308,9 @@ class UsageLog(Base):
     prompt: Optional[str] = Column(Text, nullable=True)
     """The natural language query or prompt from the request."""
 
+    response: Optional[str] = Column(Text, nullable=True)
+    """The response or template returned for the request."""
+
     success_status: Optional[bool] = Column(Boolean, nullable=True)
     """Flag indicating if the request was successfully processed."""
 
@@ -303,6 +331,12 @@ class UsageLog(Base):
     
     llm_used: Optional[bool] = Column(Boolean, default=False, nullable=True)
     """Flag indicating if LLM enhancement was used for this request."""
+
+    considered_entries: Optional[list] = Column(JSON, nullable=True)
+    """JSON array of cache entry IDs that were considered during processing."""
+
+    is_confident: Optional[bool] = Column(Boolean, nullable=True)
+    """Flag indicating the confidence level of the response, particularly for LLM-enhanced results."""
 
     # Optional: Define relationship for easier access from log to entry
     cache_entry = relationship("Text2SQLCache")

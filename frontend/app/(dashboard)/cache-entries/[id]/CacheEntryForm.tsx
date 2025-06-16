@@ -24,9 +24,9 @@ interface CacheEntryFormProps {
   setCatalogName?: (v: string | undefined) => void;
   status: string;
   setStatus?: (v: string) => void;
-  tags: string[] | null;
-  addTag?: (tag: string) => void;
-  removeTag?: (tag: string) => void;
+  tags: Record<string, string[]>;
+  addTag?: (name: string, value: string) => void;
+  removeTag?: (name: string, value: string) => void;
   tagNameInput?: string;
   setTagNameInput?: (v: string) => void;
   tagValueInput?: string;
@@ -71,6 +71,7 @@ export function CacheEntryForm({
   isGeneratingReasoning,
 }: CacheEntryFormProps) {
   console.log('CacheEntryForm catalog props:', { catalogType, catalogSubtype, catalogName });
+  
   return (
     <Card className="w-full border-0 shadow-none">
       <CardContent className="p-4 space-y-8">
@@ -142,6 +143,7 @@ export function CacheEntryForm({
                 <SelectItem value="prompt">Prompt</SelectItem>
                 <SelectItem value="configuration">Configuration</SelectItem>
                 <SelectItem value="reasoning_steps">Reasoning Steps</SelectItem>
+                <SelectItem value="dsl">DSL Components</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -335,6 +337,33 @@ export function CacheEntryForm({
                 }
               })()}
             </div>
+          ) : templateType === 'dsl' ? (
+            <div className="space-y-2">
+              <Textarea
+                id="template"
+                placeholder={'e.g., {\n  "component_type": "FILTER",\n  "component_data": {\n    "table_name": "users",\n    "filter_condition": "users.status = \'active\'"\n  },\n  "metadata": {\n    "database_schema": "ecommerce",\n    "description": "Filter for active users"\n  }\n}'}
+                className="min-h-[200px] font-mono text-sm"
+                value={template}
+                onChange={setTemplate ? (e) => setTemplate(e.target.value) : undefined}
+                disabled={readOnly}
+              />
+              {templateType === 'dsl' && !readOnly && (
+                <p className="text-sm text-muted-foreground mt-1">
+                  DSL components define reusable query building blocks. Use component_type: TABLE, COLUMN, JOIN, FILTER, AGGREGATE, GROUP_BY, ORDER_BY, or LIMIT.
+                </p>
+              )}
+              {templateType === 'dsl' && template.trim() && !readOnly && (() => {
+                try {
+                  const parsed = JSON.parse(template);
+                  if (!parsed.component_type) {
+                    return <p className="text-amber-500 text-xs">DSL template should include 'component_type' field</p>;
+                  }
+                  return null;
+                } catch (err) {
+                  return <p className="text-red-500 text-xs">Invalid JSON format</p>;
+                }
+              })()}
+            </div>
           ) : (
             <Textarea
               id="template"
@@ -392,35 +421,45 @@ export function CacheEntryForm({
         <div className="grid gap-2">
           <Label htmlFor="tags">Tags</Label>
           <div className="flex flex-wrap gap-2">
-            {tags && Array.isArray(tags) && tags.map((tag, index) => (
-              <div key={`tag-${index}-${tag}`} className="flex items-center gap-1 bg-secondary text-secondary-foreground px-3 py-1 rounded-full text-sm">
-                {tag}
-                {!readOnly && removeTag && (
-                  <button
-                    type="button"
-                    onClick={() => removeTag(tag)}
-                    className="text-secondary-foreground/70 hover:text-secondary-foreground"
-                  >
-                    ×
-                  </button>
-                )}
-              </div>
-            ))}
+            {tags && typeof tags === 'object' && Object.entries(tags).map(([tagName, tagValues]) => 
+              tagValues.map((tagValue, index) => (
+                <div key={`tag-${tagName}-${index}-${tagValue}`} className="flex items-center gap-1 bg-secondary text-secondary-foreground px-3 py-1 rounded-full text-sm">
+                  {tagName}: {tagValue}
+                  {!readOnly && removeTag && (
+                    <button
+                      type="button"
+                      onClick={() => removeTag(tagName, tagValue)}
+                      className="text-secondary-foreground/70 hover:text-secondary-foreground"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+              ))
+            )}
             {!readOnly && (
-              <div className="flex items-center">
+              <div className="flex items-center gap-2">
                 <Input
-                  id="tag-input"
-                  placeholder="Add tag..."
+                  id="tag-name-input"
+                  placeholder="Tag name..."
                   value={tagNameInput || ""}
                   onChange={setTagNameInput ? (e) => setTagNameInput(e.target.value) : undefined}
+                  className="w-32 h-8 px-2 py-1"
+                  disabled={readOnly}
+                />
+                <Input
+                  id="tag-value-input"
+                  placeholder="Tag value..."
+                  value={tagValueInput || ""}
+                  onChange={setTagValueInput ? (e) => setTagValueInput(e.target.value) : undefined}
                   onKeyDown={handleKeyDown}
-                  className="w-40 h-8 px-2 py-1"
+                  className="w-32 h-8 px-2 py-1"
                   disabled={readOnly}
                 />
                 {addTag && (
                   <button
                     type="button"
-                    onClick={() => addTag(tagNameInput || "")}
+                    onClick={() => addTag(tagNameInput || "", tagValueInput || "")}
                     className="ml-2 text-sm text-primary hover:text-primary/80"
                   >
                     Add

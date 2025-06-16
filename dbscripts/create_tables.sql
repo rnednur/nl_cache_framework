@@ -6,7 +6,7 @@
 CREATE SCHEMA IF NOT EXISTS :"schema_name";
 
 -- Create enum type for template types
-CREATE TYPE :"schema_name".template_type AS ENUM ('sql', 'url', 'api', 'workflow', 'graphql', 'regex', 'script', 'nosql', 'cli', 'prompt', 'configuration', 'reasoning_steps');
+CREATE TYPE :"schema_name".template_type AS ENUM ('sql', 'url', 'api', 'workflow', 'graphql', 'regex', 'script', 'nosql', 'cli', 'prompt', 'configuration', 'reasoning_steps', 'dsl');
 
 -- Create enum type for status
 CREATE TYPE :"schema_name".status_type AS ENUM ('pending', 'active', 'archive');
@@ -45,13 +45,16 @@ CREATE TABLE :"schema_name".usage_log (
     cache_entry_id INTEGER REFERENCES :"schema_name".text2sql_cache(id) ON DELETE SET NULL,
     timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     prompt TEXT,
+    response TEXT,
     success_status BOOLEAN,
     similarity_score FLOAT,
     error_message TEXT,
     catalog_type VARCHAR,
     catalog_subtype VARCHAR,
     catalog_name VARCHAR,
-    llm_used BOOLEAN DEFAULT FALSE
+    llm_used BOOLEAN DEFAULT FALSE,
+    considered_entries JSONB,
+    is_confident BOOLEAN
 );
 
 -- Create index for usage_log

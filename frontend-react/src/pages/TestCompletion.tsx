@@ -7,10 +7,69 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import api, { type CatalogValues } from "@/services/api";
+import api, { type CatalogValues, type CacheItem } from "@/services/api";
 import { Check, AlertCircle } from "lucide-react";
 import { SimpleCacheTooltip } from "@/components/ui/simple-cache-tooltip";
 import { Link } from "react-router-dom";
+
+// Cache entry hover tooltip component
+function CacheEntryHoverTooltip({ entryId, children }: { entryId: number; children: React.ReactNode }) {
+  const [entryData, setEntryData] = useState<CacheItem | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchEntryData = async () => {
+    if (entryData || loading) return; // Don't fetch if already have data or currently loading
+    
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await api.getCacheEntry(entryId);
+      setEntryData(data);
+    } catch (err) {
+      console.error(`Error fetching cache entry ${entryId}:`, err);
+      setError(`Failed to load entry ${entryId}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const tooltipContent = loading ? (
+    <div className="flex items-center justify-center py-4">
+      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-400"></div>
+      <span className="ml-2 text-neutral-400 text-sm">Loading...</span>
+    </div>
+  ) : error ? (
+    <div className="text-red-400 text-sm py-2">{error}</div>
+  ) : entryData ? (
+    <div className="space-y-2 max-w-[400px]">
+      <div>
+        <div className="text-neutral-400 text-xs mb-1">Query:</div>
+        <div className="text-white text-sm">{entryData.nl_query}</div>
+      </div>
+      <div>
+        <div className="text-neutral-400 text-xs mb-1">Template:</div>
+        <pre className="text-white text-xs bg-neutral-800 p-2 rounded-md overflow-auto max-h-[100px] whitespace-pre-wrap">{entryData.template}</pre>
+      </div>
+      <div className="pt-2 text-center text-xs text-blue-400">
+        Click to view full details
+      </div>
+    </div>
+  ) : (
+    <div className="text-sm">
+      <p className="text-neutral-300 mb-1">Cache Entry ID: {entryId}</p>
+      <p className="text-neutral-400 text-xs">Hover to load details...</p>
+    </div>
+  );
+
+  return (
+    <div onMouseEnter={fetchEntryData}>
+      <SimpleCacheTooltip content={tooltipContent}>
+        {children}
+      </SimpleCacheTooltip>
+    </div>
+  );
+}
 
 interface ExtendedCompleteResponse {
   cache_hit?: boolean;
@@ -321,35 +380,23 @@ export default function TestCompletion() {
                     )}
                     </div>
 
-                    {/* Template ID */}
-                    {(currentResult.template_id || currentResult.cache_entry_id) && (
+                    {/* Considered Entries */}
+                    {currentResult.considered_entries && currentResult.considered_entries.length > 0 && (
                       <div>
-                        <h4 className="font-semibold text-sm mb-1">Template ID</h4>
-                        <SimpleCacheTooltip
-                          content={
-                            <div>
-                              {currentResult.user_query && (
-                                <>
-                                  <p className="text-xs text-neutral-400 mb-1">Query:</p>
-                                  <p className="mb-2 text-neutral-200 whitespace-pre-wrap">{currentResult.user_query}</p>
-                                </>
-                              )}
-                              <p className="text-xs text-neutral-400 mb-1">Template:</p>
-                              <pre className="bg-neutral-800 p-2 rounded text-neutral-300 whitespace-pre-wrap overflow-auto max-h-[150px]">
-                                {currentResult.updated_template || currentResult.cache_template}
-                              </pre>
-                              <p className="text-center text-blue-400 mt-2 text-xs">Click to view full details</p>
-                            </div>
-                          }
-                        >
-                          <Link
-                            to={`/cache-entries/${currentResult.template_id ?? currentResult.cache_entry_id}`}
-                            target="_blank"
-                            className="text-blue-400 hover:underline"
-                          >
-                            {currentResult.template_id ?? currentResult.cache_entry_id}
-                          </Link>
-                        </SimpleCacheTooltip>
+                        <h4 className="font-semibold text-sm mb-1">Considered Entries</h4>
+                        <div className="flex flex-wrap gap-2">
+                          {currentResult.considered_entries.map((entryId: number, index: number) => (
+                            <CacheEntryHoverTooltip key={entryId} entryId={entryId}>
+                              <Link
+                                to={`/cache-entries/${entryId}`}
+                                target="_blank"
+                                className="text-blue-400 hover:underline"
+                              >
+                                {entryId}
+                              </Link>
+                            </CacheEntryHoverTooltip>
+                          ))}
+                        </div>
                       </div>
                     )}
 

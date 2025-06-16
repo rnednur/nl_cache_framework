@@ -240,6 +240,7 @@ export default function CacheEntries() {
                     <SelectItem value="nosql" className="text-neutral-300">NoSQL</SelectItem>
                     <SelectItem value="cli" className="text-neutral-300">CLI</SelectItem>
                     <SelectItem value="reasoning_steps" className="text-neutral-300">Reasoning Steps</SelectItem>
+                    <SelectItem value="dsl" className="text-neutral-300">DSL Components</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

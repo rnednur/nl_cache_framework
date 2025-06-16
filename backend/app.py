@@ -110,6 +110,12 @@ class CacheEntryCreate(BaseModel):
 
 class CompleteRequest(BaseModel):
     prompt: str = Field(..., description="The natural language prompt to complete")
+    use_llm: Optional[bool] = Field(False, description="If True, use LLM to enhance search results")
+    catalog_type: Optional[str] = Field(None, description="Optional catalog type to filter cache entries")
+    catalog_subtype: Optional[str] = Field(None, description="Optional catalog subtype to filter cache entries")
+    catalog_name: Optional[str] = Field(None, description="Optional catalog name to filter cache entries")
+    similarity_threshold: Optional[float] = Field(None, description="Similarity threshold for cache matching")
+    limit: Optional[int] = Field(None, description="Limit for the number of top similarity results")
 
 class EntitySubstitutionRequest(BaseModel):
     entity_values: Dict[str, Any] = Field(..., description="Entity values for substitution")
@@ -240,6 +246,11 @@ async def get_cache_stats(
                 type_counts[template_type_enum.value] = count
             except Exception as e:
                 logger.warning(f"Error getting count for template type {template_type_enum}: {str(e)}")
+                # Rollback the current transaction to prevent InFailedSqlTransaction errors
+                try:
+                    db.rollback()
+                except:
+                    pass
                 type_counts[template_type_enum.value] = 0
         
         # If template_type filter is specified, only return that type count
@@ -279,6 +290,11 @@ async def get_cache_stats(
             ]
         except Exception as e:
             logger.warning(f"Error getting recent usage data: {str(e)}")
+            # Rollback the current transaction to prevent further failures
+            try:
+                db.rollback()
+            except:
+                pass
             
         # Get popular entries
         popular_entries = []
@@ -327,6 +343,11 @@ async def get_cache_stats(
             ]
         except Exception as e:
             logger.warning(f"Error getting popular entries: {str(e)}")
+            # Rollback the current transaction to prevent further failures
+            try:
+                db.rollback()
+            except:
+                pass
         
         return {
             "total_entries": total_count,
@@ -469,13 +490,7 @@ async def get_catalog_values(db: Session = Depends(get_db)):
 
 @app.post("/v1/complete")
 async def complete(
-    request: CompleteRequest, 
-    catalog_type: Optional[str] = None, 
-    catalog_subtype: Optional[str] = None, 
-    catalog_name: Optional[str] = None, 
-    similarity_threshold: Optional[float] = None,
-    limit: Optional[int] = None, 
-    use_llm: bool = False,
+    request: CompleteRequest,
     db: Session = Depends(get_db)
 ):
     """Process a completion request, utilizing the NL cache.
@@ -507,6 +522,24 @@ async def complete(
     if not query or not query.strip():
         raise HTTPException(status_code=400, detail="Prompt cannot be empty")
 
+    # Extract parameters from request object
+    use_llm = request.use_llm or False
+    catalog_type = request.catalog_type
+    catalog_subtype = request.catalog_subtype
+    catalog_name = request.catalog_name
+    similarity_threshold = request.similarity_threshold
+    limit = request.limit
+
+    # DEBUG: Log the endpoint parameters
+    logger.info(f"=== /v1/complete ENDPOINT DEBUG ===")
+    logger.info(f"Request prompt: {query[:100]}...")
+    logger.info(f"use_llm parameter: {use_llm} (type: {type(use_llm)})")
+    logger.info(f"catalog_type: {catalog_type}")
+    logger.info(f"catalog_subtype: {catalog_subtype}")
+    logger.info(f"catalog_name: {catalog_name}")
+    logger.info(f"similarity_threshold: {similarity_threshold}")
+    logger.info(f"limit: {limit}")
+
     # --- Cache Interaction ---
     controller = get_controller(db)
 
@@ -514,6 +547,7 @@ async def complete(
     threshold = similarity_threshold if similarity_threshold is not None else SIMILARITY_THRESHOLD
 
     try:
+        logger.info(f"Calling controller.process_completion with use_llm={use_llm}")
         response_data = controller.process_completion(
             query=query,
             similarity_threshold=threshold,
@@ -523,6 +557,7 @@ async def complete(
             catalog_name=catalog_name,
             limit=limit
         )
+        logger.info(f"Response from controller: {list(response_data.keys())}")
         return response_data
     except Exception as e:
         logger.error(f"Error processing completion request: {str(e)}", exc_info=True)
@@ -901,13 +936,16 @@ async def list_usage_logs(
                 "cache_entry_id": log.cache_entry_id,
                 "timestamp": log.timestamp,
                 "prompt": log.prompt,
+                "response": getattr(log, "response", None),
                 "success_status": log.success_status,
                 "similarity_score": log.similarity_score,
                 "error_message": log.error_message,
                 "catalog_type": log.catalog_type,
                 "catalog_subtype": log.catalog_subtype,
                 "catalog_name": log.catalog_name,
-                "llm_used": getattr(log, "llm_used", False)
+                "llm_used": getattr(log, "llm_used", False),
+                "considered_entries": getattr(log, "considered_entries", []),
+                "is_confident": getattr(log, "is_confident", None)
             } for log in logs]
         }
     except Exception as e:

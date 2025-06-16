@@ -198,6 +198,7 @@ export default function DataUploadPage() {
                   <SelectItem value="url" className="text-neutral-300">URL</SelectItem>
                   <SelectItem value="workflow" className="text-neutral-300">Workflow</SelectItem>
                   <SelectItem value="reasoning_steps" className="text-neutral-300">Reasoning Steps</SelectItem>
+                <SelectItem value="dsl" className="text-neutral-300">DSL Components</SelectItem>
                 </SelectContent>
               </Select>
             </div>

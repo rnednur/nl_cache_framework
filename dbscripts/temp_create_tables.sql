@@ -46,13 +46,16 @@ CREATE TABLE :"schema_name".usage_log (
     cache_entry_id INTEGER REFERENCES :"schema_name".text2sql_cache(id) ON DELETE SET NULL,
     timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     prompt TEXT,
+    response TEXT,
     success_status BOOLEAN,
     similarity_score FLOAT,
     error_message TEXT,
     catalog_type VARCHAR,
     catalog_subtype VARCHAR,
     catalog_name VARCHAR,
-    llm_used BOOLEAN DEFAULT FALSE
+    llm_used BOOLEAN DEFAULT FALSE,
+    considered_entries JSONB,
+    is_confident BOOLEAN
 );
 
 -- Create index for usage_log

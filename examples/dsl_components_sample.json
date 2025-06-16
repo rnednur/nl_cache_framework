@@ -1,0 +1,251 @@
+[
+  {
+    "nl_query": "users table",
+    "template": {
+      "component_type": "TABLE",
+      "component_data": {
+        "table_name": "users",
+        "schema": "public",
+        "alias": "u"
+      },
+      "metadata": {
+        "database_schema": "ecommerce",
+        "description": "Main users table containing customer information",
+        "primary_key": "id",
+        "row_count_estimate": 50000
+      }
+    },
+    "template_type": "dsl",
+    "reasoning_trace": "TABLE component for the users table, commonly referenced in customer queries",
+    "tags": {
+      "domain": ["ecommerce", "customer"],
+      "data_type": ["table"]
+    }
+  },
+  {
+    "nl_query": "user email column",
+    "template": {
+      "component_type": "COLUMN",
+      "component_data": {
+        "table_name": "users",
+        "column_name": "email",
+        "qualified_name": "users.email"
+      },
+      "metadata": {
+        "database_schema": "ecommerce",
+        "data_type": "varchar(255)",
+        "nullable": false,
+        "unique": true,
+        "description": "User email address - unique identifier"
+      }
+    },
+    "template_type": "dsl",
+    "reasoning_trace": "COLUMN component for user email, frequently used in authentication and user lookups",
+    "tags": {
+      "domain": ["ecommerce", "user", "authentication"],
+      "data_type": ["column", "email"]
+    }
+  },
+  {
+    "nl_query": "join users with orders",
+    "template": {
+      "component_type": "JOIN",
+      "component_data": {
+        "join_type": "INNER",
+        "left_table": "users",
+        "right_table": "orders",
+        "join_condition": "users.id = orders.user_id",
+        "join_alias": "user_orders"
+      },
+      "metadata": {
+        "database_schema": "ecommerce",
+        "description": "Standard join between users and their orders",
+        "performance_hint": "Index on orders.user_id recommended"
+      }
+    },
+    "template_type": "dsl",
+    "reasoning_trace": "JOIN component linking users to their orders, essential for order history queries",
+    "tags": {
+      "domain": ["ecommerce", "user", "order"],
+      "data_type": ["join", "relationship"]
+    }
+  },
+  {
+    "nl_query": "filter active users",
+    "template": {
+      "component_type": "FILTER",
+      "component_data": {
+        "table_name": "users",
+        "filter_condition": "users.status = 'active'",
+        "filter_type": "equality",
+        "parameters": {
+          "column": "status",
+          "operator": "=",
+          "value": "active"
+        }
+      },
+      "metadata": {
+        "database_schema": "ecommerce",
+        "description": "Filter for active users only",
+        "selectivity": 0.85
+      }
+    },
+    "template_type": "dsl",
+    "reasoning_trace": "FILTER component to restrict results to active users only",
+    "tags": {
+      "domain": ["ecommerce", "user"],
+      "data_type": ["filter", "status"]
+    }
+  },
+  {
+    "nl_query": "count total orders",
+    "template": {
+      "component_type": "AGGREGATE",
+      "component_data": {
+        "aggregate_function": "COUNT",
+        "target_column": "orders.id",
+        "expression": "COUNT(orders.id)",
+        "alias": "total_orders"
+      },
+      "metadata": {
+        "database_schema": "ecommerce",
+        "description": "Count the total number of orders",
+        "return_type": "integer"
+      }
+    },
+    "template_type": "dsl",
+    "reasoning_trace": "AGGREGATE component for counting orders",
+    "tags": {
+      "domain": ["ecommerce", "order", "analytics"],
+      "data_type": ["aggregate", "count"]
+    }
+  },
+  {
+    "nl_query": "sum order amounts",
+    "template": {
+      "component_type": "AGGREGATE",
+      "component_data": {
+        "aggregate_function": "SUM",
+        "target_column": "orders.total_amount",
+        "expression": "SUM(orders.total_amount)",
+        "alias": "total_revenue"
+      },
+      "metadata": {
+        "database_schema": "ecommerce",
+        "description": "Sum of all order amounts for revenue calculation",
+        "return_type": "decimal(10,2)"
+      }
+    },
+    "template_type": "dsl",
+    "reasoning_trace": "AGGREGATE component for calculating total revenue",
+    "tags": {
+      "domain": ["ecommerce", "order", "revenue", "analytics"],
+      "data_type": ["aggregate", "sum", "money"]
+    }
+  },
+  {
+    "nl_query": "group by user",
+    "template": {
+      "component_type": "GROUP_BY",
+      "component_data": {
+        "group_columns": ["users.id", "users.name"],
+        "group_expression": "users.id, users.name"
+      },
+      "metadata": {
+        "database_schema": "ecommerce",
+        "description": "Group results by individual users",
+        "typical_use": "user-level aggregations"
+      }
+    },
+    "template_type": "dsl",
+    "reasoning_trace": "GROUP_BY component for user-level aggregations",
+    "tags": {
+      "domain": ["ecommerce", "user", "analytics"],
+      "data_type": ["group_by", "aggregation"]
+    }
+  },
+  {
+    "nl_query": "order by recent first",
+    "template": {
+      "component_type": "ORDER_BY",
+      "component_data": {
+        "order_columns": ["orders.created_at"],
+        "order_direction": ["DESC"],
+        "order_expression": "orders.created_at DESC"
+      },
+      "metadata": {
+        "database_schema": "ecommerce",
+        "description": "Order results by most recent orders first",
+        "performance_hint": "Index on orders.created_at recommended"
+      }
+    },
+    "template_type": "dsl",
+    "reasoning_trace": "ORDER_BY component for chronological ordering, newest first",
+    "tags": {
+      "domain": ["ecommerce", "order", "temporal"],
+      "data_type": ["order_by", "datetime"]
+    }
+  },
+  {
+    "nl_query": "limit to 10 results",
+    "template": {
+      "component_type": "LIMIT",
+      "component_data": {
+        "limit_count": 10,
+        "offset": 0
+      },
+      "metadata": {
+        "database_schema": "ecommerce",
+        "description": "Limit results to top 10 records",
+        "typical_use": "pagination, top-N queries"
+      }
+    },
+    "template_type": "dsl",
+    "reasoning_trace": "LIMIT component for result set pagination",
+    "tags": {
+      "domain": ["ecommerce", "pagination"],
+      "data_type": ["limit", "pagination"]
+    }
+  },
+  {
+    "nl_query": "date range filter for :start_date to :end_date",
+    "template": {
+      "component_type": "FILTER",
+      "component_data": {
+        "table_name": "orders",
+        "filter_condition": "orders.created_at BETWEEN :start_date AND :end_date",
+        "filter_type": "range",
+        "parameters": {
+          "column": "created_at",
+          "operator": "BETWEEN",
+          "start_value": ":start_date",
+          "end_value": ":end_date"
+        }
+      },
+      "metadata": {
+        "database_schema": "ecommerce",
+        "description": "Date range filter for orders within specified period",
+        "performance_hint": "Index on orders.created_at recommended"
+      }
+    },
+    "template_type": "dsl",
+    "is_template": true,
+    "entity_replacements": {
+      "start_date": {
+        "placeholder": ":start_date",
+        "type": "date",
+        "description": "Start date for the range filter"
+      },
+      "end_date": {
+        "placeholder": ":end_date", 
+        "type": "date",
+        "description": "End date for the range filter"
+      }
+    },
+    "reasoning_trace": "Parameterized FILTER component for date range queries",
+    "tags": {
+      "domain": ["ecommerce", "order", "temporal"],
+      "data_type": ["filter", "date_range", "template"]
+    }
+  }
+] 

@@ -14,13 +14,21 @@ from .models import Text2SQLCache, TemplateType, Status, CacheAuditLog, UsageLog
 from .similarity import Text2SQLSimilarity
 from .entity_substitution import Text2SQLEntitySubstitution
 
+# Set up logger first
+logger = logging.getLogger(__name__)
+
 # Import LLM service for enhanced completions
 try:
     from llm_service import LLMService
-except ImportError:
+    logger.info(f"=== LLM SERVICE IMPORT DEBUG ===")
+    logger.info(f"LLMService imported successfully: {LLMService is not None}")
+    if LLMService:
+        logger.info(f"OPENROUTER_API_KEY exists: {bool(os.getenv('OPENROUTER_API_KEY'))}")
+        logger.info(f"OPENROUTER_MODEL: {os.getenv('OPENROUTER_MODEL', 'not set')}")
+        logger.info(f"LLMService.is_configured(): {LLMService.is_configured()}")
+except ImportError as e:
+    logger.error(f"Failed to import LLMService: {e}")
     LLMService = None
-
-logger = logging.getLogger(__name__)
 
 
 class Text2SQLController:
@@ -584,7 +592,7 @@ class Text2SQLController:
                 self.session.query(Text2SQLCache)
                 .filter(
                     Text2SQLCache.template_type == template_type,
-                    Text2SQLCache.is_valid
+                    Text2SQLCache.status == Status.ACTIVE
                 )
                 .order_by(Text2SQLCache.usage_count.desc())
                 .limit(limit)
@@ -711,7 +719,7 @@ class Text2SQLController:
         try:
             cache_entry = (
                 self.session.query(Text2SQLCache)
-                .filter(Text2SQLCache.id == template_id, Text2SQLCache.is_valid)
+                .filter(Text2SQLCache.id == template_id, Text2SQLCache.status == Status.ACTIVE)
                 .first()
             )
 
@@ -904,7 +912,7 @@ class Text2SQLController:
             # Fetch the workflow cache entry
             workflow_entry = (
                 self.session.query(Text2SQLCache)
-                .filter(Text2SQLCache.id == workflow_id, Text2SQLCache.is_valid)
+                .filter(Text2SQLCache.id == workflow_id, Text2SQLCache.status == Status.ACTIVE)
                 .first()
             )
 
@@ -986,7 +994,7 @@ class Text2SQLController:
             # Fetch the cache entry for this step
             cache_entry = (
                 self.session.query(Text2SQLCache)
-                .filter(Text2SQLCache.id == cache_id, Text2SQLCache.is_valid)
+                .filter(Text2SQLCache.id == cache_id, Text2SQLCache.status == Status.ACTIVE)
                 .first()
             )
 
@@ -1107,6 +1115,16 @@ class Text2SQLController:
         Returns:
             A dictionary containing the completion result and metadata.
         """
+        # DEBUG: Log the input parameters
+        logger.info(f"=== PROCESS_COMPLETION DEBUG ===")
+        logger.info(f"Query: {query[:100]}...")
+        logger.info(f"use_llm parameter: {use_llm} (type: {type(use_llm)})")
+        logger.info(f"similarity_threshold: {similarity_threshold}")
+        logger.info(f"limit: {limit}")
+        logger.info(f"LLMService available: {LLMService is not None}")
+        if LLMService:
+            logger.info(f"LLMService configured: {LLMService.is_configured()}")
+        
         entity_sub = Text2SQLEntitySubstitution()
         response_data = {}
         final_result = ""
@@ -1144,8 +1162,13 @@ class Text2SQLController:
             updated_query = None
             is_confident = True  # Default confidence level
             if use_llm and len(cache_results) > 0:
+                logger.info(f"=== LLM PROCESSING STARTED ===")
+                logger.info(f"use_llm is True, cache_results count: {len(cache_results)}")
                 if not LLMService or not LLMService.is_configured():
                     logger.warning("LLM enhancement requested but service not configured")
+                    logger.info(f"LLMService exists: {LLMService is not None}")
+                    if LLMService:
+                        logger.info(f"LLMService is_configured: {LLMService.is_configured()}")
                     response_data = {
                         "warning": "LLM enhancement was requested but the service is not configured. Set OPENROUTER_API_KEY in .env file.",
                     }
@@ -1154,17 +1177,22 @@ class Text2SQLController:
                 else:
                     try:
                         logger.info(f"Using LLM enhancement for query: {query[:50]}...")
+                        logger.info(f"Creating LLMService with model: {os.getenv('OPENROUTER_MODEL', 'google/gemini-pro')}")
                         llm_service = LLMService(model=os.getenv("OPENROUTER_MODEL", "google/gemini-pro"))
+                        logger.info(f"Calling can_answer_with_context with {len(cache_results)} entries")
                         llm_result = llm_service.can_answer_with_context(
                             query=query,
                             context_entries=cache_results,
                             similarity_threshold=similarity_threshold
                         )
+                        logger.info(f"LLM result received: {llm_result}")
 
                         can_answer = llm_result.get("can_answer", False)
                         explanation = llm_result.get("explanation", "")
                         selected_entry_id = llm_result.get("selected_entry_id")
                         updated_query = llm_result.get("updated_query")
+                        
+                        logger.info(f"LLM analysis: can_answer={can_answer}, selected_entry_id={selected_entry_id}")
                         
                         # Set confidence based on LLM's assessment
                         is_confident = can_answer
@@ -1183,14 +1211,18 @@ class Text2SQLController:
                             else:
                                 best_match = cache_results[0]
                                 similarity_score = best_match.get("similarity", 0.0)
+                                logger.warning(f"LLM selected entry {selected_entry_id} not found in cache_results, using first result")
                         else:
                             best_match = cache_results[0]
                             similarity_score = best_match.get("similarity", 0.0)
+                            logger.info(f"LLM determined it cannot answer or no entry selected, using first result")
                     except Exception as e:
                         logger.error(f"LLM processing failed: {e}", exc_info=True)
                         best_match = cache_results[0]
                         similarity_score = best_match.get("similarity", 0.0)
             else:
+                logger.info(f"=== NO LLM PROCESSING ===")
+                logger.info(f"use_llm: {use_llm}, cache_results count: {len(cache_results) if cache_results else 0}")
                 best_match = cache_results[0]
                 similarity_score = best_match.get("similarity", 0.0)
 
@@ -1259,9 +1291,18 @@ class Text2SQLController:
             if cache_hit and 'best_match' in locals():
                 template_id = best_match.get("id")
 
+            # Determine the response to log
+            logged_response = None
+            if cache_hit:
+                logged_response = response_data.get("updated_template") or response_data.get("cache_template")
+
+            # Get considered entries for logging
+            considered_entry_ids = response_data.get("considered_entries", [])
+
             usage_log = UsageLog(
                 cache_entry_id=template_id,
                 prompt=query,
+                response=updated_query if updated_query else final_result,
                 timestamp=datetime.datetime.utcnow(),
                 success_status=cache_hit,
                 similarity_score=similarity_score if cache_hit else 0.0,
@@ -1269,7 +1310,9 @@ class Text2SQLController:
                 catalog_type=catalog_type,
                 catalog_subtype=catalog_subtype,
                 catalog_name=catalog_name,
-                llm_used=use_llm
+                llm_used=use_llm,
+                considered_entries=considered_entry_ids,
+                is_confident=response_data.get("is_confident", None)
             )
             self.session.add(usage_log)
             self.session.commit()

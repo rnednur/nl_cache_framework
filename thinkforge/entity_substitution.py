@@ -65,7 +65,7 @@ class Text2SQLEntitySubstitution:
                 entities["number_entity"] = float(number_match.group(1)) # Store as float
 
         # Example: Extract quoted string
-        string_match = re.search(r'"([^'"]*)["']', nl_query)
+        string_match = re.search(r'"([^"\']*)["\']', nl_query)
         if string_match:
             entities["string_entity"] = string_match.group(1)
 
@@ -252,53 +252,139 @@ class Text2SQLEntitySubstitution:
     def apply_api_substitution(
         self, template: str, entities: Dict[str, Any], stored_entity_info: Dict[str, Dict]
     ) -> str:
-        """Apply substitutions specifically for API templates (assumed JSON string).
-
-        Substitutes values directly into the JSON string template.
-        WARNING: Assumes template is valid JSON. More robust parsing could be used.
+        """Apply substitutions specifically for API templates.
 
         Args: (Same as apply_substitution)
 
         Returns:
-            The substituted API template string (JSON).
+            The substituted API spec (JSON string).
         """
-        # This is a basic implementation assuming the template is a JSON string
-        # and placeholders are simple :key instances.
-        # A more robust method would parse the JSON and substitute values in the structure.
         substituted_template = template
         for entity_key, info in stored_entity_info.items():
             placeholder = info.get("placeholder")
-            # Type could be used for JSON type checking (string vs number vs boolean)
-            # entity_type = info.get("type", "string")
+            entity_type = info.get("type", "string")
             if not placeholder or entity_key not in entities:
-                continue # Or raise error
+                continue
             value = entities[entity_key]
 
             try:
-                # For JSON, we need to be careful about quotes for strings vs raw numbers/booleans
-                # Simple approach: replace placeholder with JSON representation of value
-                # json.dumps adds quotes for strings.
-                formatted_value = json.dumps(value)
+                # For API templates, we might need JSON-aware substitution
+                if entity_type == "string":
+                    # JSON string encoding for API payloads
+                    formatted_value = json.dumps(str(value))
+                elif entity_type in ["integer", "number", "float"]:
+                    formatted_value = str(value)
+                elif entity_type == "boolean":
+                    formatted_value = "true" if bool(value) else "false"
+                elif entity_type == "array":
+                    if isinstance(value, list):
+                        formatted_value = json.dumps(value)
+                    else:
+                        formatted_value = json.dumps([value])
+                elif entity_type == "object":
+                    if isinstance(value, dict):
+                        formatted_value = json.dumps(value)
+                    else:
+                        formatted_value = json.dumps({"value": value})
+                else:
+                    formatted_value = json.dumps(str(value))
 
-                # Need to replace the placeholder *including* potential quotes if it was
-                # already quoted in the template. E.g., "param": ":value"
-                # This simple string replacement might break JSON structure.
-                # A better way: parse JSON, modify, dump back.
-                # For now, just replace the placeholder text directly.
-                substituted_template = substituted_template.replace(placeholder, formatted_value)
-
-            except Exception as e:
-                 raise ValueError(f"API/JSON substitution error for {entity_key}={value}: {e}")
-
-        # Validate if the result is still valid JSON? (Optional)
-        # try:
-        #     json.loads(substituted_template)
-        # except json.JSONDecodeError as e:
-        #     logger.error(f"API substitution resulted in invalid JSON: {e}")
-        #     # Handle error: maybe return original or raise specific error
+                substituted_template = substituted_template.replace(
+                    placeholder, formatted_value
+                )
+            except (ValueError, TypeError) as e:
+                raise ValueError(f"API formatting error for {entity_key}={value} ({entity_type}): {e}")
 
         return substituted_template
 
+    def apply_dsl_substitution(
+        self, template: str, entities: Dict[str, Any], stored_entity_info: Dict[str, Dict]
+    ) -> str:
+        """Apply substitutions specifically for DSL component templates.
+
+        DSL templates contain structured components that can be composed to build queries.
+        This method handles entity substitution within DSL component structures.
+
+        Args: (Same as apply_substitution)
+
+        Returns:
+            The substituted DSL component (JSON string).
+        """
+        try:
+            # Parse the DSL template as JSON
+            dsl_data = json.loads(template) if isinstance(template, str) else template
+            
+            if not isinstance(dsl_data, dict) or 'component_type' not in dsl_data:
+                raise ValueError("DSL template must be a JSON object with 'component_type' field")
+            
+            # Deep copy to avoid modifying the original
+            substituted_data = json.loads(json.dumps(dsl_data))
+            
+            # Apply entity substitutions recursively through the DSL structure
+            substituted_data = self._substitute_dsl_recursive(
+                substituted_data, entities, stored_entity_info
+            )
+            
+            return json.dumps(substituted_data, indent=2)
+            
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON in DSL template: {e}")
+        except Exception as e:
+            raise ValueError(f"DSL substitution error: {e}")
+
+    def _substitute_dsl_recursive(
+        self, data: Any, entities: Dict[str, Any], stored_entity_info: Dict[str, Dict]
+    ) -> Any:
+        """Recursively substitute entities in DSL data structures."""
+        if isinstance(data, dict):
+            return {
+                key: self._substitute_dsl_recursive(value, entities, stored_entity_info)
+                for key, value in data.items()
+            }
+        elif isinstance(data, list):
+            return [
+                self._substitute_dsl_recursive(item, entities, stored_entity_info)
+                for item in data
+            ]
+        elif isinstance(data, str):
+            # Apply placeholder substitution to string values
+            substituted_string = data
+            for entity_key, info in stored_entity_info.items():
+                placeholder = info.get("placeholder")
+                entity_type = info.get("type", "string")
+                if not placeholder or entity_key not in entities:
+                    continue
+                value = entities[entity_key]
+                
+                try:
+                    # Format value based on entity type for DSL context
+                    if entity_type == "string":
+                        formatted_value = str(value)
+                    elif entity_type in ["integer", "int"]:
+                        formatted_value = str(int(value))
+                    elif entity_type in ["number", "float"]:
+                        formatted_value = str(float(value))
+                    elif entity_type == "boolean":
+                        formatted_value = str(bool(value)).lower()
+                    elif entity_type == "date":
+                        if isinstance(value, datetime.date):
+                            formatted_value = value.strftime('%Y-%m-%d')
+                        else:
+                            # Validate date format
+                            datetime.datetime.strptime(str(value), "%Y-%m-%d")
+                            formatted_value = str(value)
+                    else:
+                        formatted_value = str(value)
+                    
+                    substituted_string = substituted_string.replace(
+                        placeholder, formatted_value
+                    )
+                except (ValueError, TypeError) as e:
+                    raise ValueError(f"DSL entity formatting error for {entity_key}={value} ({entity_type}): {e}")
+            
+            return substituted_string
+        else:
+            return data
 
     # --- Combined Method (Potentially used by Controller) ---
     @staticmethod
@@ -347,6 +433,10 @@ class Text2SQLEntitySubstitution:
             )
         elif template_type == TemplateType.API:
              substituted_template = substitutor.apply_api_substitution(
+                 template, entities_to_use, entity_replacements
+             )
+        elif template_type == TemplateType.DSL:
+             substituted_template = substitutor.apply_dsl_substitution(
                  template, entities_to_use, entity_replacements
              )
         else: # Default or WORKFLOW etc.

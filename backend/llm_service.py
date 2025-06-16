@@ -71,7 +71,7 @@ class LLMService:
             Dictionary containing:
                 - can_answer (bool): Whether the query can be answered with the context.
                 - explanation (str): Explanation of the decision.
-                - updated_query (Optional[str]): If provided, an improved version of the query.
+                - updated_query (Optional[str]): If provided, an improved version of the template (sql query or url or api spec).
                 - selected_entry_id (Optional[int]): ID of the entry determined to be most relevant.
         """
         if not self.api_key:
@@ -119,12 +119,17 @@ class LLMService:
             # Parse the LLM response
             try:
                 llm_output = json.loads(content)
-                return {
+                logger.info(f"Raw LLM output: {llm_output}")
+                
+                # Return all fields from LLM, don't filter based on can_answer
+                result = {
                     "can_answer": llm_output.get("can_answer", False),
                     "explanation": llm_output.get("explanation", "No explanation provided."),
-                    "updated_query": llm_output.get("updated_query") if llm_output.get("can_answer") else None,
-                    "selected_entry_id": llm_output.get("selected_entry_id") if llm_output.get("can_answer") else None
+                    "updated_query": llm_output.get("updated_query"),  # Return as-is, even if None
+                    "selected_entry_id": llm_output.get("selected_entry_id")  # Return as-is, even if None
                 }
+                logger.info(f"Processed LLM result: {result}")
+                return result
             except Exception as e:
                 logger.error(f"Failed to parse LLM response: {e}")
                 return {

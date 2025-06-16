@@ -23,9 +23,11 @@ Respond with a JSON object containing:
 {{
     "can_answer": boolean,  // Whether any cached entry can answer the query
     "explanation": string,  // Explanation of your decision
-    "updated_query": string | null,  // If provided, an improved version of the query
-    "selected_entry_id": number | null  // ID of the entry that best matches, if any
+    "updated_query": string | null,  // If can_answer is true, provide the optimized Template (sql query or url or api spec) . 
+    "selected_entry_id": number | null  // ID of the entry that best matches, if any (only when can_answer is true)
 }}
+
+Important: Always provide an "updated_query" - either an optimized version for entity extraction (when can_answer is true) or a suggested reformulation that might find better cache matches (when can_answer is false).
 """
 
 # Prompt for generating a workflow from a natural language query

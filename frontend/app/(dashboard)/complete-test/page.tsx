@@ -418,6 +418,7 @@ export default function CompleteTestPage() {
                           <SelectItem key={type} value={type} className="text-neutral-300">{type}</SelectItem>
                         ))}
                         <SelectItem value="reasoning_steps" className="text-neutral-300">Reasoning Steps</SelectItem>
+                        <SelectItem value="dsl" className="text-neutral-300">DSL Components</SelectItem>
                       </SelectContent>
                     </Select>
                   )}
