@@ -45,6 +45,21 @@ CREATE TYPE :"schema_name".template_type AS ENUM (
 -- Create enum type for status
 CREATE TYPE :"schema_name".status_type AS ENUM ('pending', 'active', 'archive');
 
+-- Create enum type for confidence levels
+CREATE TYPE :"schema_name".confidence_level AS ENUM ('very_high', 'high', 'medium', 'low', 'very_low');
+
+-- Create enum type for step types
+CREATE TYPE :"schema_name".step_type AS ENUM ('action', 'condition', 'loop', 'transform', 'validation', 'integration', 'unknown');
+
+-- Create enum type for execution modes
+CREATE TYPE :"schema_name".execution_mode AS ENUM ('sequential', 'parallel', 'conditional', 'loop');
+
+-- Create enum type for mapping strategies
+CREATE TYPE :"schema_name".mapping_strategy AS ENUM ('exact_match', 'semantic_similarity', 'capability_based', 'hybrid', 'fallback');
+
+-- Create enum type for workflow formats
+CREATE TYPE :"schema_name".workflow_format AS ENUM ('json', 'yaml', 'python', 'javascript', 'bash');
+
 -- =============================================================================
 -- MAIN TABLES CREATION
 -- =============================================================================
@@ -163,6 +178,11 @@ CREATE TRIGGER update_text2sql_cache_updated_at
 -- Add comments to document the enum types
 COMMENT ON TYPE :"schema_name".template_type IS 'Enum for template types: sql, url, api, workflow, graphql, regex, script, nosql, cli, prompt, configuration, reasoning_steps, dsl, mcp_tool, agent, function, recipe, recipe_step, recipe_template';
 COMMENT ON TYPE :"schema_name".status_type IS 'Enum for entry status: pending, active, archive';
+COMMENT ON TYPE :"schema_name".confidence_level IS 'Enum for confidence levels: very_high, high, medium, low, very_low';
+COMMENT ON TYPE :"schema_name".step_type IS 'Enum for step types: action, condition, loop, transform, validation, integration, unknown';
+COMMENT ON TYPE :"schema_name".execution_mode IS 'Enum for execution modes: sequential, parallel, conditional, loop';
+COMMENT ON TYPE :"schema_name".mapping_strategy IS 'Enum for mapping strategies: exact_match, semantic_similarity, capability_based, hybrid, fallback';
+COMMENT ON TYPE :"schema_name".workflow_format IS 'Enum for workflow formats: json, yaml, python, javascript, bash';
 
 -- Add comments to document the new columns in text2sql_cache
 COMMENT ON COLUMN :"schema_name".text2sql_cache.tool_capabilities IS 'JSON array of capabilities that the tool provides (e.g., [''image_processing'', ''pdf_conversion''])';
@@ -192,6 +212,13 @@ ALTER TYPE :"schema_name".template_type ADD VALUE IF NOT EXISTS 'function';
 ALTER TYPE :"schema_name".template_type ADD VALUE IF NOT EXISTS 'recipe';
 ALTER TYPE :"schema_name".template_type ADD VALUE IF NOT EXISTS 'recipe_step';
 ALTER TYPE :"schema_name".template_type ADD VALUE IF NOT EXISTS 'recipe_template';
+
+-- If you need to add the new enum types to existing databases:
+-- CREATE TYPE :"schema_name".confidence_level AS ENUM ('very_high', 'high', 'medium', 'low', 'very_low');
+-- CREATE TYPE :"schema_name".step_type AS ENUM ('action', 'condition', 'loop', 'transform', 'validation', 'integration', 'unknown');
+-- CREATE TYPE :"schema_name".execution_mode AS ENUM ('sequential', 'parallel', 'conditional', 'loop');
+-- CREATE TYPE :"schema_name".mapping_strategy AS ENUM ('exact_match', 'semantic_similarity', 'capability_based', 'hybrid', 'fallback');
+-- CREATE TYPE :"schema_name".workflow_format AS ENUM ('json', 'yaml', 'python', 'javascript', 'bash');
 
 -- If you need to add missing columns to existing tables:
 ALTER TABLE :"schema_name".text2sql_cache 
