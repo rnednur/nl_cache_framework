@@ -51,7 +51,7 @@ export function CacheEntryModal({ isOpen, onClose, cacheEntryId, source }: Cache
     breadcrumbItems.push({ label: source.label, href: source.href });
   }
   
-  breadcrumbItems.push({ label: `Cache Entry #${cacheEntryId}` });
+  breadcrumbItems.push({ label: `Cache Entry #${cacheEntryId}`, href: `/cache-entries/${cacheEntryId}` });
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>

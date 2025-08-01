@@ -386,6 +386,605 @@ class Text2SQLEntitySubstitution:
         else:
             return data
 
+    def apply_mcp_tool_substitution(
+        self, template: str, entities: Dict[str, Any], stored_entity_info: Dict[str, Dict]
+    ) -> str:
+        """Apply substitutions specifically for MCP tool templates.
+        
+        MCP tools require careful handling of server configurations, connection parameters,
+        and tool specifications with proper JSON formatting.
+        
+        Args: (Same as apply_substitution)
+        
+        Returns:
+            The substituted MCP tool configuration (JSON string).
+        """
+        try:
+            # Parse the MCP template as JSON
+            mcp_data = json.loads(template) if isinstance(template, str) else template
+            
+            if not isinstance(mcp_data, dict):
+                raise ValueError("MCP template must be a JSON object")
+            
+            # Deep copy to avoid modifying the original
+            substituted_data = json.loads(json.dumps(mcp_data))
+            
+            # Apply entity substitutions recursively through the MCP structure
+            substituted_data = self._substitute_mcp_recursive(
+                substituted_data, entities, stored_entity_info
+            )
+            
+            return json.dumps(substituted_data, indent=2)
+            
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON in MCP template: {e}")
+        except Exception as e:
+            raise ValueError(f"MCP substitution error: {e}")
+
+    def _substitute_mcp_recursive(
+        self, data: Any, entities: Dict[str, Any], stored_entity_info: Dict[str, Dict]
+    ) -> Any:
+        """Recursively substitute entities in MCP tool data structures."""
+        if isinstance(data, dict):
+            return {
+                key: self._substitute_mcp_recursive(value, entities, stored_entity_info)
+                for key, value in data.items()
+            }
+        elif isinstance(data, list):
+            return [
+                self._substitute_mcp_recursive(item, entities, stored_entity_info)
+                for item in data
+            ]
+        elif isinstance(data, str):
+            # Apply placeholder substitution with MCP-specific formatting
+            substituted_string = data
+            for entity_key, info in stored_entity_info.items():
+                placeholder = info.get("placeholder")
+                entity_type = info.get("type", "string")
+                if not placeholder or entity_key not in entities:
+                    continue
+                value = entities[entity_key]
+                
+                try:
+                    # Format value for MCP context (often environment variables or config values)
+                    if entity_type == "api_key":
+                        # Handle sensitive configuration like API keys
+                        formatted_value = str(value)
+                    elif entity_type == "endpoint":
+                        # Handle URL endpoints
+                        formatted_value = str(value).rstrip('/')
+                    elif entity_type == "port":
+                        formatted_value = str(int(value))
+                    elif entity_type == "timeout":
+                        formatted_value = str(int(value))
+                    elif entity_type == "boolean":
+                        formatted_value = str(bool(value)).lower()
+                    else:
+                        formatted_value = str(value)
+                    
+                    substituted_string = substituted_string.replace(
+                        placeholder, formatted_value
+                    )
+                except (ValueError, TypeError) as e:
+                    raise ValueError(f"MCP entity formatting error for {entity_key}={value} ({entity_type}): {e}")
+            
+            return substituted_string
+        else:
+            return data
+
+    def apply_agent_substitution(
+        self, template: str, entities: Dict[str, Any], stored_entity_info: Dict[str, Dict]
+    ) -> str:
+        """Apply substitutions specifically for AI agent templates.
+        
+        Agent templates require careful handling of model configurations, system prompts,
+        and execution parameters with proper JSON formatting.
+        
+        Args: (Same as apply_substitution)
+        
+        Returns:
+            The substituted agent configuration (JSON string).
+        """
+        try:
+            # Parse the agent template as JSON
+            agent_data = json.loads(template) if isinstance(template, str) else template
+            
+            if not isinstance(agent_data, dict):
+                raise ValueError("Agent template must be a JSON object")
+            
+            # Deep copy to avoid modifying the original
+            substituted_data = json.loads(json.dumps(agent_data))
+            
+            # Apply entity substitutions recursively through the agent structure
+            substituted_data = self._substitute_agent_recursive(
+                substituted_data, entities, stored_entity_info
+            )
+            
+            return json.dumps(substituted_data, indent=2)
+            
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON in Agent template: {e}")
+        except Exception as e:
+            raise ValueError(f"Agent substitution error: {e}")
+
+    def _substitute_agent_recursive(
+        self, data: Any, entities: Dict[str, Any], stored_entity_info: Dict[str, Dict]
+    ) -> Any:
+        """Recursively substitute entities in agent data structures."""
+        if isinstance(data, dict):
+            return {
+                key: self._substitute_agent_recursive(value, entities, stored_entity_info)
+                for key, value in data.items()
+            }
+        elif isinstance(data, list):
+            return [
+                self._substitute_agent_recursive(item, entities, stored_entity_info)
+                for item in data
+            ]
+        elif isinstance(data, str):
+            # Apply placeholder substitution with agent-specific formatting
+            substituted_string = data
+            for entity_key, info in stored_entity_info.items():
+                placeholder = info.get("placeholder")
+                entity_type = info.get("type", "string")
+                if not placeholder or entity_key not in entities:
+                    continue
+                value = entities[entity_key]
+                
+                try:
+                    # Format value for agent context
+                    if entity_type == "model_name":
+                        formatted_value = str(value)
+                    elif entity_type == "temperature":
+                        formatted_value = str(float(value))
+                    elif entity_type == "max_tokens":
+                        formatted_value = str(int(value))
+                    elif entity_type == "system_prompt":
+                        # Ensure proper escaping for JSON string context
+                        formatted_value = str(value)
+                    elif entity_type == "boolean":
+                        formatted_value = str(bool(value)).lower()
+                    elif entity_type == "integer":
+                        formatted_value = str(int(value))
+                    else:
+                        formatted_value = str(value)
+                    
+                    substituted_string = substituted_string.replace(
+                        placeholder, formatted_value
+                    )
+                except (ValueError, TypeError) as e:
+                    raise ValueError(f"Agent entity formatting error for {entity_key}={value} ({entity_type}): {e}")
+            
+            return substituted_string
+        else:
+            return data
+
+    def apply_function_substitution(
+        self, template: str, entities: Dict[str, Any], stored_entity_info: Dict[str, Dict]
+    ) -> str:
+        """Apply substitutions specifically for function templates.
+        
+        Function templates require careful handling of code, parameter schemas,
+        and execution configurations with proper JSON formatting.
+        
+        Args: (Same as apply_substitution)
+        
+        Returns:
+            The substituted function definition (JSON string).
+        """
+        try:
+            # Parse the function template as JSON
+            function_data = json.loads(template) if isinstance(template, str) else template
+            
+            if not isinstance(function_data, dict):
+                raise ValueError("Function template must be a JSON object")
+            
+            # Deep copy to avoid modifying the original
+            substituted_data = json.loads(json.dumps(function_data))
+            
+            # Apply entity substitutions recursively through the function structure
+            substituted_data = self._substitute_function_recursive(
+                substituted_data, entities, stored_entity_info
+            )
+            
+            return json.dumps(substituted_data, indent=2)
+            
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON in Function template: {e}")
+        except Exception as e:
+            raise ValueError(f"Function substitution error: {e}")
+
+    def _substitute_function_recursive(
+        self, data: Any, entities: Dict[str, Any], stored_entity_info: Dict[str, Dict]
+    ) -> Any:
+        """Recursively substitute entities in function data structures."""
+        if isinstance(data, dict):
+            return {
+                key: self._substitute_function_recursive(value, entities, stored_entity_info)
+                for key, value in data.items()
+            }
+        elif isinstance(data, list):
+            return [
+                self._substitute_function_recursive(item, entities, stored_entity_info)
+                for item in data
+            ]
+        elif isinstance(data, str):
+            # Apply placeholder substitution with function-specific formatting
+            substituted_string = data
+            for entity_key, info in stored_entity_info.items():
+                placeholder = info.get("placeholder")
+                entity_type = info.get("type", "string")
+                if not placeholder or entity_key not in entities:
+                    continue
+                value = entities[entity_key]
+                
+                try:
+                    # Format value for function context
+                    if entity_type == "code":
+                        # Handle code blocks - preserve formatting
+                        formatted_value = str(value)
+                    elif entity_type == "language":
+                        formatted_value = str(value).lower()
+                    elif entity_type == "entry_point":
+                        formatted_value = str(value)
+                    elif entity_type == "timeout":
+                        formatted_value = str(int(value))
+                    elif entity_type == "memory_limit":
+                        formatted_value = str(value)  # Could be "1GB", "512MB", etc.
+                    elif entity_type == "boolean":
+                        formatted_value = str(bool(value)).lower()
+                    elif entity_type == "integer":
+                        formatted_value = str(int(value))
+                    elif entity_type == "array":
+                        if isinstance(value, list):
+                            formatted_value = json.dumps(value)
+                        else:
+                            formatted_value = json.dumps([str(value)])
+                    else:
+                        formatted_value = str(value)
+                    
+                    substituted_string = substituted_string.replace(
+                        placeholder, formatted_value
+                    )
+                except (ValueError, TypeError) as e:
+                    raise ValueError(f"Function entity formatting error for {entity_key}={value} ({entity_type}): {e}")
+            
+            return substituted_string
+        else:
+            return data
+
+    def apply_recipe_substitution(
+        self, template: str, entities: Dict[str, Any], stored_entity_info: Dict[str, Dict]
+    ) -> str:
+        """Apply substitutions specifically for recipe templates.
+        
+        Recipe templates require careful handling of step configurations, tool references,
+        and parameter passing between steps with proper JSON formatting.
+        
+        Args: (Same as apply_substitution)
+        
+        Returns:
+            The substituted recipe definition (JSON string).
+        """
+        try:
+            # Parse the recipe template as JSON
+            recipe_data = json.loads(template) if isinstance(template, str) else template
+            
+            if not isinstance(recipe_data, dict):
+                raise ValueError("Recipe template must be a JSON object")
+            
+            # Deep copy to avoid modifying the original
+            substituted_data = json.loads(json.dumps(recipe_data))
+            
+            # Apply entity substitutions recursively through the recipe structure
+            substituted_data = self._substitute_recipe_recursive(
+                substituted_data, entities, stored_entity_info
+            )
+            
+            return json.dumps(substituted_data, indent=2)
+            
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON in Recipe template: {e}")
+        except Exception as e:
+            raise ValueError(f"Recipe substitution error: {e}")
+
+    def _substitute_recipe_recursive(
+        self, data: Any, entities: Dict[str, Any], stored_entity_info: Dict[str, Dict]
+    ) -> Any:
+        """Recursively substitute entities in recipe data structures."""
+        if isinstance(data, dict):
+            return {
+                key: self._substitute_recipe_recursive(value, entities, stored_entity_info)
+                for key, value in data.items()
+            }
+        elif isinstance(data, list):
+            return [
+                self._substitute_recipe_recursive(item, entities, stored_entity_info)
+                for item in data
+            ]
+        elif isinstance(data, str):
+            # Apply placeholder substitution with recipe-specific formatting
+            substituted_string = data
+            for entity_key, info in stored_entity_info.items():
+                placeholder = info.get("placeholder")
+                entity_type = info.get("type", "string")
+                if not placeholder or entity_key not in entities:
+                    continue
+                value = entities[entity_key]
+                
+                try:
+                    # Format value for recipe context
+                    if entity_type == "tool_id":
+                        # Handle tool ID references
+                        formatted_value = str(int(value))
+                    elif entity_type == "step_name":
+                        # Handle step names and identifiers
+                        formatted_value = str(value).replace(' ', '_').lower()
+                    elif entity_type == "timeout":
+                        formatted_value = str(int(value))
+                    elif entity_type == "retry_count":
+                        formatted_value = str(int(value))
+                    elif entity_type == "complexity_level":
+                        # Validate complexity levels
+                        valid_levels = ['beginner', 'intermediate', 'advanced']
+                        level = str(value).lower()
+                        if level not in valid_levels:
+                            raise ValueError(f"Invalid complexity level: {level}. Must be one of {valid_levels}")
+                        formatted_value = level
+                    elif entity_type == "execution_type":
+                        # Handle execution types (sequential, parallel, conditional)
+                        valid_types = ['sequential', 'parallel', 'conditional']
+                        exec_type = str(value).lower()
+                        if exec_type not in valid_types:
+                            raise ValueError(f"Invalid execution type: {exec_type}. Must be one of {valid_types}")
+                        formatted_value = exec_type
+                    elif entity_type == "boolean":
+                        formatted_value = str(bool(value)).lower()
+                    elif entity_type == "integer":
+                        formatted_value = str(int(value))
+                    elif entity_type == "float":
+                        formatted_value = str(float(value))
+                    elif entity_type == "json":
+                        # Handle JSON parameter objects
+                        if isinstance(value, (dict, list)):
+                            formatted_value = json.dumps(value)
+                        else:
+                            formatted_value = str(value)
+                    else:
+                        formatted_value = str(value)
+                    
+                    substituted_string = substituted_string.replace(
+                        placeholder, formatted_value
+                    )
+                except (ValueError, TypeError) as e:
+                    raise ValueError(f"Recipe entity formatting error for {entity_key}={value} ({entity_type}): {e}")
+            
+            return substituted_string
+        else:
+            return data
+
+    def apply_recipe_step_substitution(
+        self, template: str, entities: Dict[str, Any], stored_entity_info: Dict[str, Dict]
+    ) -> str:
+        """Apply substitutions specifically for recipe step templates.
+        
+        Recipe step templates are reusable components that can be configured
+        with specific parameters and composed into larger recipes.
+        
+        Args: (Same as apply_substitution)
+        
+        Returns:
+            The substituted recipe step definition (JSON string).
+        """
+        try:
+            # Parse the recipe step template as JSON
+            step_data = json.loads(template) if isinstance(template, str) else template
+            
+            if not isinstance(step_data, dict):
+                raise ValueError("Recipe step template must be a JSON object")
+            
+            # Deep copy to avoid modifying the original
+            substituted_data = json.loads(json.dumps(step_data))
+            
+            # Apply entity substitutions recursively through the step structure
+            substituted_data = self._substitute_recipe_step_recursive(
+                substituted_data, entities, stored_entity_info
+            )
+            
+            return json.dumps(substituted_data, indent=2)
+            
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON in Recipe step template: {e}")
+        except Exception as e:
+            raise ValueError(f"Recipe step substitution error: {e}")
+
+    def _substitute_recipe_step_recursive(
+        self, data: Any, entities: Dict[str, Any], stored_entity_info: Dict[str, Dict]
+    ) -> Any:
+        """Recursively substitute entities in recipe step data structures."""
+        if isinstance(data, dict):
+            return {
+                key: self._substitute_recipe_step_recursive(value, entities, stored_entity_info)
+                for key, value in data.items()
+            }
+        elif isinstance(data, list):
+            return [
+                self._substitute_recipe_step_recursive(item, entities, stored_entity_info)
+                for item in data
+            ]
+        elif isinstance(data, str):
+            # Apply placeholder substitution with recipe step-specific formatting
+            substituted_string = data
+            for entity_key, info in stored_entity_info.items():
+                placeholder = info.get("placeholder")
+                entity_type = info.get("type", "string")
+                if not placeholder or entity_key not in entities:
+                    continue
+                value = entities[entity_key]
+                
+                try:
+                    # Format value for recipe step context
+                    if entity_type == "step_type":
+                        # Handle step types (action, condition, loop, transform)
+                        valid_types = ['action', 'condition', 'loop', 'transform']
+                        step_type = str(value).lower()
+                        if step_type not in valid_types:
+                            raise ValueError(f"Invalid step type: {step_type}. Must be one of {valid_types}")
+                        formatted_value = step_type
+                    elif entity_type == "error_handling":
+                        # Handle error handling strategies
+                        valid_strategies = ['fail', 'continue', 'retry']
+                        strategy = str(value).lower()
+                        if strategy not in valid_strategies:
+                            raise ValueError(f"Invalid error handling strategy: {strategy}. Must be one of {valid_strategies}")
+                        formatted_value = strategy
+                    elif entity_type == "condition_expression":
+                        # Handle conditional expressions for step logic
+                        formatted_value = str(value)
+                    elif entity_type == "loop_count":
+                        formatted_value = str(int(value))
+                    elif entity_type == "transform_function":
+                        # Handle data transformation function names
+                        formatted_value = str(value)
+                    elif entity_type == "input_schema":
+                        # Handle input parameter schemas
+                        if isinstance(value, dict):
+                            formatted_value = json.dumps(value)
+                        else:
+                            formatted_value = str(value)
+                    elif entity_type == "output_schema":
+                        # Handle output parameter schemas
+                        if isinstance(value, dict):
+                            formatted_value = json.dumps(value)
+                        else:
+                            formatted_value = str(value)
+                    elif entity_type == "boolean":
+                        formatted_value = str(bool(value)).lower()
+                    elif entity_type == "integer":
+                        formatted_value = str(int(value))
+                    else:
+                        formatted_value = str(value)
+                    
+                    substituted_string = substituted_string.replace(
+                        placeholder, formatted_value
+                    )
+                except (ValueError, TypeError) as e:
+                    raise ValueError(f"Recipe step entity formatting error for {entity_key}={value} ({entity_type}): {e}")
+            
+            return substituted_string
+        else:
+            return data
+
+    def apply_recipe_template_substitution(
+        self, template: str, entities: Dict[str, Any], stored_entity_info: Dict[str, Dict]
+    ) -> str:
+        """Apply substitutions specifically for recipe template definitions.
+        
+        Recipe templates are parameterized blueprints that can be instantiated
+        with specific configurations to create concrete recipes.
+        
+        Args: (Same as apply_substitution)
+        
+        Returns:
+            The substituted recipe template definition (JSON string).
+        """
+        try:
+            # Parse the recipe template as JSON
+            template_data = json.loads(template) if isinstance(template, str) else template
+            
+            if not isinstance(template_data, dict):
+                raise ValueError("Recipe template must be a JSON object")
+            
+            # Deep copy to avoid modifying the original
+            substituted_data = json.loads(json.dumps(template_data))
+            
+            # Apply entity substitutions recursively through the template structure
+            substituted_data = self._substitute_recipe_template_recursive(
+                substituted_data, entities, stored_entity_info
+            )
+            
+            return json.dumps(substituted_data, indent=2)
+            
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON in Recipe template: {e}")
+        except Exception as e:
+            raise ValueError(f"Recipe template substitution error: {e}")
+
+    def _substitute_recipe_template_recursive(
+        self, data: Any, entities: Dict[str, Any], stored_entity_info: Dict[str, Dict]
+    ) -> Any:
+        """Recursively substitute entities in recipe template data structures."""
+        if isinstance(data, dict):
+            return {
+                key: self._substitute_recipe_template_recursive(value, entities, stored_entity_info)
+                for key, value in data.items()
+            }
+        elif isinstance(data, list):
+            return [
+                self._substitute_recipe_template_recursive(item, entities, stored_entity_info)
+                for item in data
+            ]
+        elif isinstance(data, str):
+            # Apply placeholder substitution with recipe template-specific formatting
+            substituted_string = data
+            for entity_key, info in stored_entity_info.items():
+                placeholder = info.get("placeholder")
+                entity_type = info.get("type", "string")
+                if not placeholder or entity_key not in entities:
+                    continue
+                value = entities[entity_key]
+                
+                try:
+                    # Format value for recipe template context
+                    if entity_type == "parameter_type":
+                        # Handle parameter type definitions
+                        valid_types = ['string', 'integer', 'float', 'boolean', 'array', 'object']
+                        param_type = str(value).lower()
+                        if param_type not in valid_types:
+                            raise ValueError(f"Invalid parameter type: {param_type}. Must be one of {valid_types}")
+                        formatted_value = param_type
+                    elif entity_type == "validation_rule":
+                        # Handle parameter validation rules
+                        if isinstance(value, dict):
+                            formatted_value = json.dumps(value)
+                        else:
+                            formatted_value = str(value)
+                    elif entity_type == "default_value":
+                        # Handle default parameter values
+                        if isinstance(value, (dict, list)):
+                            formatted_value = json.dumps(value)
+                        elif isinstance(value, bool):
+                            formatted_value = str(value).lower()
+                        else:
+                            formatted_value = str(value)
+                    elif entity_type == "use_case":
+                        # Handle use case descriptions
+                        formatted_value = str(value)
+                    elif entity_type == "industry_tag":
+                        # Handle industry classification tags
+                        formatted_value = str(value).lower().replace(' ', '_')
+                    elif entity_type == "boolean":
+                        formatted_value = str(bool(value)).lower()
+                    elif entity_type == "integer":
+                        formatted_value = str(int(value))
+                    elif entity_type == "array":
+                        if isinstance(value, list):
+                            formatted_value = json.dumps(value)
+                        else:
+                            formatted_value = json.dumps([str(value)])
+                    else:
+                        formatted_value = str(value)
+                    
+                    substituted_string = substituted_string.replace(
+                        placeholder, formatted_value
+                    )
+                except (ValueError, TypeError) as e:
+                    raise ValueError(f"Recipe template entity formatting error for {entity_key}={value} ({entity_type}): {e}")
+            
+            return substituted_string
+        else:
+            return data
+
     # --- Combined Method (Potentially used by Controller) ---
     @staticmethod
     def extract_and_replace_entities(
@@ -439,6 +1038,30 @@ class Text2SQLEntitySubstitution:
              substituted_template = substitutor.apply_dsl_substitution(
                  template, entities_to_use, entity_replacements
              )
+        elif template_type == TemplateType.MCP_TOOL:
+            substituted_template = substitutor.apply_mcp_tool_substitution(
+                template, entities_to_use, entity_replacements
+            )
+        elif template_type == TemplateType.AGENT:
+            substituted_template = substitutor.apply_agent_substitution(
+                template, entities_to_use, entity_replacements
+            )
+        elif template_type == TemplateType.FUNCTION:
+            substituted_template = substitutor.apply_function_substitution(
+                template, entities_to_use, entity_replacements
+            )
+        elif template_type == TemplateType.RECIPE:
+            substituted_template = substitutor.apply_recipe_substitution(
+                template, entities_to_use, entity_replacements
+            )
+        elif template_type == TemplateType.RECIPE_STEP:
+            substituted_template = substitutor.apply_recipe_step_substitution(
+                template, entities_to_use, entity_replacements
+            )
+        elif template_type == TemplateType.RECIPE_TEMPLATE:
+            substituted_template = substitutor.apply_recipe_template_substitution(
+                template, entities_to_use, entity_replacements
+            )
         else: # Default or WORKFLOW etc.
             substituted_template = substitutor.apply_substitution(
                 template, entities_to_use, entity_replacements

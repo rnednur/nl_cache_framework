@@ -237,7 +237,12 @@ class Text2SQLController:
         if status:
             query = query.filter(Text2SQLCache.status == status)
         if template_type:
-            query = query.filter(Text2SQLCache.template_type == template_type)
+            # Handle comma-separated template types
+            if ',' in template_type:
+                template_types = [t.strip() for t in template_type.split(',')]
+                query = query.filter(Text2SQLCache.template_type.in_(template_types))
+            else:
+                query = query.filter(Text2SQLCache.template_type == template_type)
         if catalog_type:
             query = query.filter(Text2SQLCache.catalog_type == catalog_type)
         if catalog_subtype:

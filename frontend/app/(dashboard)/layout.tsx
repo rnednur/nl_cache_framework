@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { Home, Database, Search, Upload, Menu, ChevronLeft, Brain, Zap, FileText, Settings, BarChart2, ClipboardList } from "lucide-react"
+import { Home, Database, Search, Upload, Menu, ChevronLeft, Brain, Zap, FileText, Settings, BarChart2, ClipboardList, Wrench, ChefHat } from "lucide-react"
 
 export default function DashboardLayout({
   children,
@@ -85,6 +85,30 @@ export default function DashboardLayout({
                 <Upload className="h-4 w-4 text-neutral-400" />
                 <span className={`text-neutral-300 transition-opacity duration-200 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 hidden sm:hidden'}`}>
                   Data Upload
+                </span>
+              </Link>
+            </li>
+            <li>
+              <Link 
+                href="/tools"
+                className={`py-1.5 rounded hover:bg-neutral-800 flex items-center ${isSidebarOpen ? 'px-3 gap-2' : 'justify-center px-2'}`}
+                title="Tools"
+              >
+                <Wrench className="h-4 w-4 text-neutral-400" />
+                <span className={`text-neutral-300 transition-opacity duration-200 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 hidden sm:hidden'}`}>
+                  Tools
+                </span>
+              </Link>
+            </li>
+            <li>
+              <Link 
+                href="/recipes"
+                className={`py-1.5 rounded hover:bg-neutral-800 flex items-center ${isSidebarOpen ? 'px-3 gap-2' : 'justify-center px-2'}`}
+                title="Recipes"
+              >
+                <ChefHat className="h-4 w-4 text-neutral-400" />
+                <span className={`text-neutral-300 transition-opacity duration-200 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 hidden sm:hidden'}`}>
+                  Recipes
                 </span>
               </Link>
             </li>

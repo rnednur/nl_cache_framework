@@ -1,7 +1,7 @@
 import { Link, useLocation } from "react-router-dom"
-import { LayoutDashboard, Database, TestTube, Upload, Menu, Settings, Clock } from "lucide-react"
-import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
+import { LayoutDashboard, Database, TestTube, Upload, Menu, Settings, Clock, Wrench, ChefHat } from "lucide-react"
+import { cn } from "../lib/utils"
+import { Button } from "./ui/button"
 import { useState } from "react"
 import { Logo } from "./logo"
 import { ThemeToggle } from "./theme-toggle"
@@ -69,6 +69,20 @@ export function Sidebar() {
               icon={<Upload className="h-4 w-4" />}
               label="Data Upload"
               active={location.pathname === "/data-upload"}
+              collapsed={collapsed}
+            />
+            <NavItem
+              to="/tools"
+              icon={<Wrench className="h-4 w-4" />}
+              label="Tools"
+              active={location.pathname === "/tools"}
+              collapsed={collapsed}
+            />
+            <NavItem
+              to="/recipes"
+              icon={<ChefHat className="h-4 w-4" />}
+              label="Recipes"
+              active={location.pathname === "/recipes"}
               collapsed={collapsed}
             />
           </ul>

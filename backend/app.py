@@ -38,6 +38,9 @@ try:
         Text2SQLEntitySubstitution,
     )
     from thinkforge.models import Text2SQLCache, UsageLog, Base
+    from thinkforge.recipe_step_analyzer import RecipeStepAnalyzer, ParsedStep
+    from thinkforge.recipe_tool_mapper import RecipeToolMapper, StepMapping, ToolMatch
+    from thinkforge.confidence_engine import ConfidenceEngine
 except ImportError as e:
     print(f"Error importing thinkforge: {e}")
     print("Make sure the framework is installed with: pip install -e .")
@@ -132,6 +135,67 @@ class GenerateWorkflowResponse(BaseModel):
     edges: List[Dict[str, Any]]
     workflow_template: Dict[str, Any]
     explanation: str
+
+# Recipe analysis models
+class RecipeAnalysisRequest(BaseModel):
+    recipe_text: str = Field(..., description="Natural language recipe text to analyze")
+    recipe_name: Optional[str] = Field(None, description="Optional name for the recipe")
+    similarity_threshold: Optional[float] = Field(0.6, description="Minimum similarity threshold for tool matching")
+    max_matches_per_step: Optional[int] = Field(5, description="Maximum tool matches per step")
+    catalog_type: Optional[str] = Field(None, description="Filter tools by catalog type")
+    catalog_subtype: Optional[str] = Field(None, description="Filter tools by catalog subtype")
+    catalog_name: Optional[str] = Field(None, description="Filter tools by catalog name")
+
+class MappedToolInfo(BaseModel):
+    id: Optional[int] = Field(None, description="Tool ID if found in database")
+    cache_entry_id: Optional[int] = Field(None, description="Cache entry ID if tool exists")
+    name: str = Field(..., description="Tool name")
+    type: str = Field(..., description="Tool type (api, function, mcp_tool, agent)")
+    confidence: float = Field(..., description="Overall confidence score (0.0-1.0)")
+    reasoning: str = Field(..., description="Human-readable reasoning for the match")
+    exists: bool = Field(..., description="Whether tool exists in database")
+    needs_creation: bool = Field(..., description="Whether tool needs to be created")
+    similarity_score: Optional[float] = Field(None, description="Semantic similarity score")
+    context_score: Optional[float] = Field(None, description="Contextual compatibility score")
+    compatibility_score: Optional[float] = Field(None, description="Technical compatibility score")
+
+class ParsedRecipeStep(BaseModel):
+    id: str = Field(..., description="Step identifier")
+    name: str = Field(..., description="Step name")
+    description: str = Field(..., description="Step description")
+    step_type: str = Field(..., description="Step type (action, condition, loop, transform, validation, integration)")
+    confidence: float = Field(..., description="Step parsing confidence (0.0-1.0)")
+    action_verbs: List[str] = Field(default_factory=list, description="Extracted action verbs")
+    entities: List[str] = Field(default_factory=list, description="Extracted entities")
+    mapped_tool: Optional[MappedToolInfo] = Field(None, description="Best matched tool if found")
+    alternative_tools: List[MappedToolInfo] = Field(default_factory=list, description="Alternative tool matches")
+    requires_review: bool = Field(False, description="Whether step requires manual review")
+    suggestions: List[str] = Field(default_factory=list, description="Suggestions for improvement")
+
+class RecipeAnalysisResponse(BaseModel):
+    recipe_name: str = Field(..., description="Recipe name")
+    description: str = Field(..., description="Recipe description")
+    steps: List[ParsedRecipeStep] = Field(..., description="Parsed recipe steps")
+    total_steps: int = Field(..., description="Total number of steps")
+    complexity_score: float = Field(..., description="Recipe complexity score (0.0-1.0)")
+    estimated_duration: Optional[int] = Field(None, description="Estimated duration in minutes")
+    required_capabilities: List[str] = Field(default_factory=list, description="Required capabilities")
+    recipe_type: str = Field(..., description="Classified recipe type")
+    analysis_metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional analysis metadata")
+
+class StepRewriteRequest(BaseModel):
+    step_id: str = Field(..., description="ID of the step to rewrite")
+    new_description: str = Field(..., description="New natural language description for the step")
+    similarity_threshold: Optional[float] = Field(0.6, description="Minimum similarity threshold for tool matching")
+    max_matches: Optional[int] = Field(5, description="Maximum tool matches to return")
+    catalog_type: Optional[str] = Field(None, description="Filter tools by catalog type")
+    catalog_subtype: Optional[str] = Field(None, description="Filter tools by catalog subtype")
+    catalog_name: Optional[str] = Field(None, description="Filter tools by catalog name")
+
+class StepRewriteResponse(BaseModel):
+    original_step: ParsedRecipeStep = Field(..., description="Original step before rewrite")
+    rewritten_step: ParsedRecipeStep = Field(..., description="Rewritten and reanalyzed step")
+    analysis_changes: Dict[str, Any] = Field(default_factory=dict, description="Summary of changes made")
 
 # Initialize FastAPI application
 app = FastAPI(
@@ -255,9 +319,16 @@ async def get_cache_stats(
         
         # If template_type filter is specified, only return that type count
         if template_type:
-            for ttype in type_counts.keys():
-                if ttype != template_type:
-                    type_counts[ttype] = 0
+            # Handle comma-separated template types
+            if ',' in template_type:
+                allowed_types = [t.strip() for t in template_type.split(',')]
+                for ttype in type_counts.keys():
+                    if ttype not in allowed_types:
+                        type_counts[ttype] = 0
+            else:
+                for ttype in type_counts.keys():
+                    if ttype != template_type:
+                        type_counts[ttype] = 0
         
         # Get recent usage data (last 30 days)
         recent_usage = []
@@ -644,7 +715,12 @@ async def list_cache_entries(
     
     # Apply template type filter
     if template_type:
-        query = query.filter(Text2SQLCache.template_type == template_type)
+        # Handle comma-separated template types
+        if ',' in template_type:
+            template_types = [t.strip() for t in template_type.split(',')]
+            query = query.filter(Text2SQLCache.template_type.in_(template_types))
+        else:
+            query = query.filter(Text2SQLCache.template_type == template_type)
     
     # Apply catalog filters if specified
     if catalog_type:
@@ -1454,6 +1530,421 @@ def generate_workflow(
         logging.error(f"Error generating workflow: {str(e)}")
         logging.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Failed to generate workflow: {str(e)}")
+
+
+# Recipe compilation endpoints
+class RecipeCompilationRequest(BaseModel):
+    """Request model for recipe compilation."""
+    target_format: str = Field(..., description="Target format: langchain, langgraph, langflow, generic")
+    parameters: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Compilation parameters")
+
+
+class RecipeCompilationResponse(BaseModel):
+    """Response model for recipe compilation."""
+    success: bool
+    format: str
+    workflow_definition: Dict[str, Any]
+    metadata: Dict[str, Any]
+    errors: List[str]
+    warnings: List[str]
+
+
+@app.post("/v1/recipes/{recipe_id}/compile", response_model=RecipeCompilationResponse)
+async def compile_recipe(
+    recipe_id: int,
+    request: RecipeCompilationRequest,
+    db: Session = Depends(get_db)
+):
+    """Compile a recipe to the specified workflow format."""
+    try:
+        # Import here to avoid circular imports
+        from thinkforge.recipe_compiler import RecipeCompiler, WorkflowFormat
+        
+        # Get the recipe
+        recipe = db.query(Text2SQLCache).filter(Text2SQLCache.id == recipe_id).first()
+        if not recipe:
+            raise HTTPException(status_code=404, detail="Recipe not found")
+        
+        # Validate recipe type
+        if recipe.template_type not in ['recipe', 'recipe_step', 'recipe_template']:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid recipe type: {recipe.template_type}. Must be recipe, recipe_step, or recipe_template"
+            )
+        
+        # Create tool resolver function
+        def tool_resolver(tool_id: int) -> Optional[Dict[str, Any]]:
+            tool = db.query(Text2SQLCache).filter(Text2SQLCache.id == tool_id).first()
+            if tool:
+                return tool.to_dict()
+            return None
+        
+        # Initialize compiler
+        compiler = RecipeCompiler(tool_resolver=tool_resolver)
+        
+        # Validate target format
+        try:
+            target_format = WorkflowFormat(request.target_format.lower())
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid target format: {request.target_format}. Must be one of: langchain, langgraph, langflow, generic"
+            )
+        
+        # Compile the recipe
+        result = compiler.compile_recipe(recipe, target_format, request.parameters)
+        
+        return RecipeCompilationResponse(
+            success=result.success,
+            format=result.format.value,
+            workflow_definition=result.workflow_definition,
+            metadata=result.metadata,
+            errors=result.errors,
+            warnings=result.warnings
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Recipe compilation failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Compilation failed: {str(e)}")
+
+
+@app.get("/v1/recipes/{recipe_id}/formats")
+async def get_supported_formats(recipe_id: int, db: Session = Depends(get_db)):
+    """Get supported compilation formats for a recipe."""
+    try:
+        # Get the recipe
+        recipe = db.query(Text2SQLCache).filter(Text2SQLCache.id == recipe_id).first()
+        if not recipe:
+            raise HTTPException(status_code=404, detail="Recipe not found")
+        
+        # Check if it's a compilable recipe type
+        if recipe.template_type not in ['recipe', 'recipe_step', 'recipe_template']:
+            return {
+                "supported_formats": [],
+                "reason": f"Recipe type '{recipe.template_type}' is not compilable"
+            }
+        
+        # Return supported formats
+        return {
+            "supported_formats": [
+                {
+                    "format": "langchain",
+                    "name": "LangChain LCEL",
+                    "description": "LangChain Expression Language format for chain execution"
+                },
+                {
+                    "format": "langgraph", 
+                    "name": "LangGraph",
+                    "description": "LangGraph format for stateful graph execution"
+                },
+                {
+                    "format": "langflow",
+                    "name": "Langflow",
+                    "description": "Langflow JSON format for visual workflow execution"
+                },
+                {
+                    "format": "generic",
+                    "name": "Generic Workflow",
+                    "description": "Generic workflow format with execution plan"
+                }
+            ],
+            "recipe_metadata": {
+                "id": recipe.id,
+                "name": recipe.nl_query,
+                "type": recipe.template_type,
+                "complexity_level": recipe.complexity_level,
+                "step_count": len(recipe.recipe_steps) if recipe.recipe_steps else 0,
+                "tool_count": len(recipe.required_tools) if recipe.required_tools else 0
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting supported formats: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get supported formats: {str(e)}")
+
+
+@app.post("/v1/recipes/analyze-natural-language", response_model=RecipeAnalysisResponse)
+async def analyze_recipe_natural_language(
+    request: RecipeAnalysisRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Analyze natural language recipe text and map steps to available tools using semantic similarity.
+    
+    This endpoint performs real similarity search against the database to find matching tools
+    for each recipe step, replacing the mock data approach.
+    """
+    try:
+        logger.info(f"Analyzing recipe: {request.recipe_name or 'Unnamed'}")
+        
+        # Initialize the Text2SQL controller for similarity search
+        controller = Text2SQLController(db_session=db)
+        
+        # Initialize the recipe analysis components
+        step_analyzer = RecipeStepAnalyzer()
+        tool_mapper = RecipeToolMapper(db_session=db, controller=controller)
+        confidence_engine = ConfidenceEngine()
+        
+        # Analyze the recipe text to extract structured steps
+        recipe_analysis = step_analyzer.analyze_recipe(
+            recipe_text=request.recipe_text,
+            recipe_name=request.recipe_name or "Generated Recipe"
+        )
+        
+        # Prepare catalog filters
+        catalog_filters = {}
+        if request.catalog_type:
+            catalog_filters['catalog_type'] = request.catalog_type
+        if request.catalog_subtype:
+            catalog_filters['catalog_subtype'] = request.catalog_subtype
+        if request.catalog_name:
+            catalog_filters['catalog_name'] = request.catalog_name
+        
+        # Map recipe steps to available tools using real similarity search
+        step_mappings = tool_mapper.map_recipe_to_tools(
+            steps=recipe_analysis.steps,
+            similarity_threshold=request.similarity_threshold,
+            max_matches_per_step=request.max_matches_per_step,
+            catalog_filters=catalog_filters if catalog_filters else None
+        )
+        
+        # Convert results to API response format
+        parsed_steps = []
+        for mapping in step_mappings:
+            step = mapping.step
+            
+            # Convert best match to API format
+            mapped_tool = None
+            if mapping.best_match:
+                tool_match = mapping.best_match
+                mapped_tool = MappedToolInfo(
+                    id=tool_match.tool_id,
+                    cache_entry_id=tool_match.tool_id,  # Cache entry ID is the same as tool ID
+                    name=tool_match.tool_name,
+                    type=tool_match.tool_type,
+                    confidence=tool_match.overall_confidence,
+                    reasoning=tool_match.reasoning,
+                    exists=True,  # If we found it in search, it exists
+                    needs_creation=False,
+                    similarity_score=tool_match.similarity_score,
+                    context_score=tool_match.context_score,
+                    compatibility_score=tool_match.compatibility_score
+                )
+            
+            # Convert alternative matches
+            alternative_tools = []
+            for alt_match in mapping.matches[1:4]:  # Top 3 alternatives
+                alternative_tools.append(MappedToolInfo(
+                    id=alt_match.tool_id,
+                    cache_entry_id=alt_match.tool_id,
+                    name=alt_match.tool_name,
+                    type=alt_match.tool_type,
+                    confidence=alt_match.overall_confidence,
+                    reasoning=alt_match.reasoning,
+                    exists=True,
+                    needs_creation=False,
+                    similarity_score=alt_match.similarity_score,
+                    context_score=alt_match.context_score,
+                    compatibility_score=alt_match.compatibility_score
+                ))
+            
+            # Create parsed step
+            parsed_step = ParsedRecipeStep(
+                id=step.id,
+                name=step.name,
+                description=step.description,
+                step_type=step.step_type.value,
+                confidence=step.confidence,
+                action_verbs=step.action_verbs,
+                entities=step.entities,
+                mapped_tool=mapped_tool,
+                alternative_tools=alternative_tools,
+                requires_review=mapping.requires_manual_review,
+                suggestions=mapping.suggestions
+            )
+            parsed_steps.append(parsed_step)
+        
+        # Create response
+        response = RecipeAnalysisResponse(
+            recipe_name=recipe_analysis.recipe_name,
+            description=recipe_analysis.description,
+            steps=parsed_steps,
+            total_steps=recipe_analysis.total_steps,
+            complexity_score=recipe_analysis.complexity_score,
+            estimated_duration=recipe_analysis.estimated_duration,
+            required_capabilities=recipe_analysis.required_capabilities,
+            recipe_type=recipe_analysis.recipe_type,
+            analysis_metadata={
+                "analyzer_version": "1.0",
+                "similarity_threshold": request.similarity_threshold,
+                "max_matches_per_step": request.max_matches_per_step,
+                "processing_time": time.time()  # Simple timestamp
+            }
+        )
+        
+        logger.info(f"Successfully analyzed recipe with {len(parsed_steps)} steps")
+        return response
+        
+    except Exception as e:
+        error_msg = f"Recipe analysis failed: {str(e)}"
+        logger.error(error_msg, exc_info=True)
+        raise HTTPException(status_code=500, detail=error_msg)
+
+
+@app.post("/v1/recipes/rewrite-step", response_model=StepRewriteResponse)
+async def rewrite_recipe_step(
+    request: StepRewriteRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Rewrite and reanalyze a single recipe step with new natural language description.
+    
+    This endpoint allows users to refine individual steps and get better tool matches
+    by providing a clearer or more specific description.
+    """
+    try:
+        logger.info(f"Rewriting step {request.step_id} with new description: {request.new_description[:100]}...")
+        
+        # Initialize analysis components
+        controller = Text2SQLController(db_session=db)
+        step_analyzer = RecipeStepAnalyzer()
+        tool_mapper = RecipeToolMapper(db_session=db, controller=controller)
+        
+        # Parse the new step description
+        parsed_step = step_analyzer._parse_single_step(request.new_description, 1)
+        if not parsed_step:
+            raise HTTPException(status_code=400, detail="Failed to parse the new step description")
+        
+        # Override the step ID to match the request
+        parsed_step.id = request.step_id
+        
+        # Prepare catalog filters
+        catalog_filters = {}
+        if request.catalog_type:
+            catalog_filters['catalog_type'] = request.catalog_type
+        if request.catalog_subtype:
+            catalog_filters['catalog_subtype'] = request.catalog_subtype
+        if request.catalog_name:
+            catalog_filters['catalog_name'] = request.catalog_name
+        
+        # Find tool matches for the rewritten step
+        tool_matches = tool_mapper.find_tools_for_step(
+            step=parsed_step,
+            max_results=request.max_matches,
+            catalog_filters=catalog_filters if catalog_filters else None
+        )
+        
+        # Filter matches by threshold
+        filtered_matches = [m for m in tool_matches if m.overall_confidence >= request.similarity_threshold]
+        
+        # Convert best match to API format
+        mapped_tool = None
+        if filtered_matches:
+            best_match = filtered_matches[0]
+            mapped_tool = MappedToolInfo(
+                id=best_match.tool_id,
+                cache_entry_id=best_match.tool_id,
+                name=best_match.tool_name,
+                type=best_match.tool_type,
+                confidence=best_match.overall_confidence,
+                reasoning=best_match.reasoning,
+                exists=True,
+                needs_creation=False,
+                similarity_score=best_match.similarity_score,
+                context_score=best_match.context_score,
+                compatibility_score=best_match.compatibility_score
+            )
+        
+        # Convert alternative matches
+        alternative_tools = []
+        for alt_match in filtered_matches[1:4]:  # Top 3 alternatives
+            alternative_tools.append(MappedToolInfo(
+                id=alt_match.tool_id,
+                cache_entry_id=alt_match.tool_id,
+                name=alt_match.tool_name,
+                type=alt_match.tool_type,
+                confidence=alt_match.overall_confidence,
+                reasoning=alt_match.reasoning,
+                exists=True,
+                needs_creation=False,
+                similarity_score=alt_match.similarity_score,
+                context_score=alt_match.context_score,
+                compatibility_score=alt_match.compatibility_score
+            ))
+        
+        # Generate suggestions for the rewritten step
+        suggestions = []
+        if not filtered_matches:
+            suggestions.append("No matching tools found. Consider creating a custom tool or refining the description.")
+        elif len(filtered_matches) == 1:
+            if filtered_matches[0].overall_confidence < 0.5:
+                suggestions.append("Low confidence match found. Consider reviewing the tool or refining the description.")
+            else:
+                suggestions.append("Good match found! Review the suggested tool for compatibility.")
+        else:
+            suggestions.append(f"Multiple matches found ({len(filtered_matches)}). Review alternatives for the best fit.")
+        
+        # Create the rewritten step
+        rewritten_step = ParsedRecipeStep(
+            id=parsed_step.id,
+            name=parsed_step.name,
+            description=parsed_step.description,
+            step_type=parsed_step.step_type.value,
+            confidence=parsed_step.confidence,
+            action_verbs=parsed_step.action_verbs,
+            entities=parsed_step.entities,
+            mapped_tool=mapped_tool,
+            alternative_tools=alternative_tools,
+            requires_review=not filtered_matches or (filtered_matches and filtered_matches[0].overall_confidence < 0.7),
+            suggestions=suggestions
+        )
+        
+        # For this endpoint, we'll create a placeholder "original step" since we don't have the full context
+        # In a real implementation, you might want to pass the original step data
+        original_step = ParsedRecipeStep(
+            id=request.step_id,
+            name="Original Step",
+            description="[Original step description not provided]",
+            step_type="unknown",
+            confidence=0.0,
+            action_verbs=[],
+            entities=[],
+            mapped_tool=None,
+            alternative_tools=[],
+            requires_review=True,
+            suggestions=["Original step data not available"]
+        )
+        
+        # Calculate analysis changes
+        analysis_changes = {
+            "description_changed": True,
+            "new_step_type": parsed_step.step_type.value,
+            "new_confidence": parsed_step.confidence,
+            "new_action_verbs": parsed_step.action_verbs,
+            "new_entities": parsed_step.entities,
+            "tools_found": len(filtered_matches),
+            "best_match_confidence": filtered_matches[0].overall_confidence if filtered_matches else 0.0,
+            "catalog_filters_applied": bool(catalog_filters),
+            "processing_timestamp": time.time()
+        }
+        
+        response = StepRewriteResponse(
+            original_step=original_step,
+            rewritten_step=rewritten_step,
+            analysis_changes=analysis_changes
+        )
+        
+        logger.info(f"Successfully rewrote step {request.step_id} with {len(filtered_matches)} tool matches")
+        return response
+        
+    except Exception as e:
+        error_msg = f"Step rewrite failed: {str(e)}"
+        logger.error(error_msg, exc_info=True)
+        raise HTTPException(status_code=500, detail=error_msg)
 
 
 if __name__ == "__main__":

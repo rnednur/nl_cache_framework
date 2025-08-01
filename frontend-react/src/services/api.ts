@@ -18,6 +18,26 @@ export interface CacheItem {
   usage_count: number;
   created_at: string;
   updated_at: string;
+  // Tool-specific fields
+  tool_capabilities?: string[];
+  tool_dependencies?: Record<string, any>;
+  execution_config?: Record<string, any>;
+  health_status?: string;
+  last_tested?: string;
+  // Recipe-specific fields
+  recipe_steps?: Array<{
+    id: string;
+    name: string;
+    type: string;
+    tool_id?: number;
+    depends_on?: string[];
+  }>;
+  required_tools?: number[];
+  execution_time_estimate?: number;
+  complexity_level?: string;
+  success_rate?: number;
+  last_executed?: string;
+  execution_count?: number;
 }
 
 // Stats interface
@@ -92,6 +112,24 @@ export interface CacheEntryCreate {
   catalog_subtype?: string;
   catalog_name?: string;
   status?: string;
+  // Tool-specific fields
+  tool_capabilities?: string[];
+  tool_dependencies?: Record<string, any>;
+  execution_config?: Record<string, any>;
+  health_status?: string;
+  // Recipe-specific fields
+  recipe_steps?: Array<{
+    id: string;
+    name: string;
+    type: string;
+    tool_id?: number;
+    depends_on?: string[];
+  }>;
+  required_tools?: number[];
+  execution_time_estimate?: number;
+  complexity_level?: string;
+  success_rate?: number;
+  execution_count?: number;
 }
 
 export interface CsvUploadResponse {
@@ -134,39 +172,46 @@ const api = {
   async getCacheEntries(
     page: number = 1, 
     pageSize: number = 10,
-    templateType?: string,
-    searchQuery?: string,
-    catalogType?: string,
-    catalogSubtype?: string,
-    catalogName?: string,
-    ids?: number[]
+    filters?: {
+      template_type?: string,
+      search_query?: string,
+      catalog_type?: string,
+      catalog_subtype?: string,
+      catalog_name?: string,
+      health_status?: string,
+      ids?: number[]
+    }
   ): Promise<{ items: CacheItem[], total: number }> {
     try {
       let url = `${API_BASE}/v1/cache?page=${page}&page_size=${pageSize}`;
       
-      if (templateType) {
-        url += `&template_type=${encodeURIComponent(templateType)}`;
+      if (filters?.template_type) {
+        url += `&template_type=${encodeURIComponent(filters.template_type)}`;
       }
       
-      if (searchQuery) {
-        url += `&search_query=${encodeURIComponent(searchQuery)}`;
+      if (filters?.search_query) {
+        url += `&search_query=${encodeURIComponent(filters.search_query)}`;
       }
       
-      if (catalogType) {
-        url += `&catalog_type=${encodeURIComponent(catalogType)}`;
+      if (filters?.catalog_type) {
+        url += `&catalog_type=${encodeURIComponent(filters.catalog_type)}`;
       }
       
-      if (catalogSubtype) {
-        url += `&catalog_subtype=${encodeURIComponent(catalogSubtype)}`;
+      if (filters?.catalog_subtype) {
+        url += `&catalog_subtype=${encodeURIComponent(filters.catalog_subtype)}`;
       }
       
-      if (catalogName) {
-        url += `&catalog_name=${encodeURIComponent(catalogName)}`;
+      if (filters?.catalog_name) {
+        url += `&catalog_name=${encodeURIComponent(filters.catalog_name)}`;
+      }
+      
+      if (filters?.health_status) {
+        url += `&health_status=${encodeURIComponent(filters.health_status)}`;
       }
       
       // Add IDs filter if provided
-      if (ids && ids.length > 0) {
-        url += `&ids=${ids.join(',')}`;
+      if (filters?.ids && filters.ids.length > 0) {
+        url += `&ids=${filters.ids.join(',')}`;
       }
       
       const response = await fetch(url);
@@ -634,6 +679,71 @@ const api = {
       return await response.json();
     } catch (error) {
       console.error('Error generating workflow:', error);
+      throw error;
+    }
+  },
+
+  // Recipe compilation methods
+  async compileRecipe(
+    recipeId: number,
+    targetFormat: string,
+    parameters?: Record<string, any>
+  ): Promise<{
+    success: boolean;
+    format: string;
+    workflow_definition: any;
+    metadata: any;
+    errors: string[];
+    warnings: string[];
+  }> {
+    try {
+      const response = await fetch(`${API_BASE}/v1/recipes/${recipeId}/compile`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          target_format: targetFormat,
+          parameters: parameters || {}
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error compiling recipe:', error);
+      throw error;
+    }
+  },
+
+  async getSupportedFormats(recipeId: number): Promise<{
+    supported_formats: Array<{
+      format: string;
+      name: string;
+      description: string;
+    }>;
+    recipe_metadata: {
+      id: number;
+      name: string;
+      type: string;
+      complexity_level?: string;
+      step_count: number;
+      tool_count: number;
+    };
+  }> {
+    try {
+      const response = await fetch(`${API_BASE}/v1/recipes/${recipeId}/formats`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error getting supported formats:', error);
       throw error;
     }
   },

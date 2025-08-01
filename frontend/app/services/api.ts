@@ -18,11 +18,33 @@ export interface CacheItem {
   usage_count: number;
   created_at: string;
   updated_at: string;
+  // Tool-specific fields
+  tool_capabilities?: string[];
+  tool_dependencies?: Record<string, any>;
+  execution_config?: Record<string, any>;
+  health_status?: string;
+  last_tested?: string;
+  // Recipe-specific fields
+  recipe_steps?: Array<{
+    id: string;
+    name: string;
+    type: string;
+    tool_id?: number;
+    depends_on?: string[];
+  }>;
+  required_tools?: number[];
+  execution_time_estimate?: number;
+  complexity_level?: string;
+  success_rate?: number;
+  last_executed?: string;
+  execution_count?: number;
 }
 
 // Stats interface
 export interface CacheStats {
   total_entries: number;
+  valid_entries: number;
+  template_entries: number;
   by_template_type: Record<string, number>;
   recent_usage: Array<{
     date: string;
@@ -315,6 +337,8 @@ const api = {
           console.warn('Server returned 422 for stats endpoint, using fallback data');
           return {
             total_entries: 0,
+            valid_entries: 0,
+            template_entries: 0,
             by_template_type: {
               sql: 0,
               api: 0,
@@ -334,6 +358,8 @@ const api = {
       // Return fallback data on any error
       return {
         total_entries: 0,
+        valid_entries: 0,
+        template_entries: 0,
         by_template_type: {
           sql: 0,
           api: 0,
@@ -759,6 +785,270 @@ const api = {
       return await response.json();
     } catch (error) {
       console.error('Error generating workflow from NL:', error);
+      throw error;
+    }
+  },
+
+  // Recipe compilation methods
+  async compileRecipe(
+    recipeId: number,
+    targetFormat: string,
+    parameters?: Record<string, any>
+  ): Promise<{
+    success: boolean;
+    format: string;
+    workflow_definition: any;
+    metadata: any;
+    errors: string[];
+    warnings: string[];
+  }> {
+    try {
+      const response = await fetch(`${API_BASE}/v1/recipes/${recipeId}/compile`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          target_format: targetFormat,
+          parameters: parameters || {}
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error compiling recipe:', error);
+      throw error;
+    }
+  },
+
+  async getSupportedFormats(recipeId: number): Promise<{
+    supported_formats: Array<{
+      format: string;
+      name: string;
+      description: string;
+    }>;
+    recipe_metadata: {
+      id: number;
+      name: string;
+      type: string;
+      complexity_level?: string;
+      step_count: number;
+      tool_count: number;
+    };
+  }> {
+    try {
+      const response = await fetch(`${API_BASE}/v1/recipes/${recipeId}/formats`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error getting supported formats:', error);
+      throw error;
+    }
+  },
+
+  // Recipe analysis method for natural language processing
+  async analyzeRecipeText(request: {
+    recipe_text: string;
+    recipe_name?: string;
+    similarity_threshold?: number;
+    max_matches_per_step?: number;
+    catalog_type?: string;
+    catalog_subtype?: string;
+    catalog_name?: string;
+  }): Promise<{
+    recipe_name: string;
+    description: string;
+    steps: Array<{
+      id: string;
+      name: string;
+      description: string;
+      step_type: string;
+      confidence: number;
+      action_verbs: string[];
+      entities: string[];
+      mapped_tool?: {
+        id: number | null;
+        cache_entry_id: number | null;
+        name: string;
+        type: string;
+        confidence: number;
+        reasoning: string;
+        exists: boolean;
+        needs_creation: boolean;
+        similarity_score?: number;
+        context_score?: number;
+        compatibility_score?: number;
+      };
+      alternative_tools: Array<{
+        id: number | null;
+        cache_entry_id: number | null;
+        name: string;
+        type: string;
+        confidence: number;
+        reasoning: string;
+        exists: boolean;
+        needs_creation: boolean;
+        similarity_score?: number;
+        context_score?: number;
+        compatibility_score?: number;
+      }>;
+      requires_review: boolean;
+      suggestions: string[];
+    }>;
+    total_steps: number;
+    complexity_score: number;
+    estimated_duration?: number;
+    required_capabilities: string[];
+    recipe_type: string;
+    analysis_metadata: Record<string, any>;
+  }> {
+    try {
+      const response = await fetch(`${API_BASE}/v1/recipes/analyze-natural-language`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          recipe_text: request.recipe_text,
+          recipe_name: request.recipe_name,
+          similarity_threshold: request.similarity_threshold || 0.6,
+          max_matches_per_step: request.max_matches_per_step || 5,
+          catalog_type: request.catalog_type,
+          catalog_subtype: request.catalog_subtype,
+          catalog_name: request.catalog_name
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error analyzing recipe text:', error);
+      throw error;
+    }
+  },
+
+  async rewriteRecipeStep(request: {
+    step_id: string;
+    new_description: string;
+    similarity_threshold?: number;
+    max_matches?: number;
+    catalog_type?: string;
+    catalog_subtype?: string;
+    catalog_name?: string;
+  }): Promise<{
+    original_step: {
+      id: string;
+      name: string;
+      description: string;
+      step_type: string;
+      confidence: number;
+      action_verbs: string[];
+      entities: string[];
+      mapped_tool?: {
+        id: number | null;
+        cache_entry_id: number | null;
+        name: string;
+        type: string;
+        confidence: number;
+        reasoning: string;
+        exists: boolean;
+        needs_creation: boolean;
+        similarity_score?: number;
+        context_score?: number;
+        compatibility_score?: number;
+      };
+      alternative_tools: Array<{
+        id: number | null;
+        cache_entry_id: number | null;
+        name: string;
+        type: string;
+        confidence: number;
+        reasoning: string;
+        exists: boolean;
+        needs_creation: boolean;
+        similarity_score?: number;
+        context_score?: number;
+        compatibility_score?: number;
+      }>;
+      requires_review: boolean;
+      suggestions: string[];
+    };
+    rewritten_step: {
+      id: string;
+      name: string;
+      description: string;
+      step_type: string;
+      confidence: number;
+      action_verbs: string[];
+      entities: string[];
+      mapped_tool?: {
+        id: number | null;
+        cache_entry_id: number | null;
+        name: string;
+        type: string;
+        confidence: number;
+        reasoning: string;
+        exists: boolean;
+        needs_creation: boolean;
+        similarity_score?: number;
+        context_score?: number;
+        compatibility_score?: number;
+      };
+      alternative_tools: Array<{
+        id: number | null;
+        cache_entry_id: number | null;
+        name: string;
+        type: string;
+        confidence: number;
+        reasoning: string;
+        exists: boolean;
+        needs_creation: boolean;
+        similarity_score?: number;
+        context_score?: number;
+        compatibility_score?: number;
+      }>;
+      requires_review: boolean;
+      suggestions: string[];
+    };
+    analysis_changes: Record<string, any>;
+  }> {
+    try {
+      const response = await fetch(`${API_BASE}/v1/recipes/rewrite-step`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          step_id: request.step_id,
+          new_description: request.new_description,
+          similarity_threshold: request.similarity_threshold || 0.6,
+          max_matches: request.max_matches || 5,
+          catalog_type: request.catalog_type,
+          catalog_subtype: request.catalog_subtype,
+          catalog_name: request.catalog_name
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error rewriting recipe step:', error);
       throw error;
     }
   },

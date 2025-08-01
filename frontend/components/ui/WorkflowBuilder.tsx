@@ -26,8 +26,9 @@ import { CompatibleStep } from './StepPalette';
 import BottomStepPalette from './BottomStepPalette';
 import api, { CacheItem } from '../../app/services/api';
 import { Button } from '../../app/components/ui/button';
-import { Wand2, Trash2 } from 'lucide-react';
+import { Wand2, Trash2, Upload, FileText } from 'lucide-react';
 import GenerateWorkflowDialog from './GenerateWorkflowDialog';
+import RecipeImportDialog from './RecipeImportDialog';
 
 // Default initial node if no workflow data is provided
 const defaultInitialNodes: Node[] = [
@@ -68,6 +69,7 @@ const WorkflowBuilderComponent: React.FC<WorkflowBuilderProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [isGenerateDialogOpen, setIsGenerateDialogOpen] = useState<boolean>(false);
+  const [isRecipeImportDialogOpen, setIsRecipeImportDialogOpen] = useState<boolean>(false);
 
   // Refs to store the previous initial props to compare against
   const prevPropInitialNodesRef = useRef<Node[] | undefined>();
@@ -262,6 +264,15 @@ const WorkflowBuilderComponent: React.FC<WorkflowBuilderProps> = ({
     setEdges(generatedEdges);
   };
   
+  const handleRecipeImport = (importedNodes: any[], importedEdges: any[]) => {
+    // Reset node counter
+    id = 1;
+    
+    // Set the nodes and edges from the imported recipe
+    setNodes(importedNodes);
+    setEdges(importedEdges);
+  };
+  
   return (
     <div className="flex flex-col h-[600px] border rounded-md" ref={reactFlowWrapper}>
       {/* Main Flow Area */}
@@ -280,30 +291,47 @@ const WorkflowBuilderComponent: React.FC<WorkflowBuilderProps> = ({
           <MiniMap />
           <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
           
-          {/* Generate Workflow Panel */}
+          {/* Workflow Controls Panel */}
           <Panel position="top-right">
-            <Button 
-              onClick={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                setIsGenerateDialogOpen(true);
-              }}
-              className="flex items-center gap-1"
-              variant="outline"
-            >
-              <Wand2 className="h-4 w-4" />
-              Generate from NL
-            </Button>
-            <Button
-              onClick={handleDeleteSelected}
-              disabled={nodes.every(n=>!n.selected || n.id==='start') && edges.every(e=>!e.selected)}
-              variant="outline"
-              className="flex items-center gap-1 ml-2"
-              title="Delete Selected (cannot delete Start node)"
-            >
-              <Trash2 className="h-4 w-4" />
-              Delete Selected
-            </Button>
+            <div className="flex gap-2">
+              <Button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  setIsGenerateDialogOpen(true);
+                }}
+                className="flex items-center gap-1"
+                variant="outline"
+                size="sm"
+              >
+                <Wand2 className="h-4 w-4" />
+                Generate from NL
+              </Button>
+              <Button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  setIsRecipeImportDialogOpen(true);
+                }}
+                className="flex items-center gap-1"
+                variant="outline"
+                size="sm"
+              >
+                <FileText className="h-4 w-4" />
+                Import Recipe
+              </Button>
+              <Button
+                onClick={handleDeleteSelected}
+                disabled={nodes.every(n=>!n.selected || n.id==='start') && edges.every(e=>!e.selected)}
+                variant="outline"
+                size="sm"
+                className="flex items-center gap-1"
+                title="Delete Selected (cannot delete Start node)"
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete Selected
+              </Button>
+            </div>
           </Panel>
         </ReactFlow>
       </div>
@@ -323,6 +351,13 @@ const WorkflowBuilderComponent: React.FC<WorkflowBuilderProps> = ({
         catalogType={catalogType}
         catalogSubtype={catalogSubType}
         catalogName={catalogName}
+      />
+      
+      {/* Recipe Import Dialog */}
+      <RecipeImportDialog
+        open={isRecipeImportDialogOpen}
+        onOpenChange={setIsRecipeImportDialogOpen}
+        onRecipeImported={handleRecipeImport}
       />
     </div>
   );

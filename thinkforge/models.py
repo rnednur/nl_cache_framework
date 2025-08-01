@@ -105,6 +105,181 @@ class TemplateType(str, Enum):
         }
     }
     This enables compositional query building from reusable semantic components."""
+    
+    # Tool Hub specific template types
+    MCP_TOOL = "mcp_tool"
+    """Model Context Protocol (MCP) tools for extensible AI functionality.
+    MCP tool templates define server connections and available tool specifications.
+    Expected JSON format in the 'template' field:
+    {
+        'server_config': {
+            'name': str,
+            'command': str,
+            'args': [str],
+            'env': {str: str}
+        },
+        'tool_spec': {
+            'name': str,
+            'description': str,
+            'input_schema': dict,
+            'capabilities': [str]
+        },
+        'connection_params': {
+            'timeout': int,
+            'retry_count': int
+        }
+    }
+    This enables integration with MCP-compatible tools and services."""
+    
+    AGENT = "agent"
+    """AI Agent definitions for autonomous task execution.
+    Agent templates define AI agents with specific capabilities and configurations.
+    Expected JSON format in the 'template' field:
+    {
+        'agent_config': {
+            'name': str,
+            'description': str,
+            'model': str,
+            'temperature': float,
+            'max_tokens': int
+        },
+        'capabilities': [str],
+        'tools': [str],
+        'system_prompt': str,
+        'execution_params': {
+            'max_iterations': int,
+            'timeout': int,
+            'memory_enabled': bool
+        }
+    }
+    This enables creation and management of specialized AI agents."""
+    
+    FUNCTION = "function"
+    """Reusable function definitions for various programming languages.
+    Function templates store executable code with parameter definitions.
+    Expected JSON format in the 'template' field:
+    {
+        'function_def': {
+            'name': str,
+            'description': str,
+            'language': 'python' | 'javascript' | 'bash' | 'powershell',
+            'code': str,
+            'entry_point': str
+        },
+        'parameters': {
+            'required': [str],
+            'optional': [str],
+            'schema': dict
+        },
+        'execution_config': {
+            'timeout': int,
+            'memory_limit': int,
+            'allowed_imports': [str]
+        }
+    }
+    This enables reusable function libraries with proper parameter validation."""
+    
+    # Recipe Hub specific template types
+    RECIPE = "recipe"
+    """Complete automation recipes defining multi-step workflows.
+    Recipe templates orchestrate multiple tools and steps to achieve complex automation goals.
+    Expected JSON format in the 'template' field:
+    {
+        'recipe_metadata': {
+            'name': str,
+            'description': str,
+            'version': str,
+            'author': str,
+            'category': str
+        },
+        'steps': [
+            {
+                'id': str,
+                'name': str,
+                'type': 'tool' | 'recipe_step' | 'conditional' | 'parallel',
+                'tool_id': int,  # Reference to tool cache entry
+                'parameters': dict,
+                'depends_on': [str],  # Step IDs this step depends on
+                'retry_config': {
+                    'max_attempts': int,
+                    'delay_seconds': int
+                }
+            }
+        ],
+        'execution_config': {
+            'timeout_seconds': int,
+            'parallel_limit': int,
+            'fail_fast': bool
+        },
+        'input_schema': dict,
+        'output_schema': dict
+    }
+    This enables complete workflow automation with tool orchestration."""
+    
+    RECIPE_STEP = "recipe_step"
+    """Individual recipe steps that can be composed into larger workflows.
+    Recipe steps are reusable building blocks for common automation patterns.
+    Expected JSON format in the 'template' field:
+    {
+        'step_metadata': {
+            'name': str,
+            'description': str,
+            'category': str,
+            'complexity_level': 'beginner' | 'intermediate' | 'advanced'
+        },
+        'step_definition': {
+            'type': 'action' | 'condition' | 'loop' | 'transform',
+            'implementation': dict,  # Step-specific implementation details
+            'error_handling': {
+                'on_error': 'fail' | 'continue' | 'retry',
+                'fallback_action': dict
+            }
+        },
+        'interface': {
+            'inputs': dict,  # Input parameter schema
+            'outputs': dict,  # Output parameter schema
+            'side_effects': [str]  # Description of side effects
+        }
+    }
+    This enables modular recipe composition from reusable steps."""
+    
+    RECIPE_TEMPLATE = "recipe_template"
+    """Parameterized recipe templates for common automation patterns.
+    Recipe templates provide configurable workflows that can be instantiated with specific parameters.
+    Expected JSON format in the 'template' field:
+    {
+        'template_metadata': {
+            'name': str,
+            'description': str,
+            'use_cases': [str],
+            'industry_tags': [str]
+        },
+        'parameters': {
+            'required': [str],
+            'optional': [str],
+            'parameter_schemas': {
+                'param_name': {
+                    'type': str,
+                    'description': str,
+                    'default': any,
+                    'validation': dict
+                }
+            }
+        },
+        'recipe_blueprint': {
+            'steps': [dict],  # Template steps with parameter placeholders
+            'conditional_logic': dict,
+            'error_scenarios': dict
+        },
+        'instantiation_examples': [
+            {
+                'name': str,
+                'description': str,
+                'parameter_values': dict
+            }
+        ]
+    }
+    This enables parameterized recipe creation for common automation patterns."""
 
 
 class Status(str, Enum):
@@ -164,6 +339,47 @@ class Text2SQLCache(Base):
     # Status field replacing is_valid and invalidation_reason
     status: str = Column(String, default=Status.ACTIVE, nullable=False, index=True)
     """Status of the cache entry (pending, active, archive). See Status enum."""
+
+    # Tool-specific metadata fields
+    tool_capabilities: Optional[List[str]] = Column(JSON)
+    """JSON array of capabilities that the tool provides (e.g., ['image_processing', 'pdf_conversion'])."""
+    
+    tool_dependencies: Optional[Dict[str, Any]] = Column(JSON)
+    """JSON object describing tool dependencies and requirements.
+       Example: {'api_keys': ['OPENAI_API_KEY'], 'services': ['docker'], 'python_packages': ['requests']}."""
+    
+    execution_config: Optional[Dict[str, Any]] = Column(JSON)
+    """JSON object for execution parameters and constraints.
+       Example: {'timeout': 300, 'retry_count': 3, 'memory_limit': '1GB', 'concurrent_limit': 5}."""
+    
+    health_status: Optional[str] = Column(String, index=True)
+    """Current health status of the tool ('healthy', 'degraded', 'unhealthy', 'unknown')."""
+    
+    last_tested: Optional[datetime.datetime] = Column(DateTime)
+    """Timestamp of when the tool was last validated or tested."""
+
+    # Recipe-specific metadata fields
+    recipe_steps: Optional[List[Dict[str, Any]]] = Column(JSON)
+    """JSON array of recipe steps with execution order, dependencies, and parameters.
+       Example: [{'id': 'step1', 'tool_id': 123, 'parameters': {...}, 'depends_on': []}]."""
+    
+    required_tools: Optional[List[int]] = Column(JSON)
+    """JSON array of tool cache entry IDs that this recipe depends on for execution."""
+    
+    execution_time_estimate: Optional[int] = Column(Integer)
+    """Estimated execution time in seconds for the complete recipe."""
+    
+    complexity_level: Optional[str] = Column(String, index=True)
+    """Recipe complexity level ('beginner', 'intermediate', 'advanced') for user guidance."""
+    
+    success_rate: Optional[float] = Column(Float)
+    """Historical success rate percentage (0-100) based on execution history."""
+    
+    last_executed: Optional[datetime.datetime] = Column(DateTime)
+    """Timestamp of when the recipe was last executed."""
+    
+    execution_count: Optional[int] = Column(Integer, default=0)
+    """Total number of times this recipe has been executed."""
 
     # Timestamps
     created_at: datetime.datetime = Column(
@@ -229,6 +445,21 @@ class Text2SQLCache(Base):
             "catalog_subtype": self.catalog_subtype,
             "catalog_name": self.catalog_name,
             "status": self.status,
+            # Tool-specific fields
+            "tool_capabilities": self.tool_capabilities,
+            "tool_dependencies": self.tool_dependencies,
+            "execution_config": self.execution_config,
+            "health_status": self.health_status,
+            "last_tested": self.last_tested.isoformat() if self.last_tested else None,
+            # Recipe-specific fields
+            "recipe_steps": self.recipe_steps,
+            "required_tools": self.required_tools,
+            "execution_time_estimate": self.execution_time_estimate,
+            "complexity_level": self.complexity_level,
+            "success_rate": self.success_rate,
+            "last_executed": self.last_executed.isoformat() if self.last_executed else None,
+            "execution_count": self.execution_count,
+            # Timestamps
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             # Ensure embedding is included, regardless of field name in database
@@ -267,6 +498,20 @@ class Text2SQLCache(Base):
             catalog_subtype=data.get("catalog_subtype"),
             catalog_name=data.get("catalog_name"),
             status=data.get("status", Status.ACTIVE),
+            # Tool-specific fields
+            tool_capabilities=data.get("tool_capabilities"),
+            tool_dependencies=data.get("tool_dependencies"),
+            execution_config=data.get("execution_config"),
+            health_status=data.get("health_status"),
+            last_tested=data.get("last_tested"),
+            # Recipe-specific fields
+            recipe_steps=data.get("recipe_steps"),
+            required_tools=data.get("required_tools"),
+            execution_time_estimate=data.get("execution_time_estimate"),
+            complexity_level=data.get("complexity_level"),
+            success_rate=data.get("success_rate"),
+            last_executed=data.get("last_executed"),
+            execution_count=data.get("execution_count", 0),
         )
 
         # Handle embedding directly if provided (expecting list or ndarray)

@@ -1,0 +1,85 @@
+FROM python:3.9-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements first for better caching
+COPY requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
+
+# Copy the entire project structure for demo
+COPY . /app/
+COPY ../README.md /app/../README.md
+
+# Install the ThinkForge framework
+RUN pip install --no-cache-dir -e .
+
+# Create a startup script for demo initialization
+RUN cat > /app/demo_startup.sh << 'EOF'
+#!/bin/bash
+set -e
+
+echo "🚀 Starting ThinkForge Demo..."
+
+# Wait for PostgreSQL to be ready
+echo "⏳ Waiting for PostgreSQL..."
+until pg_isready -h postgres -p 5432 -U thinkforge; do
+  echo "Waiting for PostgreSQL to start..."
+  sleep 2
+done
+
+echo "✅ PostgreSQL is ready!"
+
+# Initialize database schema
+echo "🗄️ Initializing database schema..."
+python -c "
+from database import engine
+from thinkforge.models import Base
+Base.metadata.create_all(bind=engine)
+print('Database schema created successfully!')
+"
+
+# Seed demo data if requested
+if [ "$AUTO_SEED_DATA" = "true" ]; then
+    echo "🌱 Seeding demo data..."
+    python scripts/seed_demo_data.py
+    echo "✅ Demo data seeded successfully!"
+fi
+
+# Import additional demo data if available
+if [ -d "/app/demo_data" ] && [ -f "/app/demo_data/demo_metadata.json" ]; then
+    echo "📥 Importing additional demo data..."
+    python scripts/import_demo_data.py /app/demo_data --no-embeddings
+    echo "✅ Additional demo data imported!"
+fi
+
+echo "🎯 Starting ThinkForge Backend API..."
+exec uvicorn app:app --host 0.0.0.0 --port 8000
+EOF
+
+RUN chmod +x /app/demo_startup.sh
+
+# Environment variables for demo
+ENV PORT=8000
+ENV MCP_DB_URL=postgresql://thinkforge:demo_password_2024@postgres:5432/thinkforge_demo
+ENV DEFAULT_MODEL_NAME=sentence-transformers/all-mpnet-base-v2
+ENV SIMILARITY_THRESHOLD=0.75
+ENV SESSION_TTL=3600
+ENV SESSION_CLEANUP_INTERVAL=300
+ENV PYTHONPATH=/app
+ENV DEMO_MODE=true
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD curl -f http://localhost:8000/health || exit 1
+
+# Expose port
+EXPOSE 8000
+
+# Use the demo startup script
+CMD ["/app/demo_startup.sh"]
