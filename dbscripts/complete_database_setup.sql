@@ -45,20 +45,132 @@ CREATE TYPE :"schema_name".template_type AS ENUM (
 -- Create enum type for status
 CREATE TYPE :"schema_name".status_type AS ENUM ('pending', 'active', 'archive');
 
+-- Create enum type for execution mode
+CREATE TYPE :"schema_name".executionmode AS ENUM ('BATCH', 'INTERACTIVE', 'SHADOW');
+
+-- Create enum type for recipe status
+CREATE TYPE :"schema_name".recipestatus AS ENUM ('DRAFT', 'PUBLISHED', 'DEPRECATED', 'ARCHIVED');
+
+-- Create enum type for execution status
+CREATE TYPE :"schema_name".executionstatus AS ENUM ('PENDING', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED', 'TIMEOUT');
+
+-- Create enum type for tool type
+CREATE TYPE :"schema_name".tooltype AS ENUM ('API', 'MCP', 'AGENT', 'SUBFLOW', 'LLM');
+
+-- Create enum type for validation status
+CREATE TYPE :"schema_name".validationstatus AS ENUM ('PENDING', 'VALID', 'INVALID', 'WARNING');
+
 -- Create enum type for confidence levels
 CREATE TYPE :"schema_name".confidence_level AS ENUM ('very_high', 'high', 'medium', 'low', 'very_low');
 
 -- Create enum type for step types
 CREATE TYPE :"schema_name".step_type AS ENUM ('action', 'condition', 'loop', 'transform', 'validation', 'integration', 'unknown');
 
--- Create enum type for execution modes
-CREATE TYPE :"schema_name".execution_mode AS ENUM ('sequential', 'parallel', 'conditional', 'loop');
-
 -- Create enum type for mapping strategies
 CREATE TYPE :"schema_name".mapping_strategy AS ENUM ('exact_match', 'semantic_similarity', 'capability_based', 'hybrid', 'fallback');
 
 -- Create enum type for workflow formats
 CREATE TYPE :"schema_name".workflow_format AS ENUM ('json', 'yaml', 'python', 'javascript', 'bash');
+
+-- =============================================================================
+-- ARRAY TYPES CREATION (PostgreSQL array types for enum types)
+-- =============================================================================
+
+-- Create array types for enum types (PostgreSQL automatically creates these)
+-- These are used for storing arrays of enum values in JSONB columns
+-- Note: PostgreSQL automatically creates array types when enum types are created
+-- The following are documented for reference but are created automatically:
+
+-- Array type for executionstatus
+-- CREATE TYPE :"schema_name"._executionstatus AS (
+--     INPUT = array_in,
+--     OUTPUT = array_out,
+--     RECEIVE = array_recv,
+--     SEND = array_send,
+--     ANALYZE = array_typanalyze,
+--     ALIGNMENT = 4,
+--     STORAGE = any,
+--     CATEGORY = A,
+--     ELEMENT = :"schema_name".executionstatus,
+--     DELIMITER = ',');
+
+-- Array type for executionmode
+-- CREATE TYPE :"schema_name"._executionmode AS (
+--     INPUT = array_in,
+--     OUTPUT = array_out,
+--     RECEIVE = array_recv,
+--     SEND = array_send,
+--     ANALYZE = array_typanalyze,
+--     ALIGNMENT = 4,
+--     STORAGE = any,
+--     CATEGORY = A,
+--     ELEMENT = :"schema_name".executionmode,
+--     DELIMITER = ',');
+
+-- Array type for recipestatus
+-- CREATE TYPE :"schema_name"._recipestatus AS (
+--     INPUT = array_in,
+--     OUTPUT = array_out,
+--     RECEIVE = array_recv,
+--     SEND = array_send,
+--     ANALYZE = array_typanalyze,
+--     ALIGNMENT = 4,
+--     STORAGE = any,
+--     CATEGORY = A,
+--     ELEMENT = :"schema_name".recipestatus,
+--     DELIMITER = ',');
+
+-- Array type for status_type
+-- CREATE TYPE :"schema_name"._status_type AS (
+--     INPUT = array_in,
+--     OUTPUT = array_out,
+--     RECEIVE = array_recv,
+--     SEND = array_send,
+--     ANALYZE = array_typanalyze,
+--     ALIGNMENT = 4,
+--     STORAGE = any,
+--     CATEGORY = A,
+--     ELEMENT = :"schema_name".status_type,
+--     DELIMITER = ',');
+
+-- Array type for template_type
+-- CREATE TYPE :"schema_name"._template_type AS (
+--     INPUT = array_in,
+--     OUTPUT = array_out,
+--     RECEIVE = array_recv,
+--     SEND = array_send,
+--     ANALYZE = array_typanalyze,
+--     ALIGNMENT = 4,
+--     STORAGE = any,
+--     CATEGORY = A,
+--     ELEMENT = :"schema_name".template_type,
+--     DELIMITER = ',');
+
+-- Array type for tooltype
+-- CREATE TYPE :"schema_name"._tooltype AS (
+--     INPUT = array_in,
+--     OUTPUT = array_out,
+--     RECEIVE = array_recv,
+--     SEND = array_send,
+--     ANALYZE = array_typanalyze,
+--     ALIGNMENT = 4,
+--     STORAGE = any,
+--     CATEGORY = A,
+--     ELEMENT = :"schema_name".tooltype,
+--     DELIMITER = ',');
+
+-- Array type for validationstatus
+-- CREATE TYPE :"schema_name"._validationstatus AS (
+--     INPUT = array_in,
+--     OUTPUT = array_out,
+--     RECEIVE = array_recv,
+--     SEND = array_send,
+--     ANALYZE = array_typanalyze,
+--     ALIGNMENT = 4,
+--     STORAGE = any,
+--     CATEGORY = A,
+--     ELEMENT = :"schema_name".validationstatus,
+--     DELIMITER = ',');
 
 -- =============================================================================
 -- MAIN TABLES CREATION
@@ -178,9 +290,13 @@ CREATE TRIGGER update_text2sql_cache_updated_at
 -- Add comments to document the enum types
 COMMENT ON TYPE :"schema_name".template_type IS 'Enum for template types: sql, url, api, workflow, graphql, regex, script, nosql, cli, prompt, configuration, reasoning_steps, dsl, mcp_tool, agent, function, recipe, recipe_step, recipe_template';
 COMMENT ON TYPE :"schema_name".status_type IS 'Enum for entry status: pending, active, archive';
+COMMENT ON TYPE :"schema_name".executionmode IS 'Enum for execution modes: BATCH, INTERACTIVE, SHADOW';
+COMMENT ON TYPE :"schema_name".recipestatus IS 'Enum for recipe status: DRAFT, PUBLISHED, DEPRECATED, ARCHIVED';
+COMMENT ON TYPE :"schema_name".executionstatus IS 'Enum for execution status: PENDING, RUNNING, COMPLETED, FAILED, CANCELLED, TIMEOUT';
+COMMENT ON TYPE :"schema_name".tooltype IS 'Enum for tool types: API, MCP, AGENT, SUBFLOW, LLM';
+COMMENT ON TYPE :"schema_name".validationstatus IS 'Enum for validation status: PENDING, VALID, INVALID, WARNING';
 COMMENT ON TYPE :"schema_name".confidence_level IS 'Enum for confidence levels: very_high, high, medium, low, very_low';
 COMMENT ON TYPE :"schema_name".step_type IS 'Enum for step types: action, condition, loop, transform, validation, integration, unknown';
-COMMENT ON TYPE :"schema_name".execution_mode IS 'Enum for execution modes: sequential, parallel, conditional, loop';
 COMMENT ON TYPE :"schema_name".mapping_strategy IS 'Enum for mapping strategies: exact_match, semantic_similarity, capability_based, hybrid, fallback';
 COMMENT ON TYPE :"schema_name".workflow_format IS 'Enum for workflow formats: json, yaml, python, javascript, bash';
 
@@ -214,9 +330,13 @@ ALTER TYPE :"schema_name".template_type ADD VALUE IF NOT EXISTS 'recipe_step';
 ALTER TYPE :"schema_name".template_type ADD VALUE IF NOT EXISTS 'recipe_template';
 
 -- If you need to add the new enum types to existing databases:
+-- CREATE TYPE :"schema_name".executionmode AS ENUM ('BATCH', 'INTERACTIVE', 'SHADOW');
+-- CREATE TYPE :"schema_name".recipestatus AS ENUM ('DRAFT', 'PUBLISHED', 'DEPRECATED', 'ARCHIVED');
+-- CREATE TYPE :"schema_name".executionstatus AS ENUM ('PENDING', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED', 'TIMEOUT');
+-- CREATE TYPE :"schema_name".tooltype AS ENUM ('API', 'MCP', 'AGENT', 'SUBFLOW', 'LLM');
+-- CREATE TYPE :"schema_name".validationstatus AS ENUM ('PENDING', 'VALID', 'INVALID', 'WARNING');
 -- CREATE TYPE :"schema_name".confidence_level AS ENUM ('very_high', 'high', 'medium', 'low', 'very_low');
 -- CREATE TYPE :"schema_name".step_type AS ENUM ('action', 'condition', 'loop', 'transform', 'validation', 'integration', 'unknown');
--- CREATE TYPE :"schema_name".execution_mode AS ENUM ('sequential', 'parallel', 'conditional', 'loop');
 -- CREATE TYPE :"schema_name".mapping_strategy AS ENUM ('exact_match', 'semantic_similarity', 'capability_based', 'hybrid', 'fallback');
 -- CREATE TYPE :"schema_name".workflow_format AS ENUM ('json', 'yaml', 'python', 'javascript', 'bash');
 
