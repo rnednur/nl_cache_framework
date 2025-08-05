@@ -14,6 +14,7 @@ import { Button } from '@/app/components/ui/button'
 import { Input } from '@/app/components/ui/input'
 import { Textarea } from '@/app/components/ui/textarea'
 import { Badge } from '@/app/components/ui/badge'
+import { CatalogSelect } from '@/app/components/ui/CatalogSelect'
 import { Progress } from '@/app/components/ui/progress'
 import { Alert, AlertDescription } from '@/app/components/ui/alert'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs'
@@ -61,17 +62,23 @@ interface RecipeStep {
   name: string
   type: string
   description?: string
-  tool_id?: number
+  tool_id?: number | null
   depends_on?: string[]
   confidence?: number
   actionVerbs?: string[]
   entities?: string[]
   mappedTool?: {
-    id: number
+    id: number | null
+    cache_entry_id: number | null
     name: string
     type: string
     confidence: number
     reasoning: string
+    exists: boolean
+    needs_creation: boolean
+    similarity_score?: number
+    context_score?: number
+    compatibility_score?: number
   }
 }
 
@@ -92,6 +99,9 @@ interface ParsedRecipeStep {
     reasoning: string
     exists: boolean
     needsCreation: boolean
+    similarityScore?: number
+    contextScore?: number
+    compatibilityScore?: number
   }
 }
 
@@ -101,7 +111,7 @@ interface RecipeAnalysis {
   steps: ParsedRecipeStep[]
   totalSteps: number
   complexityScore: number
-  estimatedDuration: number
+  estimatedDuration: number | null
   requiredCapabilities: string[]
   recipeType: string
 }
@@ -260,12 +270,15 @@ export default function NewRecipe() {
             confidence: step.mapped_tool.confidence,
             reasoning: step.mapped_tool.reasoning,
             exists: step.mapped_tool.exists,
-            needsCreation: step.mapped_tool.needs_creation
+            needsCreation: step.mapped_tool.needs_creation,
+            similarityScore: step.mapped_tool.similarity_score,
+            contextScore: step.mapped_tool.context_score,
+            compatibilityScore: step.mapped_tool.compatibility_score
           } : undefined
         })),
         totalSteps: apiResponse.total_steps,
         complexityScore: apiResponse.complexity_score,
-        estimatedDuration: apiResponse.estimated_duration,
+        estimatedDuration: apiResponse.estimated_duration || null,
         requiredCapabilities: apiResponse.required_capabilities,
         recipeType: apiResponse.recipe_type
       }
@@ -276,7 +289,7 @@ export default function NewRecipe() {
       // Update form data with analysis results
       setFormData(prev => ({
         ...prev,
-        execution_time_estimate: analysisResult.estimatedDuration,
+        execution_time_estimate: analysisResult.estimatedDuration || 0,
         complexity_level: analysisResult.complexityScore > 0.7 ? 'advanced' : analysisResult.complexityScore > 0.4 ? 'intermediate' : 'beginner'
       }))
 
@@ -297,18 +310,30 @@ export default function NewRecipe() {
       name: step.name,
       type: step.stepType,
       description: step.description,
-      tool_id: step.mappedTool?.id,
+      tool_id: step.mappedTool?.id || null,
       depends_on: index > 0 ? [analysisResult.steps[index - 1].id] : [],
       confidence: step.confidence,
       actionVerbs: step.actionVerbs,
       entities: step.entities,
-      mappedTool: step.mappedTool
+      mappedTool: step.mappedTool ? {
+        id: step.mappedTool.id,
+        cache_entry_id: step.mappedTool.cacheEntryId,
+        name: step.mappedTool.name,
+        type: step.mappedTool.type,
+        confidence: step.mappedTool.confidence,
+        reasoning: step.mappedTool.reasoning,
+        exists: step.mappedTool.exists,
+        needs_creation: step.mappedTool.needsCreation,
+        similarity_score: step.mappedTool.similarityScore,
+        context_score: step.mappedTool.contextScore,
+        compatibility_score: step.mappedTool.compatibilityScore
+      } : undefined
     }))
 
     setFormData(prev => ({
       ...prev,
       recipe_steps: convertedSteps,
-      required_tools: convertedSteps.map(step => step.tool_id).filter(Boolean) as number[]
+      required_tools: convertedSteps.map(step => step.tool_id).filter((id): id is number => id !== null && id !== undefined)
     }))
 
     // Switch to manual tab to show the converted steps
@@ -534,58 +559,42 @@ export default function NewRecipe() {
               </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-neutral-300 mb-2">
-                Estimated Execution Time (minutes)
-              </label>
-              <Input
-                type="number"
-                min="0"
-                value={formData.execution_time_estimate}
-                onChange={(e) => setFormData(prev => ({ 
-                  ...prev, 
-                  execution_time_estimate: parseInt(e.target.value) || 0 
-                }))}
-                placeholder="0"
-                className="!bg-neutral-900 border-neutral-700 text-white placeholder:text-neutral-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-neutral-300 mb-2">
-                  Catalog Type
-                </label>
-                <Input
-                  value={formData.catalog_type}
-                  onChange={(e) => setFormData(prev => ({ ...prev, catalog_type: e.target.value }))}
-                  placeholder="e.g., workflow, automation"
-                  className="!bg-neutral-900 border-neutral-700 text-white placeholder:text-neutral-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-neutral-300 mb-2">
-                  Catalog Subtype
-                </label>
-                <Input
-                  value={formData.catalog_subtype}
-                  onChange={(e) => setFormData(prev => ({ ...prev, catalog_subtype: e.target.value }))}
-                  placeholder="e.g., data-processing, api-integration"
-                  className="!bg-neutral-900 border-neutral-700 text-white placeholder:text-neutral-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-neutral-300 mb-2">
-                  Catalog Name
-                </label>
-                <Input
-                  value={formData.catalog_name}
-                  onChange={(e) => setFormData(prev => ({ ...prev, catalog_name: e.target.value }))}
-                  placeholder="e.g., customer-data-pipeline"
-                  className="!bg-neutral-900 border-neutral-700 text-white placeholder:text-neutral-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
+            {/* Catalog Selection using individual CatalogSelect components */}
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <CatalogSelect
+                    catalogField="catalog_type"
+                    label="Catalog Type"
+                    value={formData.catalog_type}
+                    onValueChange={(value: string | undefined) => setFormData(prev => ({ ...prev, catalog_type: value || "" }))}
+                    placeholder="Select catalog type..."
+                    className="!bg-neutral-900 border-neutral-700 text-white"
+                    allowCustom={true}
+                  />
+                </div>
+                <div>
+                  <CatalogSelect
+                    catalogField="catalog_subtype"
+                    label="Catalog Subtype"
+                    value={formData.catalog_subtype}
+                    onValueChange={(value: string | undefined) => setFormData(prev => ({ ...prev, catalog_subtype: value || "" }))}
+                    placeholder="Select catalog subtype..."
+                    className="!bg-neutral-900 border-neutral-700 text-white"
+                    allowCustom={true}
+                  />
+                </div>
+                <div>
+                  <CatalogSelect
+                    catalogField="catalog_name"
+                    label="Catalog Name"
+                    value={formData.catalog_name}
+                    onValueChange={(value: string | undefined) => setFormData(prev => ({ ...prev, catalog_name: value || "" }))}
+                    placeholder="Select catalog name..."
+                    className="!bg-neutral-900 border-neutral-700 text-white"
+                    allowCustom={true}
+                  />
+                </div>
               </div>
             </div>
           </CardContent>
@@ -673,7 +682,7 @@ export default function NewRecipe() {
                           {analysisResult.recipeType}
                         </Badge>
                         <Badge variant="outline" className="border-neutral-500 text-neutral-300">
-                          ~{analysisResult.estimatedDuration}min
+                          ~{analysisResult.estimatedDuration || 0}min
                         </Badge>
                       </div>
                     </div>
@@ -722,7 +731,7 @@ export default function NewRecipe() {
                       </div>
                       <div>
                         <p className="font-medium text-neutral-300">Duration</p>
-                        <p className="text-lg font-semibold text-white">{analysisResult.estimatedDuration} min</p>
+                        <p className="text-lg font-semibold text-white">{analysisResult.estimatedDuration || 0} min</p>
                       </div>
                     </div>
 
@@ -973,13 +982,13 @@ export default function NewRecipe() {
                                 <div className="flex items-center gap-2 text-xs">
                                   <CheckCircle className="h-3 w-3 text-green-400" />
                                   <span className="text-neutral-400">
-                                    Cache Entry ID: {step.mappedTool.cacheEntryId}
+                                    Cache Entry ID: {step.mappedTool.cache_entry_id}
                                   </span>
                                   <Button
                                     type="button"
                                     size="sm"
                                     variant="ghost"
-                                    onClick={() => handleViewTool(step.mappedTool!.cacheEntryId!)}
+                                    onClick={() => handleViewTool(step.mappedTool!.cache_entry_id!)}
                                     className="h-5 px-1 text-xs text-blue-400 hover:text-blue-300"
                                   >
                                     <ExternalLink className="h-3 w-3" />

@@ -77,7 +77,7 @@ class RecipeToolMapper:
         self, 
         steps: List[ParsedStep], 
         strategy: MappingStrategy = MappingStrategy.HYBRID,
-        similarity_threshold: float = 0.6,
+        similarity_threshold: float = 0.3,
         max_matches_per_step: int = 5,
         catalog_filters: Dict[str, str] = None
     ) -> List[StepMapping]:
@@ -149,13 +149,25 @@ class RecipeToolMapper:
         
         # Score and rank candidates
         tool_matches = []
+        filtered_count = 0
+        
         for candidate in candidates:
             try:
                 match = self._evaluate_tool_match(step, candidate)
+                logger.info(f"Tool {candidate.get('id')}: similarity={match.similarity_score:.3f}, "
+                           f"context={match.context_score:.3f}, compatibility={match.compatibility_score:.3f}, "
+                           f"overall={match.overall_confidence:.3f}")
+                
                 if match.overall_confidence > 0.1:  # Filter very low confidence matches
                     tool_matches.append(match)
+                else:
+                    filtered_count += 1
+                    logger.info(f"Filtered out tool {candidate.get('id')} due to low confidence: {match.overall_confidence:.3f}")
+                    
             except Exception as e:
                 logger.warning(f"Failed to evaluate tool {candidate.get('id', 'unknown')}: {e}")
+        
+        logger.info(f"Found {len(tool_matches)} matches above 0.1 threshold, filtered out {filtered_count}")
         
         # Sort by overall confidence and return top matches
         tool_matches.sort(key=lambda x: x.overall_confidence, reverse=True)
@@ -175,6 +187,14 @@ class RecipeToolMapper:
         
         # Filter matches by threshold
         filtered_matches = [m for m in matches if m.overall_confidence >= threshold]
+        
+        logger.info(f"Step '{step.name}': Found {len(matches)} initial matches, "
+                   f"{len(filtered_matches)} passed threshold {threshold}")
+        
+        if matches and not filtered_matches:
+            best_unfiltered = max(matches, key=lambda x: x.overall_confidence)
+            logger.info(f"No matches passed threshold {threshold}. Best match was {best_unfiltered.overall_confidence:.3f} "
+                       f"for tool {best_unfiltered.tool_id}")
         
         # Determine best match
         best_match = filtered_matches[0] if filtered_matches else None
@@ -463,8 +483,10 @@ class RecipeToolMapper:
         tool_name = tool_data['nl_query']
         tool_type = tool_data['template_type']
         
-        # Get tool capabilities
-        tool_capabilities = tool_data.get('tool_capabilities', [])
+        # Get tool capabilities and ensure it's always a list
+        tool_capabilities = tool_data.get('tool_capabilities') or []
+        if not isinstance(tool_capabilities, list):
+            tool_capabilities = []
         
         # Calculate different scoring components
         similarity_score = tool_data.get('similarity_score', 0.0)
@@ -514,7 +536,11 @@ class RecipeToolMapper:
             score += 0.3
         
         # Action verb compatibility
-        tool_capabilities = tool_data.get('tool_capabilities', [])
+        tool_capabilities = tool_data.get('tool_capabilities') or []
+        # Ensure tool_capabilities is always a list
+        if not isinstance(tool_capabilities, list):
+            tool_capabilities = []
+            
         for verb in step.action_verbs:
             if any(verb in cap.lower() for cap in tool_capabilities):
                 score += 0.05
@@ -577,8 +603,14 @@ class RecipeToolMapper:
         # Context reasoning
         if ctx_score > 0.7:
             reasons.append("Strong contextual compatibility")
-        elif any(verb in tool_data.get('tool_capabilities', []) for verb in step.action_verbs):
-            reasons.append("Matching capabilities found")
+        else:
+            # Safely handle tool_capabilities that might be None
+            tool_capabilities = tool_data.get('tool_capabilities') or []
+            if not isinstance(tool_capabilities, list):
+                tool_capabilities = []
+            
+            if any(verb in cap for cap in tool_capabilities for verb in step.action_verbs if isinstance(cap, str)):
+                reasons.append("Matching capabilities found")
         
         # Compatibility reasoning
         health = tool_data.get('health_status', 'unknown')

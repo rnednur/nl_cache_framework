@@ -4,6 +4,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../../../components/ui/card";
 import { Label } from "../../../components/ui/label";
 import { Button } from "../../../components/ui/button";
+import { CatalogSelect } from "../../../components/ui/CatalogSelect";
 import React from "react";
 import WorkflowBuilder from "../../../../components/ui/WorkflowBuilder";
 
@@ -77,33 +78,36 @@ export function CacheEntryForm({
       <CardContent className="p-4 space-y-8">
         <div className="grid gap-6 md:grid-cols-3">
           <div className="grid gap-2">
-            <Label htmlFor="catalogType">Catalog Type</Label>
-            <Input
-              id="catalogType"
-              placeholder="Enter catalog type"
-              value={catalogType || ""}
-              onChange={setCatalogType ? (e) => setCatalogType(e.target.value ? e.target.value : undefined) : undefined}
+            <CatalogSelect
+              catalogField="catalog_type"
+              label="Catalog Type"
+              value={catalogType}
+              onValueChange={setCatalogType}
+              placeholder="Select catalog type..."
               disabled={readOnly}
+              allowCustom={!readOnly}
             />
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="catalogSubtype">Catalog Subtype</Label>
-            <Input
-              id="catalogSubtype"
-              placeholder="Enter catalog subtype"
-              value={catalogSubtype || ""}
-              onChange={setCatalogSubtype ? (e) => setCatalogSubtype(e.target.value ? e.target.value : undefined) : undefined}
+            <CatalogSelect
+              catalogField="catalog_subtype"
+              label="Catalog Subtype"
+              value={catalogSubtype}
+              onValueChange={setCatalogSubtype}
+              placeholder="Select catalog subtype..."
               disabled={readOnly}
+              allowCustom={!readOnly}
             />
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="catalogName">Catalog Name</Label>
-            <Input
-              id="catalogName"
-              placeholder="Enter catalog name"
-              value={catalogName || ""}
-              onChange={setCatalogName ? (e) => setCatalogName(e.target.value ? e.target.value : undefined) : undefined}
+            <CatalogSelect
+              catalogField="catalog_name"
+              label="Catalog Name"
+              value={catalogName}
+              onValueChange={setCatalogName}
+              placeholder="Select catalog name..."
               disabled={readOnly}
+              allowCustom={!readOnly}
             />
           </div>
         </div>

@@ -1099,7 +1099,7 @@ class Text2SQLController:
     def process_completion(
         self,
         query: str,
-        similarity_threshold: float = 0.85,
+        similarity_threshold: Optional[float] = None,
         use_llm: bool = False,
         catalog_type: Optional[str] = None,
         catalog_subtype: Optional[str] = None,
@@ -1129,6 +1129,11 @@ class Text2SQLController:
         logger.info(f"LLMService available: {LLMService is not None}")
         if LLMService:
             logger.info(f"LLMService configured: {LLMService.is_configured()}")
+        
+        # Set default similarity threshold if not provided
+        if similarity_threshold is None:
+            similarity_threshold = 0.85  # Default fallback value
+            logger.info(f"similarity_threshold was None, using default: {similarity_threshold}")
         
         entity_sub = Text2SQLEntitySubstitution()
         response_data = {}

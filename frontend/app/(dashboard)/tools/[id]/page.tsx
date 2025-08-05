@@ -280,15 +280,97 @@ export default function ToolDetail() {
       {/* Tool Details */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Tool Configuration */}
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-2 space-y-6">
+          {/* Execution Configuration */}
+          {tool.execution_config && Object.keys(tool.execution_config).length > 0 && (
+            <Card className="bg-neutral-800 border-neutral-700">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Globe className="h-5 w-5" />
+                  Execution Configuration  
+                </CardTitle>
+                <CardDescription>
+                  Runtime configuration and endpoint details
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {tool.execution_config.full_endpoint && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-neutral-300">Endpoint URL</label>
+                    <div className="bg-neutral-900 rounded-lg p-3 border border-neutral-600">
+                      <code className="text-sm text-green-400 break-all">
+                        {tool.execution_config.method} {tool.execution_config.full_endpoint}
+                      </code>
+                    </div>
+                  </div>
+                )}
+
+                {tool.execution_config.base_url && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-neutral-300">Base URL</label>
+                    <div className="bg-neutral-900 rounded-lg p-3 border border-neutral-600">
+                      <code className="text-sm text-blue-400">
+                        {tool.execution_config.base_url}
+                      </code>
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-4">
+                  {tool.execution_config.timeout && (
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-neutral-300">Timeout</label>
+                      <div className="bg-neutral-900 rounded-lg p-3 border border-neutral-600">
+                        <code className="text-sm text-yellow-400">
+                          {tool.execution_config.timeout}s
+                        </code>
+                      </div>
+                    </div>
+                  )}
+
+                  {tool.execution_config.method && (
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-neutral-300">Method</label>
+                      <div className="bg-neutral-900 rounded-lg p-3 border border-neutral-600">
+                        <Badge
+                          variant="outline"
+                          className={`border-0 ${
+                            tool.execution_config.method === 'GET' ? 'bg-green-600 text-white' :
+                            tool.execution_config.method === 'POST' ? 'bg-blue-600 text-white' :
+                            tool.execution_config.method === 'PUT' ? 'bg-orange-600 text-white' :
+                            'bg-neutral-600 text-white'
+                          }`}
+                        >
+                          {tool.execution_config.method}
+                        </Badge>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {tool.execution_config.headers && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-neutral-300">Headers</label>
+                    <div className="bg-neutral-900 rounded-lg p-3 border border-neutral-600">
+                      <pre className="text-xs text-neutral-300 overflow-x-auto">
+                        {JSON.stringify(tool.execution_config.headers, null, 2)}
+                      </pre>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Template Configuration */}
           <Card className="bg-neutral-800 border-neutral-700">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Settings className="h-5 w-5" />
-                Tool Configuration
+                Template Configuration
               </CardTitle>
               <CardDescription>
-                Configuration and template details
+                API schema and template details
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">

@@ -97,36 +97,35 @@ export default function DataUpload() {
 
   const renderCatalogFields = () => (
     <div className="space-y-4">
-      <div className="space-y-2">
-        <Label htmlFor="catalog-type" className="text-neutral-300">Catalog Type (Optional)</Label>
-        <Input
-          id="catalog-type"
-          placeholder="E.g., mysql, postgres, api"
-          value={catalogType}
-          onChange={(e) => setCatalogType(e.target.value)}
-          className="bg-neutral-800 border-neutral-700 text-neutral-300 placeholder:text-neutral-500"
-        />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="catalog-subtype" className="text-neutral-300">Catalog Subtype (Optional)</Label>
-        <Input
-          id="catalog-subtype"
-          placeholder="E.g., customer, orders, get"
-          value={catalogSubtype}
-          onChange={(e) => setCatalogSubtype(e.target.value)}
-          className="bg-neutral-800 border-neutral-700 text-neutral-300 placeholder:text-neutral-500"
-        />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="catalog-name" className="text-neutral-300">Catalog Name (Optional)</Label>
-        <Input
-          id="catalog-name"
-          placeholder="E.g., customer_query, get_orders"
-          value={catalogName}
-          onChange={(e) => setCatalogName(e.target.value)}
-          className="bg-neutral-800 border-neutral-700 text-neutral-300 placeholder:text-neutral-500"
-        />
-      </div>
+      <CatalogSelect
+        catalogField="catalog_type"
+        label="Catalog Type (Optional)"
+        value={catalogType}
+        onValueChange={(value) => setCatalogType(value || "")}
+        placeholder="E.g., mysql, postgres, api"
+        className="bg-neutral-800 border-neutral-700 text-neutral-300"
+        allowCustom={true}
+      />
+      
+      <CatalogSelect
+        catalogField="catalog_subtype"
+        label="Catalog Subtype (Optional)"
+        value={catalogSubtype}
+        onValueChange={(value) => setCatalogSubtype(value || "")}
+        placeholder="E.g., customer, orders, get"
+        className="bg-neutral-800 border-neutral-700 text-neutral-300"
+        allowCustom={true}
+      />
+      
+      <CatalogSelect
+        catalogField="catalog_name"
+        label="Catalog Name (Optional)"
+        value={catalogName}
+        onValueChange={(value) => setCatalogName(value || "")}
+        placeholder="E.g., customer_query, get_orders"
+        className="bg-neutral-800 border-neutral-700 text-neutral-300"
+        allowCustom={true}
+      />
     </div>
   );
 

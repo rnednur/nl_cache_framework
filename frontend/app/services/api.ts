@@ -372,10 +372,27 @@ const api = {
     }
   },
   
-  // Get catalog values for filtering
-  async getCatalogValues(): Promise<CatalogValues> {
+  // Get catalog values for filtering with optional hierarchical filtering
+  async getCatalogValues(filters?: {
+    catalog_type?: string;
+    catalog_subtype?: string;
+  }): Promise<CatalogValues> {
     try {
-      const response = await fetch(`${API_BASE}/v1/catalog/values`);
+      let url = `${API_BASE}/v1/catalog/values`;
+      const params = new URLSearchParams();
+      
+      if (filters?.catalog_type) {
+        params.append('catalog_type', filters.catalog_type);
+      }
+      if (filters?.catalog_subtype) {
+        params.append('catalog_subtype', filters.catalog_subtype);
+      }
+      
+      if (params.toString()) {
+        url += `?${params.toString()}`;
+      }
+      
+      const response = await fetch(url);
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);

@@ -528,26 +528,42 @@ async def get_compatible_cache_entries(
 
 
 @app.get("/v1/catalog/values")
-async def get_catalog_values(db: Session = Depends(get_db)):
-    """Get distinct catalog values for filtering"""
+async def get_catalog_values(
+    catalog_type: Optional[str] = Query(None, description="Filter subtypes by catalog type"),
+    catalog_subtype: Optional[str] = Query(None, description="Filter names by catalog subtype"),
+    db: Session = Depends(get_db)
+):
+    """Get distinct catalog values with optional hierarchical filtering"""
     try:
-        # Query for distinct catalog types
-        catalog_types = db.query(Text2SQLCache.catalog_type).distinct().filter(
+        # Always get all catalog types
+        catalog_types_query = db.query(Text2SQLCache.catalog_type).distinct().filter(
             Text2SQLCache.catalog_type.is_not(None)
-        ).all()
-        catalog_types = [t[0] for t in catalog_types if t[0]]
+        )
+        catalog_types = [t[0] for t in catalog_types_query.all() if t[0]]
         
-        # Query for distinct catalog subtypes
-        catalog_subtypes = db.query(Text2SQLCache.catalog_subtype).distinct().filter(
+        # Filter subtypes by catalog_type if provided
+        catalog_subtypes_query = db.query(Text2SQLCache.catalog_subtype).distinct().filter(
             Text2SQLCache.catalog_subtype.is_not(None)
-        ).all()
-        catalog_subtypes = [t[0] for t in catalog_subtypes if t[0]]
+        )
+        if catalog_type:
+            catalog_subtypes_query = catalog_subtypes_query.filter(
+                Text2SQLCache.catalog_type == catalog_type
+            )
+        catalog_subtypes = [t[0] for t in catalog_subtypes_query.all() if t[0]]
         
-        # Query for distinct catalog names
-        catalog_names = db.query(Text2SQLCache.catalog_name).distinct().filter(
+        # Filter names by catalog_type and/or catalog_subtype if provided
+        catalog_names_query = db.query(Text2SQLCache.catalog_name).distinct().filter(
             Text2SQLCache.catalog_name.is_not(None)
-        ).all()
-        catalog_names = [t[0] for t in catalog_names if t[0]]
+        )
+        if catalog_type:
+            catalog_names_query = catalog_names_query.filter(
+                Text2SQLCache.catalog_type == catalog_type
+            )
+        if catalog_subtype:
+            catalog_names_query = catalog_names_query.filter(
+                Text2SQLCache.catalog_subtype == catalog_subtype
+            )
+        catalog_names = [t[0] for t in catalog_names_query.all() if t[0]]
         
         return {
             "catalog_types": catalog_types,
@@ -562,6 +578,12 @@ async def get_catalog_values(db: Session = Depends(get_db)):
 @app.post("/v1/complete")
 async def complete(
     request: CompleteRequest,
+    catalog_type: Optional[str] = Query(None),
+    catalog_subtype: Optional[str] = Query(None),
+    catalog_name: Optional[str] = Query(None),
+    similarity_threshold: Optional[float] = Query(None),
+    limit: Optional[int] = Query(None),
+    use_llm: Optional[bool] = Query(False),
     db: Session = Depends(get_db)
 ):
     """Process a completion request, utilizing the NL cache.
@@ -573,12 +595,12 @@ async def complete(
 
     Args:
         request: The request containing the prompt.
-        catalog_type: Optional catalog type to filter cache entries.
-        catalog_subtype: Optional catalog subtype to filter cache entries.
-        catalog_name: Optional catalog name to filter cache entries.
-        similarity_threshold: Optional similarity threshold for cache matching.
-        limit: Optional limit for the number of top similarity results to use.
-        use_llm: If True, use LLM to enhance search results with semantic analysis.
+        catalog_type: Optional catalog type to filter cache entries (can be in query params or body).
+        catalog_subtype: Optional catalog subtype to filter cache entries (can be in query params or body).
+        catalog_name: Optional catalog name to filter cache entries (can be in query params or body).
+        similarity_threshold: Optional similarity threshold for cache matching (can be in query params or body).
+        limit: Optional limit for the number of top similarity results to use (can be in query params or body).
+        use_llm: If True, use LLM to enhance search results with semantic analysis (can be in query params or body).
         db: The SQLAlchemy Session dependency.
 
     Returns:
@@ -593,13 +615,13 @@ async def complete(
     if not query or not query.strip():
         raise HTTPException(status_code=400, detail="Prompt cannot be empty")
 
-    # Extract parameters from request object
-    use_llm = request.use_llm or False
-    catalog_type = request.catalog_type
-    catalog_subtype = request.catalog_subtype
-    catalog_name = request.catalog_name
-    similarity_threshold = request.similarity_threshold
-    limit = request.limit
+    # Extract parameters from request object, with query parameters taking precedence
+    use_llm = use_llm if use_llm is not None else (request.use_llm or False)
+    catalog_type = catalog_type if catalog_type is not None else request.catalog_type
+    catalog_subtype = catalog_subtype if catalog_subtype is not None else request.catalog_subtype
+    catalog_name = catalog_name if catalog_name is not None else request.catalog_name
+    similarity_threshold = similarity_threshold if similarity_threshold is not None else request.similarity_threshold
+    limit = limit if limit is not None else request.limit
 
     # DEBUG: Log the endpoint parameters
     logger.info(f"=== /v1/complete ENDPOINT DEBUG ===")
@@ -775,7 +797,20 @@ async def list_cache_entries(
             "catalog_subtype": entry.catalog_subtype,
             "catalog_name": entry.catalog_name,
             "status": entry.status,
-            "usage_count": 0  # Placeholder for now, could be calculated from usage logs
+            "usage_count": 0,  # Placeholder for now, could be calculated from usage logs
+            # Add missing fields
+            "execution_config": entry.execution_config,
+            "tool_capabilities": entry.tool_capabilities,
+            "tool_dependencies": entry.tool_dependencies,
+            "health_status": entry.health_status,
+            "last_tested": entry.last_tested.isoformat() if entry.last_tested else None,
+            "recipe_steps": entry.recipe_steps,
+            "required_tools": entry.required_tools,
+            "execution_time_estimate": entry.execution_time_estimate,
+            "complexity_level": entry.complexity_level,
+            "success_rate": entry.success_rate,
+            "last_executed": entry.last_executed.isoformat() if entry.last_executed else None,
+            "execution_count": entry.execution_count
         }
         items.append(item)
     
@@ -863,7 +898,20 @@ async def get_cache_entry(entry_id: int, db: Session = Depends(get_db)):
         "created_at": entry.created_at.isoformat() if entry.created_at else None,
         "updated_at": entry.updated_at.isoformat() if entry.updated_at else None,
         "is_valid": entry.status == "active",
-        "status": entry.status
+        "status": entry.status,
+        # Add missing fields
+        "execution_config": entry.execution_config,
+        "tool_capabilities": entry.tool_capabilities,
+        "tool_dependencies": entry.tool_dependencies,
+        "health_status": entry.health_status,
+        "last_tested": entry.last_tested.isoformat() if entry.last_tested else None,
+        "recipe_steps": entry.recipe_steps,
+        "required_tools": entry.required_tools,
+        "execution_time_estimate": entry.execution_time_estimate,
+        "complexity_level": entry.complexity_level,
+        "success_rate": entry.success_rate,
+        "last_executed": entry.last_executed.isoformat() if entry.last_executed else None,
+        "execution_count": entry.execution_count
     }
 
 
@@ -1278,6 +1326,21 @@ async def upload_swagger(
         paths_count = len(swagger_data.get('paths', {}))
         logger.info(f"Processing {paths_count} paths from Swagger definition")
         
+        # Extract server information for building URLs
+        base_url = ""
+        if 'servers' in swagger_data and swagger_data['servers']:
+            # OpenAPI 3.0 format
+            base_url = swagger_data['servers'][0]['url']
+        else:
+            # Swagger 2.0 format
+            host = swagger_data.get('host', '')
+            schemes = swagger_data.get('schemes', ['https'])
+            base_path = swagger_data.get('basePath', '')
+            if host:
+                base_url = f"{schemes[0]}://{host}{base_path}"
+        
+        logger.info(f"Extracted base URL from Swagger: {base_url}")
+
         for path, methods in swagger_data.get('paths', {}).items():
             for method, details in methods.items():
                 if method.lower() not in ['get', 'put', 'post']:
@@ -1322,6 +1385,31 @@ async def upload_swagger(
                             catalog_subtype=entry_catalog_subtype,
                             catalog_name=entry_catalog_name
                         )
+                        
+                        # Now update the entry with execution_config
+                        if new_entry and new_entry.get('id') and base_url:
+                            entry_id = new_entry['id']
+                            full_url = base_url.rstrip('/') + path
+                            
+                            # Create execution config with URL information
+                            execution_config = {
+                                'base_url': base_url,
+                                'full_endpoint': full_url,
+                                'method': method.upper(),
+                                'timeout': 30,
+                                'headers': {
+                                    'Content-Type': 'application/json',
+                                    'Accept': 'application/json'
+                                }
+                            }
+                            
+                            # Update the cache entry with execution config
+                            cache_entry = db.query(Text2SQLCache).filter(Text2SQLCache.id == entry_id).first()
+                            if cache_entry:
+                                cache_entry.execution_config = execution_config
+                                db.commit()
+                                logger.info(f"Updated entry {entry_id} with execution_config: {full_url}")
+                        
                         
                         logger.info(f"Successfully added to cache: {method.upper()} {path} with ID {new_entry.get('id', 'unknown')}")
                         

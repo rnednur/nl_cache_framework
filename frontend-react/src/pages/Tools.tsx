@@ -31,7 +31,7 @@ import {
   Filter,
   Loader2,
 } from 'lucide-react'
-import { api } from '../services/api'
+import api from '../services/api'
 
 interface Tool {
   id: number

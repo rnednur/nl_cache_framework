@@ -38,7 +38,7 @@ import {
   Wrench,
   GitBranch,
 } from 'lucide-react'
-import { api } from '../services/api'
+import api from '../services/api'
 
 interface RecipeStep {
   id: string

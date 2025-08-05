@@ -196,7 +196,9 @@ class ConfidenceEngine:
         # 2. Capability matching
         capability_score = self._assess_capability_matching(step, tool_data)
         components['capability_match'] = capability_score
-        tool_capabilities = tool_data.get('tool_capabilities', [])
+        tool_capabilities = tool_data.get('tool_capabilities') or []
+        if not isinstance(tool_capabilities, list):
+            tool_capabilities = []
         factors['tool_capabilities'] = tool_capabilities
         
         if capability_score > 0.7:
@@ -563,7 +565,9 @@ class ConfidenceEngine:
     
     def _assess_capability_matching(self, step: ParsedStep, tool_data: Dict[str, Any]) -> float:
         """Assess how well tool capabilities match step requirements."""
-        tool_capabilities = tool_data.get('tool_capabilities', [])
+        tool_capabilities = tool_data.get('tool_capabilities') or []
+        if not isinstance(tool_capabilities, list):
+            tool_capabilities = []
         if not tool_capabilities:
             return 0.4  # Neutral score if no capabilities listed
         
