@@ -158,7 +158,7 @@ class RecipeToolMapper:
                            f"context={match.context_score:.3f}, compatibility={match.compatibility_score:.3f}, "
                            f"overall={match.overall_confidence:.3f}")
                 
-                if match.overall_confidence > 0.1:  # Filter very low confidence matches
+                if match.overall_confidence > 0.05:  # Very permissive threshold like /v1/complete
                     tool_matches.append(match)
                 else:
                     filtered_count += 1
@@ -167,7 +167,7 @@ class RecipeToolMapper:
             except Exception as e:
                 logger.warning(f"Failed to evaluate tool {candidate.get('id', 'unknown')}: {e}")
         
-        logger.info(f"Found {len(tool_matches)} matches above 0.1 threshold, filtered out {filtered_count}")
+        logger.info(f"Found {len(tool_matches)} matches above 0.05 threshold, filtered out {filtered_count}")
         
         # Sort by overall confidence and return top matches
         tool_matches.sort(key=lambda x: x.overall_confidence, reverse=True)
@@ -240,15 +240,15 @@ class RecipeToolMapper:
         
         all_candidates = []
         
-        # Phase 1: Semantic search with vector similarity
+        # Phase 1: Semantic search with vector similarity (use higher thresholds like /v1/complete)
         semantic_candidates = []
         for tool_type in relevant_types:
             try:
                 results = self.controller.search_query(
                     nl_query=search_query,
                     template_type=tool_type,
-                    similarity_threshold=0.4,  # Moderate threshold for semantic
-                    limit=max_candidates // len(relevant_types) + 2,
+                    similarity_threshold=0.6,  # Higher threshold like completion endpoint for better quality
+                    limit=max_candidates // len(relevant_types) + 3,
                     catalog_type=catalog_type,
                     catalog_subtype=catalog_subtype,
                     catalog_name=catalog_name
@@ -263,17 +263,53 @@ class RecipeToolMapper:
         logger.info(f"Semantic search found {len(semantic_candidates)} candidates")
         all_candidates.extend(semantic_candidates)
         
-        # Phase 2: Keyword search fallback if semantic results are poor
+        # Phase 2: Broad search without template type restrictions (like /v1/complete)
         if len(semantic_candidates) < max_candidates // 2:
-            logger.info("Semantic search yielded few results, trying keyword search...")
+            logger.info("Semantic search yielded few results, trying broad search...")
+            try:
+                broad_results = self.controller.search_query(
+                    nl_query=search_query,
+                    template_type=None,  # No template type restriction
+                    similarity_threshold=0.4,  # Reasonable threshold for broad search
+                    limit=max_candidates,
+                    catalog_type=catalog_type,
+                    catalog_subtype=catalog_subtype,
+                    catalog_name=catalog_name
+                )
+                for result in broad_results:
+                    result['search_method'] = 'broad_semantic'
+                    result['original_similarity'] = result.get('similarity', 0.0)
+                all_candidates.extend(broad_results)
+                logger.info(f"Broad search found {len(broad_results)} additional candidates")
+            except Exception as e:
+                logger.warning(f"Broad search failed: {e}")
+        
+        # Phase 3: Keyword search fallback
+        if len(all_candidates) < max_candidates // 3:
+            logger.info("Still few results, trying keyword search...")
             keyword_candidates = self._keyword_search(step, relevant_types, max_candidates, catalog_filters)
             all_candidates.extend(keyword_candidates)
         
-        # Phase 3: Broad catalog search if still insufficient results
-        if len(all_candidates) < max_candidates // 3 and catalog_filters:
-            logger.info("Adding broad catalog search...")
-            catalog_candidates = self._catalog_search(step, catalog_filters, max_candidates)
-            all_candidates.extend(catalog_candidates)
+        # Phase 4: Ultra-broad catalog search (no catalog filtering)
+        if len(all_candidates) < 3:
+            logger.info("Very few results, trying ultra-broad search without catalog filters...")
+            try:
+                ultra_broad_results = self.controller.search_query(
+                    nl_query=search_query,
+                    template_type=None,
+                    similarity_threshold=0.01,  # Extremely low threshold
+                    limit=max_candidates * 2,
+                    catalog_type=None,  # No catalog filtering
+                    catalog_subtype=None,
+                    catalog_name=None
+                )
+                for result in ultra_broad_results:
+                    result['search_method'] = 'ultra_broad'
+                    result['original_similarity'] = result.get('similarity', 0.0)
+                all_candidates.extend(ultra_broad_results)
+                logger.info(f"Ultra-broad search found {len(ultra_broad_results)} additional candidates")
+            except Exception as e:
+                logger.warning(f"Ultra-broad search failed: {e}")
         
         # Remove duplicates and rank by combined score
         seen_ids = set()
@@ -377,102 +413,55 @@ class RecipeToolMapper:
         return final_score
     
     def _build_search_query(self, step: ParsedStep) -> str:
-        """Build optimized search query for finding relevant tools."""
-        query_parts = []
-        description_lower = step.description.lower()
+        """Build optimized search query for finding relevant tools.
         
-        # Primary: Add most relevant action verbs first
-        if step.action_verbs:
-            # Prioritize data operation verbs
-            priority_verbs = ['extract', 'fetch', 'get', 'retrieve', 'query', 'load', 'transform', 'validate']
-            sorted_verbs = []
-            for verb in priority_verbs:
-                if verb in step.action_verbs:
-                    sorted_verbs.append(verb)
-            # Add remaining verbs
-            for verb in step.action_verbs:
-                if verb not in sorted_verbs:
-                    sorted_verbs.append(verb)
-            query_parts.extend(sorted_verbs[:3])  # Top 3 action verbs
+        FIXED: Now preserves original semantic context like the completion endpoint
+        instead of transforming to keywords which destroys meaning.
+        """
+        # Use the original description to preserve semantic context
+        # This matches the successful approach used by the completion endpoint
+        original_query = step.description.strip()
         
-        # Secondary: Add key entities with technical relevance
-        if step.entities:
-            # Prioritize technical entities
-            priority_entities = ['database', 'api', 'service', 'customer', 'user', 'data', 'json', 'xml', 'csv']
-            sorted_entities = []
-            for entity in priority_entities:
-                if entity in step.entities:
-                    sorted_entities.append(entity)
-            # Add remaining entities
-            for entity in step.entities:
-                if entity not in sorted_entities:
-                    sorted_entities.append(entity)
-            query_parts.extend(sorted_entities[:4])  # Top 4 entities
+        # Only do minimal cleanup - remove excessive whitespace but preserve meaning
+        cleaned_query = " ".join(original_query.split())
         
-        # Tertiary: Add domain-specific keywords based on step content
-        domain_keywords = []
+        logger.debug(f"Using original semantic query for step '{step.description[:50]}...': '{cleaned_query}'")
+        logger.info(f"SEMANTIC SEARCH FIX: Original query preserved instead of keyword transformation")
         
-        # Database operations
-        if any(keyword in description_lower for keyword in ['database', 'table', 'query', 'sql']):
-            domain_keywords.extend(['database', 'query', 'sql'])
-        
-        # API operations  
-        if any(keyword in description_lower for keyword in ['api', 'endpoint', 'request', 'service']):
-            domain_keywords.extend(['api', 'endpoint', 'service'])
-        
-        # Data processing
-        if any(keyword in description_lower for keyword in ['process', 'transform', 'convert', 'format']):
-            domain_keywords.extend(['data', 'processing', 'transform'])
-        
-        # File operations
-        if any(keyword in description_lower for keyword in ['file', 'json', 'xml', 'csv']):
-            domain_keywords.extend(['file', 'format'])
-        
-        # Communication
-        if any(keyword in description_lower for keyword in ['email', 'notification', 'send', 'notify']):
-            domain_keywords.extend(['notification', 'communication'])
-        
-        query_parts.extend(domain_keywords[:2])  # Add top 2 domain keywords
-        
-        # Quaternary: Add step type context
-        if step.step_type != StepType.UNKNOWN:
-            query_parts.append(step.step_type.value)
-        
-        # Quinary: Add key description words (avoid common words)
-        description_words = step.description.split()
-        meaningful_words = []
-        stop_words = {'the', 'and', 'or', 'to', 'from', 'with', 'by', 'in', 'on', 'at', 'it', 'is', 'a', 'an'}
-        
-        for word in description_words:
-            clean_word = word.lower().strip('.,!?;:')
-            if len(clean_word) > 2 and clean_word not in stop_words and clean_word not in query_parts:
-                meaningful_words.append(clean_word)
-        
-        query_parts.extend(meaningful_words[:3])  # Top 3 meaningful words
-        
-        # Build final query with deduplication
-        final_query = " ".join(dict.fromkeys(query_parts))  # Preserves order, removes duplicates
-        
-        logger.debug(f"Built search query for step '{step.description[:50]}...': '{final_query}'")
-        return final_query
+        return cleaned_query
     
     def _get_relevant_tool_types(self, step: ParsedStep) -> List[str]:
         """Get relevant tool types for a recipe step."""
-        # Base tool types
-        relevant_types = ["function", "api", "mcp_tool", "agent"]
+        # Use broad tool types like /v1/complete approach
+        # Include all commonly used template types to avoid missing matches
+        relevant_types = [
+            "function", "api", "mcp_tool", "agent", 
+            "sql", "url", "workflow", "script", "cli"
+        ]
         
         # Add specific types based on step type
         type_mappings = self.step_type_mappings.get(step.step_type, [])
         relevant_types.extend(type_mappings)
         
-        # Add types based on entities
+        # Add types based on entities and context
         for entity in step.entities:
             if any(ext in entity.lower() for ext in ['.json', '.xml', '.csv']):
-                relevant_types.append("function")
+                relevant_types.extend(["function", "script"])
             elif 'api' in entity.lower() or 'http' in entity.lower():
-                relevant_types.append("api")
-            elif 'database' in entity.lower():
-                relevant_types.extend(["function", "api"])
+                relevant_types.extend(["api", "url"])
+            elif any(db in entity.lower() for db in ['database', 'sql', 'query']):
+                relevant_types.extend(["sql", "function", "api"])
+            elif 'workflow' in entity.lower():
+                relevant_types.extend(["workflow", "function"])
+        
+        # Add context-based types
+        step_desc_lower = step.description.lower()
+        if any(keyword in step_desc_lower for keyword in ['api', 'endpoint', 'request', 'call']):
+            relevant_types.extend(["api", "url"])
+        if any(keyword in step_desc_lower for keyword in ['database', 'sql', 'query', 'table']):
+            relevant_types.extend(["sql", "function"])
+        if any(keyword in step_desc_lower for keyword in ['script', 'command', 'execute']):
+            relevant_types.extend(["script", "cli", "function"])
         
         return list(set(relevant_types))
     

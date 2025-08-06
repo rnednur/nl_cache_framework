@@ -21,6 +21,9 @@ export interface CatalogSelectProps {
   label?: string
   allowCustom?: boolean
   maxDisplayItems?: number
+  // For hierarchical filtering
+  catalogType?: string
+  catalogSubtype?: string
 }
 
 export function CatalogSelect({
@@ -32,7 +35,9 @@ export function CatalogSelect({
   catalogField,
   label,
   allowCustom = true,
-  maxDisplayItems = 100
+  maxDisplayItems = 100,
+  catalogType,
+  catalogSubtype
 }: CatalogSelectProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [catalogValues, setCatalogValues] = useState<string[]>([])
@@ -41,12 +46,18 @@ export function CatalogSelect({
   const [isAddingNew, setIsAddingNew] = useState(false)
   const [newValue, setNewValue] = useState("")
 
-  // Load catalog values on mount
+  // Load catalog values on mount and when parent values change
   useEffect(() => {
     const loadCatalogValues = async () => {
       setIsLoading(true)
       try {
-        const data = await api.getCatalogValues()
+        // Build query parameters for hierarchical filtering
+        const queryParams = new URLSearchParams()
+        if (catalogType) queryParams.append('catalog_type', catalogType)
+        if (catalogSubtype) queryParams.append('catalog_subtype', catalogSubtype)
+        
+        const data = await api.getCatalogValues(queryParams.toString() ? `?${queryParams}` : '')
+        
         switch (catalogField) {
           case 'catalog_type':
             setCatalogValues(data.catalog_types || [])
@@ -67,7 +78,7 @@ export function CatalogSelect({
     }
 
     loadCatalogValues()
-  }, [catalogField])
+  }, [catalogField, catalogType, catalogSubtype])
 
   // Filter and sort catalog values based on search
   const filteredValues = useMemo(() => {

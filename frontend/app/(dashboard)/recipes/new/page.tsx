@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'react-hot-toast'
 import {
@@ -55,7 +55,13 @@ const RECIPE_TYPES = {
   recipe_template: { label: 'Recipe Template', icon: BookOpen, description: 'Parameterized workflow pattern' },
 } as const
 
-const COMPLEXITY_LEVELS = ['beginner', 'intermediate', 'advanced'] as const
+const COMPLEXITY_LEVELS = ['easy', 'medium', 'hard'] as const
+
+const COMPLEXITY_DISPLAY = {
+  easy: { label: 'Easy', description: 'Simple automation, few steps, minimal dependencies' },
+  medium: { label: 'Medium', description: 'Moderate complexity, multiple steps, some integrations' },
+  hard: { label: 'Hard', description: 'Complex workflow, many steps, advanced integrations' }
+} as const
 
 interface RecipeStep {
   id: string
@@ -116,6 +122,9 @@ interface RecipeAnalysis {
   recipeType: string
 }
 
+const DRAFT_STORAGE_KEY = 'recipe-draft-v1'
+const AUTO_SAVE_DELAY = 1000 // 1 second
+
 export default function NewRecipe() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
@@ -129,12 +138,15 @@ export default function NewRecipe() {
   const [rewritingStepId, setRewritingStepId] = useState<string | null>(null)
   const [rewriteText, setRewriteText] = useState('')
   const [isRewriting, setIsRewriting] = useState(false)
+  const [draftSaved, setDraftSaved] = useState(true)
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   
   const [formData, setFormData] = useState({
     nl_query: '',
     template: '{}',
     template_type: 'recipe' as keyof typeof RECIPE_TYPES,
-    complexity_level: 'beginner' as typeof COMPLEXITY_LEVELS[number],
+    complexity_level: 'easy' as typeof COMPLEXITY_LEVELS[number],
     execution_time_estimate: 0,
     catalog_type: '',
     catalog_subtype: '',
@@ -142,6 +154,96 @@ export default function NewRecipe() {
     recipe_steps: [] as RecipeStep[],
     required_tools: [] as number[],
   })
+
+  // Auto-save and restore functionality
+  const saveDraftToStorage = useCallback(() => {
+    const draft = {
+      formData,
+      naturalLanguageText,
+      activeTab,
+      timestamp: Date.now()
+    }
+    localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft))
+    setDraftSaved(true)
+    setHasUnsavedChanges(false)
+  }, [formData, naturalLanguageText, activeTab])
+
+  const restoreDraftFromStorage = useCallback(() => {
+    try {
+      const saved = localStorage.getItem(DRAFT_STORAGE_KEY)
+      if (saved) {
+        const draft = JSON.parse(saved)
+        // Only restore if it's less than 24 hours old
+        if (Date.now() - draft.timestamp < 24 * 60 * 60 * 1000) {
+          setFormData(draft.formData || formData)
+          setNaturalLanguageText(draft.naturalLanguageText || '')
+          setActiveTab(draft.activeTab || 'natural')
+          toast.success('Draft restored from previous session')
+          return true
+        } else {
+          // Clear old draft
+          localStorage.removeItem(DRAFT_STORAGE_KEY)
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to restore draft:', error)
+    }
+    return false
+  }, [])
+
+  const clearDraft = useCallback(() => {
+    localStorage.removeItem(DRAFT_STORAGE_KEY)
+    setDraftSaved(true)
+    setHasUnsavedChanges(false)
+  }, [])
+
+  const updateFormData = useCallback((updater: any) => {
+    setFormData(updater)
+    setHasUnsavedChanges(true)
+    setDraftSaved(false)
+    
+    // Schedule auto-save
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current)
+    }
+    autoSaveTimeoutRef.current = setTimeout(saveDraftToStorage, AUTO_SAVE_DELAY)
+  }, [saveDraftToStorage])
+
+  const updateNaturalLanguageText = useCallback((text: string) => {
+    setNaturalLanguageText(text)
+    setHasUnsavedChanges(true)
+    setDraftSaved(false)
+    
+    // Schedule auto-save
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current)
+    }
+    autoSaveTimeoutRef.current = setTimeout(saveDraftToStorage, AUTO_SAVE_DELAY)
+  }, [saveDraftToStorage])
+
+  // Initialize and cleanup
+  useEffect(() => {
+    restoreDraftFromStorage()
+    
+    return () => {
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current)
+      }
+    }
+  }, [restoreDraftFromStorage])
+
+  // Before unload warning
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault()
+        e.returnValue = 'You have unsaved changes. Are you sure you want to leave?'
+      }
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [hasUnsavedChanges])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -186,6 +288,7 @@ export default function NewRecipe() {
 
       const createdRecipe = await api.createCacheEntry(recipeData)
       toast.success('Recipe created successfully!')
+      clearDraft() // Clear draft on successful creation
       router.push(`/recipes/${createdRecipe.id}`)
     } catch (error: any) {
       toast.error(`Failed to create recipe: ${error.message}`)
@@ -194,6 +297,39 @@ export default function NewRecipe() {
     }
   }
 
+  const clearAllData = useCallback(() => {
+    if (hasUnsavedChanges) {
+      if (!confirm('Are you sure you want to clear all data? This will permanently delete your current progress.')) {
+        return
+      }
+    }
+    
+    // Reset all form data
+    setFormData({
+      nl_query: '',
+      template: '{}',
+      template_type: 'recipe' as keyof typeof RECIPE_TYPES,
+      complexity_level: 'easy' as typeof COMPLEXITY_LEVELS[number],
+      execution_time_estimate: 0,
+      catalog_type: '',
+      catalog_subtype: '',
+      catalog_name: '',
+      recipe_steps: [] as RecipeStep[],
+      required_tools: [] as number[],
+    })
+    
+    // Reset other state
+    setNaturalLanguageText('')
+    setAnalysisResult(null)
+    setError(null)
+    setActiveTab('natural')
+    
+    // Clear localStorage and update states
+    clearDraft()
+    
+    toast.success('Form cleared successfully')
+  }, [hasUnsavedChanges, clearDraft])
+
   const addStep = () => {
     const newStep: RecipeStep = {
       id: `step_${Date.now()}`,
@@ -201,14 +337,14 @@ export default function NewRecipe() {
       type: 'action',
       depends_on: [],
     }
-    setFormData(prev => ({
+    updateFormData(prev => ({
       ...prev,
       recipe_steps: [...prev.recipe_steps, newStep],
     }))
   }
 
   const updateStep = (index: number, field: keyof RecipeStep, value: any) => {
-    setFormData(prev => ({
+    updateFormData(prev => ({
       ...prev,
       recipe_steps: prev.recipe_steps.map((step, i) => 
         i === index ? { ...step, [field]: value } : step
@@ -217,7 +353,7 @@ export default function NewRecipe() {
   }
 
   const removeStep = (index: number) => {
-    setFormData(prev => ({
+    updateFormData(prev => ({
       ...prev,
       recipe_steps: prev.recipe_steps.filter((_, i) => i !== index),
     }))
@@ -286,11 +422,11 @@ export default function NewRecipe() {
       setAnalysisProgress(100)
       setAnalysisResult(analysisResult)
       
-      // Update form data with analysis results
-      setFormData(prev => ({
+      // Update form data with analysis results  
+      updateFormData(prev => ({
         ...prev,
         execution_time_estimate: analysisResult.estimatedDuration || 0,
-        complexity_level: analysisResult.complexityScore > 0.7 ? 'advanced' : analysisResult.complexityScore > 0.4 ? 'intermediate' : 'beginner'
+        complexity_level: analysisResult.complexityScore > 0.7 ? 'hard' : analysisResult.complexityScore > 0.4 ? 'medium' : 'easy'
       }))
 
     } catch (err: any) {
@@ -330,7 +466,7 @@ export default function NewRecipe() {
       } : undefined
     }))
 
-    setFormData(prev => ({
+    updateFormData(prev => ({
       ...prev,
       recipe_steps: convertedSteps,
       required_tools: convertedSteps.map(step => step.tool_id).filter((id): id is number => id !== null && id !== undefined)
@@ -462,19 +598,46 @@ export default function NewRecipe() {
             </div>
           </div>
         </div>
-        <Button 
-          onClick={handleSubmit} 
-          disabled={loading}
-          className="gap-2"
-        >
-          {loading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Save className="h-4 w-4" />
-          )}
-          {loading ? 'Creating...' : 'Create Recipe'}
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            type="button"
+            variant="outline" 
+            onClick={clearAllData}
+            className="gap-2 border-red-600 text-red-400 hover:bg-red-600/10"
+            disabled={loading}
+          >
+            <Trash2 className="h-4 w-4" />
+            Clear All
+          </Button>
+          <Button 
+            onClick={handleSubmit} 
+            disabled={loading}
+            className="gap-2"
+          >
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4" />
+            )}
+            {loading ? 'Creating...' : 'Create Recipe'}
+          </Button>
+        </div>
       </div>
+
+      {/* Draft Status */}
+      {!draftSaved && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+          <Loader2 className="h-4 w-4 animate-spin text-yellow-400" />
+          <span className="text-sm text-yellow-300">Auto-saving draft...</span>
+        </div>
+      )}
+      
+      {draftSaved && hasUnsavedChanges && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-green-500/10 border border-green-500/20 rounded-lg">
+          <CheckCircle className="h-4 w-4 text-green-400" />
+          <span className="text-sm text-green-300">Draft saved automatically</span>
+        </div>
+      )}
 
       {error && (
         <Alert variant="destructive">
@@ -499,7 +662,7 @@ export default function NewRecipe() {
               </label>
               <Input
                 value={formData.nl_query}
-                onChange={(e) => setFormData(prev => ({ ...prev, nl_query: e.target.value }))}
+                onChange={(e) => updateFormData(prev => ({ ...prev, nl_query: e.target.value }))}
                 placeholder="Enter a descriptive name for your recipe..."
                 className="!bg-neutral-900 border-neutral-700 text-white placeholder:text-neutral-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 required
@@ -513,7 +676,7 @@ export default function NewRecipe() {
                 </label>
                 <Select
                   value={formData.template_type}
-                  onValueChange={(value) => setFormData(prev => ({ 
+                  onValueChange={(value) => updateFormData(prev => ({ 
                     ...prev, 
                     template_type: value as keyof typeof RECIPE_TYPES 
                   }))}
@@ -540,7 +703,7 @@ export default function NewRecipe() {
                 </label>
                 <Select
                   value={formData.complexity_level}
-                  onValueChange={(value) => setFormData(prev => ({ 
+                  onValueChange={(value) => updateFormData(prev => ({ 
                     ...prev, 
                     complexity_level: value as typeof COMPLEXITY_LEVELS[number]
                   }))}
@@ -551,7 +714,10 @@ export default function NewRecipe() {
                   <SelectContent>
                     {COMPLEXITY_LEVELS.map((level) => (
                       <SelectItem key={level} value={level}>
-                        <span className="capitalize">{level}</span>
+                        <div className="flex flex-col">
+                          <span className="font-medium">{COMPLEXITY_DISPLAY[level].label}</span>
+                          <span className="text-xs text-neutral-400">{COMPLEXITY_DISPLAY[level].description}</span>
+                        </div>
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -567,7 +733,14 @@ export default function NewRecipe() {
                     catalogField="catalog_type"
                     label="Catalog Type"
                     value={formData.catalog_type}
-                    onValueChange={(value: string | undefined) => setFormData(prev => ({ ...prev, catalog_type: value || "" }))}
+                    onValueChange={(value: string | undefined) => {
+                      updateFormData(prev => ({ 
+                        ...prev, 
+                        catalog_type: value || "",
+                        catalog_subtype: "", // Clear subtype when type changes
+                        catalog_name: ""     // Clear name when type changes
+                      }))
+                    }}
                     placeholder="Select catalog type..."
                     className="!bg-neutral-900 border-neutral-700 text-white"
                     allowCustom={true}
@@ -578,7 +751,13 @@ export default function NewRecipe() {
                     catalogField="catalog_subtype"
                     label="Catalog Subtype"
                     value={formData.catalog_subtype}
-                    onValueChange={(value: string | undefined) => setFormData(prev => ({ ...prev, catalog_subtype: value || "" }))}
+                    onValueChange={(value: string | undefined) => {
+                      updateFormData(prev => ({ 
+                        ...prev, 
+                        catalog_subtype: value || "",
+                        catalog_name: "" // Clear name when subtype changes
+                      }))
+                    }}
                     placeholder="Select catalog subtype..."
                     className="!bg-neutral-900 border-neutral-700 text-white"
                     allowCustom={true}
@@ -589,7 +768,12 @@ export default function NewRecipe() {
                     catalogField="catalog_name"
                     label="Catalog Name"
                     value={formData.catalog_name}
-                    onValueChange={(value: string | undefined) => setFormData(prev => ({ ...prev, catalog_name: value || "" }))}
+                    onValueChange={(value: string | undefined) => {
+                      updateFormData(prev => ({ 
+                        ...prev, 
+                        catalog_name: value || ""
+                      }))
+                    }}
                     placeholder="Select catalog name..."
                     className="!bg-neutral-900 border-neutral-700 text-white"
                     allowCustom={true}
@@ -628,18 +812,18 @@ export default function NewRecipe() {
                   </label>
                   <Textarea
                     value={naturalLanguageText}
-                    onChange={(e) => setNaturalLanguageText(e.target.value)}
+                    onChange={(e) => updateNaturalLanguageText(e.target.value)}
                     placeholder="Describe your recipe in natural language. For example:
-1. Load customer data from the database
-2. Transform the data to JSON format  
-3. Validate data integrity
-4. Send notification email to admin"
+• Listen to Topic Delete Event
+• Process customer data from API endpoint  
+• Transform data to required format
+• Send notification to admin system"
                     className="min-h-[120px] !bg-neutral-900 border-neutral-700 text-white placeholder:text-neutral-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     disabled={isAnalyzing}
                   />
                 </div>
 
-                {!analysisResult && (
+                {!analysisResult ? (
                   <Button 
                     type="button"
                     onClick={analyzeNaturalLanguage} 
@@ -654,7 +838,27 @@ export default function NewRecipe() {
                     ) : (
                       <>
                         <Wand2 className="h-4 w-4 mr-2" />
-                        Analyze Recipe
+                        Analyze with AI
+                      </>
+                    )}
+                  </Button>
+                ) : (
+                  <Button 
+                    type="button"
+                    variant="outline"
+                    onClick={analyzeNaturalLanguage} 
+                    disabled={isAnalyzing || !naturalLanguageText.trim()}
+                    className="w-full border-green-600 text-green-400 hover:bg-green-600/10"
+                  >
+                    {isAnalyzing ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Re-analyzing...
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                        Re-analyze with AI
                       </>
                     )}
                   </Button>

@@ -244,11 +244,26 @@ class Text2SQLController:
             else:
                 query = query.filter(Text2SQLCache.template_type == template_type)
         if catalog_type:
-            query = query.filter(Text2SQLCache.catalog_type == catalog_type)
+            # Include entries with matching catalog_type OR where catalog_type is NULL
+            from sqlalchemy import or_
+            query = query.filter(or_(
+                Text2SQLCache.catalog_type == catalog_type,
+                Text2SQLCache.catalog_type == None
+            ))
         if catalog_subtype:
-            query = query.filter(Text2SQLCache.catalog_subtype == catalog_subtype)
+            # Include entries with matching catalog_subtype OR where catalog_subtype is NULL
+            from sqlalchemy import or_
+            query = query.filter(or_(
+                Text2SQLCache.catalog_subtype == catalog_subtype,
+                Text2SQLCache.catalog_subtype == None
+            ))
         if catalog_name:
-            query = query.filter(Text2SQLCache.catalog_name == catalog_name)
+            # Include entries with matching catalog_name OR where catalog_name is NULL
+            from sqlalchemy import or_
+            query = query.filter(or_(
+                Text2SQLCache.catalog_name == catalog_name,
+                Text2SQLCache.catalog_name == None
+            ))
 
         # Fetch the filtered candidates
         candidates = [c.to_dict() for c in query.all()]
