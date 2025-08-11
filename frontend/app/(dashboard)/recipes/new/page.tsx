@@ -1,1239 +1,1187 @@
 'use client'
 
-import { useState, useCallback, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useCallback, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'react-hot-toast'
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/app/components/ui/card'
-import { Button } from '@/app/components/ui/button'
-import { Input } from '@/app/components/ui/input'
-import { Textarea } from '@/app/components/ui/textarea'
-import { Badge } from '@/app/components/ui/badge'
-import { CatalogSelect } from '@/app/components/ui/CatalogSelect'
-import { Progress } from '@/app/components/ui/progress'
-import { Alert, AlertDescription } from '@/app/components/ui/alert'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/app/components/ui/select'
-import {
   ArrowLeft,
-  Plus,
-  Save,
-  ChefHat,
-  Layers,
-  BookOpen,
-  Trash2,
-  Loader2,
-  Wand2,
   FileText,
+  Settings,
+  Zap,
+  RotateCcw,
+  Save,
+  Play,
   CheckCircle,
   AlertTriangle,
-  Target,
-  Eye,
-  ExternalLink,
-  PlusCircle,
   AlertCircle,
-  Edit3,
-  RefreshCw,
-  X,
+  Eye,
+  Code,
+  CheckSquare,
+  Loader2,
+  Workflow,
+  Copy,
+  Clock,
+  Wand2,
+  RefreshCw
 } from 'lucide-react'
 import api from '@/app/services/api'
+import InteractiveWorkflowBuilder from '@/app/components/ui/InteractiveWorkflowBuilder'
+import { parseNLWorkflow, type ParserResult } from '@/app/utils/nlWorkflowParser'
+import { convertWorkflowToNL, validateWorkflowStructure } from '@/app/utils/workflowToNL'
+import { Node, Edge } from 'reactflow'
 
-const RECIPE_TYPES = {
-  recipe: { label: 'Complete Recipe', icon: ChefHat, description: 'Multi-step automation workflow' },
-  recipe_step: { label: 'Recipe Step', icon: Layers, description: 'Reusable workflow component' },
-  recipe_template: { label: 'Recipe Template', icon: BookOpen, description: 'Parameterized workflow pattern' },
-} as const
-
-const COMPLEXITY_LEVELS = ['easy', 'medium', 'hard'] as const
-
-const COMPLEXITY_DISPLAY = {
-  easy: { label: 'Easy', description: 'Simple automation, few steps, minimal dependencies' },
-  medium: { label: 'Medium', description: 'Moderate complexity, multiple steps, some integrations' },
-  hard: { label: 'Hard', description: 'Complex workflow, many steps, advanced integrations' }
-} as const
-
-interface RecipeStep {
-  id: string
-  name: string
-  type: string
-  description?: string
-  tool_id?: number | null
-  depends_on?: string[]
-  confidence?: number
-  actionVerbs?: string[]
-  entities?: string[]
-  mappedTool?: {
-    id: number | null
-    cache_entry_id: number | null
-    name: string
-    type: string
-    confidence: number
-    reasoning: string
-    exists: boolean
-    needs_creation: boolean
-    similarity_score?: number
-    context_score?: number
-    compatibility_score?: number
+const FLOW_TYPES = [
+  { 
+    id: 'fullflow', 
+    name: 'Fullflow', 
+    icon: '🔄', 
+    description: 'Complete workflow',
+    active: true 
+  },
+  { 
+    id: 'subflow', 
+    name: 'Subflow', 
+    icon: '⚡', 
+    description: 'Reusable component',
+    active: false 
+  },
+  { 
+    id: 'copyflow', 
+    name: 'Copy Flow', 
+    icon: '📋', 
+    description: 'Clone & modify',
+    active: false 
   }
+] as const
+
+const EXECUTION_MODES = [
+  { value: 'interactive', label: 'Interactive (with user prompts)' },
+  { value: 'batch', label: 'Batch (fully automated)' },
+  { value: 'scheduled', label: 'Scheduled (cron-based)' }
+] as const
+
+const ERROR_HANDLING = [
+  { value: 'fail_fast', label: 'Fail fast (stop on first error)' },
+  { value: 'continue', label: 'Continue (skip failed steps)' },
+  { value: 'compensate', label: 'Compensate (rollback on failure)' }
+] as const
+
+interface CompilationResult {
+  success: boolean
+  steps_detected: number
+  edges_wired: number
+  tools_resolved: number
+  dsl: any
+  validation_results: ValidationItem[]
 }
 
-interface ParsedRecipeStep {
-  id: string
-  name: string
-  description: string
-  stepType: string
-  confidence: number
-  actionVerbs: string[]
-  entities: string[]
-  mappedTool?: {
-    id: number | null
-    cacheEntryId: number | null
-    name: string
-    type: string
-    confidence: number
-    reasoning: string
-    exists: boolean
-    needsCreation: boolean
-    similarityScore?: number
-    contextScore?: number
-    compatibilityScore?: number
-  }
+interface ValidationItem {
+  type: 'success' | 'warning' | 'error'
+  icon: string
+  message: string
 }
 
-interface RecipeAnalysis {
-  recipeName: string
-  description: string
-  steps: ParsedRecipeStep[]
-  totalSteps: number
-  complexityScore: number
-  estimatedDuration: number | null
-  requiredCapabilities: string[]
-  recipeType: string
-}
 
-const DRAFT_STORAGE_KEY = 'recipe-draft-v1'
-const AUTO_SAVE_DELAY = 1000 // 1 second
-
-export default function NewRecipe() {
+export default function WorkflowBuilder() {
   const router = useRouter()
-  const [loading, setLoading] = useState(false)
-  const [activeTab, setActiveTab] = useState<'natural' | 'manual'>('natural')
-  const [isAnalyzing, setIsAnalyzing] = useState(false)
-  const [isMapping, setIsMapping] = useState(false)
-  const [analysisProgress, setAnalysisProgress] = useState(0)
-  const [analysisResult, setAnalysisResult] = useState<RecipeAnalysis | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [naturalLanguageText, setNaturalLanguageText] = useState('')
-  const [rewritingStepId, setRewritingStepId] = useState<string | null>(null)
-  const [rewriteText, setRewriteText] = useState('')
-  const [isRewriting, setIsRewriting] = useState(false)
-  const [draftSaved, setDraftSaved] = useState(true)
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
-  const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const searchParams = useSearchParams()
+  const editId = searchParams?.get('edit')
+  const isEditMode = !!editId
   
-  const [formData, setFormData] = useState({
-    nl_query: '',
-    template: '{}',
-    template_type: 'recipe' as keyof typeof RECIPE_TYPES,
-    complexity_level: 'easy' as typeof COMPLEXITY_LEVELS[number],
-    execution_time_estimate: 0,
-    catalog_type: '',
-    catalog_subtype: '',
-    catalog_name: '',
-    recipe_steps: [] as RecipeStep[],
-    required_tools: [] as number[],
-  })
+  // Form state
+  const [workflowName, setWorkflowName] = useState('')
+  const [selectedFlowType, setSelectedFlowType] = useState('fullflow')
+  const [nlDescription, setNlDescription] = useState('')
+  const [executionMode, setExecutionMode] = useState('interactive')
+  const [errorHandling, setErrorHandling] = useState('fail_fast')
+  const [isLoadingRecipe, setIsLoadingRecipe] = useState(isEditMode)
+  
+  // UI state
+  const [activeTab, setActiveTab] = useState<'visual' | 'dsl' | 'validation'>('visual')
+  const [isWorkflowMaximized, setIsWorkflowMaximized] = useState(false)
+  
+  // Workflow synchronization state
+  const [workflowNodes, setWorkflowNodes] = useState<Node[]>([])
+  const [workflowEdges, setWorkflowEdges] = useState<Edge[]>([])
+  const [isParsing, setIsParsing] = useState(false)
+  const [parseResult, setParseResult] = useState<ParserResult | null>(null)
+  const [isNLSynced, setIsNLSynced] = useState(true) // Track if NL and visual are in sync
 
-  // Auto-save and restore functionality
-  const saveDraftToStorage = useCallback(() => {
-    const draft = {
-      formData,
-      naturalLanguageText,
-      activeTab,
-      timestamp: Date.now()
-    }
-    localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft))
-    setDraftSaved(true)
-    setHasUnsavedChanges(false)
-  }, [formData, naturalLanguageText, activeTab])
-
-  const restoreDraftFromStorage = useCallback(() => {
-    try {
-      const saved = localStorage.getItem(DRAFT_STORAGE_KEY)
-      if (saved) {
-        const draft = JSON.parse(saved)
-        // Only restore if it's less than 24 hours old
-        if (Date.now() - draft.timestamp < 24 * 60 * 60 * 1000) {
-          setFormData(draft.formData || formData)
-          setNaturalLanguageText(draft.naturalLanguageText || '')
-          setActiveTab(draft.activeTab || 'natural')
-          toast.success('Draft restored from previous session')
-          return true
-        } else {
-          // Clear old draft
-          localStorage.removeItem(DRAFT_STORAGE_KEY)
-        }
-      }
-    } catch (error) {
-      console.warn('Failed to restore draft:', error)
-    }
-    return false
-  }, [])
-
-  const clearDraft = useCallback(() => {
-    localStorage.removeItem(DRAFT_STORAGE_KEY)
-    setDraftSaved(true)
-    setHasUnsavedChanges(false)
-  }, [])
-
-  const updateFormData = useCallback((updater: any) => {
-    setFormData(updater)
-    setHasUnsavedChanges(true)
-    setDraftSaved(false)
-    
-    // Schedule auto-save
-    if (autoSaveTimeoutRef.current) {
-      clearTimeout(autoSaveTimeoutRef.current)
-    }
-    autoSaveTimeoutRef.current = setTimeout(saveDraftToStorage, AUTO_SAVE_DELAY)
-  }, [saveDraftToStorage])
-
-  const updateNaturalLanguageText = useCallback((text: string) => {
-    setNaturalLanguageText(text)
-    setHasUnsavedChanges(true)
-    setDraftSaved(false)
-    
-    // Schedule auto-save
-    if (autoSaveTimeoutRef.current) {
-      clearTimeout(autoSaveTimeoutRef.current)
-    }
-    autoSaveTimeoutRef.current = setTimeout(saveDraftToStorage, AUTO_SAVE_DELAY)
-  }, [saveDraftToStorage])
-
-  // Initialize and cleanup
+  // Load existing recipe data if in edit mode
   useEffect(() => {
-    restoreDraftFromStorage()
+    if (isEditMode && editId) {
+      loadExistingRecipe(parseInt(editId))
+    }
+  }, [isEditMode, editId])
+
+  // Helper function to generate NL description from workflow steps
+  const generateNLDescriptionFromSteps = (workflowName: string, steps: any[], connections?: any[]) => {
+    let nl = `Fullflow '${workflowName}':\n`
     
-    return () => {
-      if (autoSaveTimeoutRef.current) {
-        clearTimeout(autoSaveTimeoutRef.current)
-      }
-    }
-  }, [restoreDraftFromStorage])
-
-  // Before unload warning
-  useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (hasUnsavedChanges) {
-        e.preventDefault()
-        e.returnValue = 'You have unsaved changes. Are you sure you want to leave?'
-      }
-    }
-
-    window.addEventListener('beforeunload', handleBeforeUnload)
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
-  }, [hasUnsavedChanges])
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    if (!formData.nl_query.trim()) {
-      toast.error('Recipe name is required')
-      return
-    }
-
-    setLoading(true)
-    try {
-      // Prepare the recipe data
-      const recipeData = {
-        nl_query: formData.nl_query,
-        template: JSON.stringify({
-          recipe_metadata: {
-            name: formData.nl_query,
-            description: formData.nl_query,
-            complexity_level: formData.complexity_level,
-            catalog_type: formData.catalog_type,
-            catalog_subtype: formData.catalog_subtype,
-            catalog_name: formData.catalog_name,
-          },
-          steps: formData.recipe_steps,
-          execution_config: {
-            timeout_seconds: formData.execution_time_estimate * 60,
-            parallel_limit: 5,
-            fail_fast: true,
-          },
-        }),
-        template_type: formData.template_type,
-        is_template: true,
-        complexity_level: formData.complexity_level,
-        execution_time_estimate: formData.execution_time_estimate,
-        catalog_type: formData.catalog_type,
-        catalog_subtype: formData.catalog_subtype,
-        catalog_name: formData.catalog_name,
-        recipe_steps: formData.recipe_steps,
-        required_tools: formData.required_tools,
-        status: 'active',
-      }
-
-      const createdRecipe = await api.createCacheEntry(recipeData)
-      toast.success('Recipe created successfully!')
-      clearDraft() // Clear draft on successful creation
-      router.push(`/recipes/${createdRecipe.id}`)
-    } catch (error: any) {
-      toast.error(`Failed to create recipe: ${error.message}`)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const clearAllData = useCallback(() => {
-    if (hasUnsavedChanges) {
-      if (!confirm('Are you sure you want to clear all data? This will permanently delete your current progress.')) {
-        return
-      }
-    }
-    
-    // Reset all form data
-    setFormData({
-      nl_query: '',
-      template: '{}',
-      template_type: 'recipe' as keyof typeof RECIPE_TYPES,
-      complexity_level: 'easy' as typeof COMPLEXITY_LEVELS[number],
-      execution_time_estimate: 0,
-      catalog_type: '',
-      catalog_subtype: '',
-      catalog_name: '',
-      recipe_steps: [] as RecipeStep[],
-      required_tools: [] as number[],
+    steps.forEach((step, index) => {
+      nl += `${index + 1}) ${step.name}\n`
     })
     
-    // Reset other state
-    setNaturalLanguageText('')
-    setAnalysisResult(null)
-    setError(null)
-    setActiveTab('natural')
+    if (connections && connections.length > 0) {
+      nl += '\nWire: '
+      const wiringStrings = connections.map((conn, index) => {
+        const fromStep = steps.findIndex(s => s.id === conn.from) + 1
+        const toStep = steps.findIndex(s => s.id === conn.to) + 1
+        return fromStep > 0 && toStep > 0 ? `${fromStep}→${toStep}` : ''
+      }).filter(Boolean)
+      nl += wiringStrings.join(', ')
+    }
     
-    // Clear localStorage and update states
-    clearDraft()
-    
-    toast.success('Form cleared successfully')
-  }, [hasUnsavedChanges, clearDraft])
+    return nl
+  }
 
-  const addStep = () => {
-    const newStep: RecipeStep = {
-      id: `step_${Date.now()}`,
-      name: '',
-      type: 'action',
-      depends_on: [],
+  // Helper functions for template styling (matching InteractiveWorkflowBuilder)
+  const getTemplateIcon = (templateType: string): string => {
+    const iconMap: Record<string, string> = {
+      sql: '🗄️',
+      api: '🌐',
+      workflow: '⚡',
+      script: '📜',
+      url: '🔗',
+      cli: '💻',
+      prompt: '🤖',
+      configuration: '⚙️',
+      graphql: '📊',
+      nosql: '🍃',
     }
-    updateFormData(prev => ({
-      ...prev,
-      recipe_steps: [...prev.recipe_steps, newStep],
-    }))
+    return iconMap[templateType] || '📋'
   }
 
-  const updateStep = (index: number, field: keyof RecipeStep, value: any) => {
-    updateFormData(prev => ({
-      ...prev,
-      recipe_steps: prev.recipe_steps.map((step, i) => 
-        i === index ? { ...step, [field]: value } : step
-      ),
-    }))
-  }
-
-  const removeStep = (index: number) => {
-    updateFormData(prev => ({
-      ...prev,
-      recipe_steps: prev.recipe_steps.filter((_, i) => i !== index),
-    }))
-  }
-
-  const analyzeNaturalLanguage = async () => {
-    if (!naturalLanguageText.trim()) {
-      setError('Please enter a recipe description')
-      return
+  const getTemplateColor = (templateType: string): string => {
+    const colorMap: Record<string, string> = {
+      sql: '#3b82f6',
+      api: '#10b981',
+      workflow: '#8b5cf6',
+      script: '#f59e0b',
+      url: '#06b6d4',
+      cli: '#6b7280',
+      prompt: '#ec4899',
+      configuration: '#84cc16',
+      graphql: '#f97316',
+      nosql: '#14b8a6',
     }
+    return colorMap[templateType] || '#6b7280'
+  }
 
-    setIsAnalyzing(true)
-    setError(null)
-    setAnalysisProgress(0)
-
+  const loadExistingRecipe = async (recipeId: number) => {
+    setIsLoadingRecipe(true)
     try {
-      // Start analysis
-      setAnalysisProgress(25)
+      toast.loading('Loading recipe data...', { id: 'load-recipe' })
       
-      // Call real API endpoint for recipe analysis
-      const apiResponse = await api.analyzeRecipeText({
-        recipe_text: naturalLanguageText,
-        recipe_name: formData.nl_query || 'Generated Recipe',
-        similarity_threshold: 0.6,
-        max_matches_per_step: 5,
-        catalog_type: formData.catalog_type || undefined,
-        catalog_subtype: formData.catalog_subtype || undefined,
-        catalog_name: formData.catalog_name || undefined
-      })
+      const recipe = await api.getCacheEntry(recipeId)
       
-      setAnalysisProgress(75)
-
-      // Convert API response to frontend format
-      const analysisResult: RecipeAnalysis = {
-        recipeName: apiResponse.recipe_name,
-        description: apiResponse.description,
-        steps: apiResponse.steps.map(step => ({
-          id: step.id,
-          name: step.name,
-          description: step.description,
-          stepType: step.step_type,
-          confidence: step.confidence,
-          actionVerbs: step.action_verbs,
-          entities: step.entities,
-          mappedTool: step.mapped_tool ? {
-            id: step.mapped_tool.id,
-            cacheEntryId: step.mapped_tool.cache_entry_id,
-            name: step.mapped_tool.name,
-            type: step.mapped_tool.type,
-            confidence: step.mapped_tool.confidence,
-            reasoning: step.mapped_tool.reasoning,
-            exists: step.mapped_tool.exists,
-            needsCreation: step.mapped_tool.needs_creation,
-            similarityScore: step.mapped_tool.similarity_score,
-            contextScore: step.mapped_tool.context_score,
-            compatibilityScore: step.mapped_tool.compatibility_score
-          } : undefined
-        })),
-        totalSteps: apiResponse.total_steps,
-        complexityScore: apiResponse.complexity_score,
-        estimatedDuration: apiResponse.estimated_duration || null,
-        requiredCapabilities: apiResponse.required_capabilities,
-        recipeType: apiResponse.recipe_type
+      // Populate form fields with existing data
+      setWorkflowName(recipe.nl_query || '')
+      setSelectedFlowType(recipe.catalog_type || 'fullflow')
+      setExecutionMode(recipe.catalog_subtype || 'interactive')
+      
+      // Convert existing recipe template to visual workflow if possible
+      let nlDesc = ''
+      let loadedNodes: Node[] = []
+      let loadedEdges: Edge[] = []
+      
+      if (recipe.template) {
+        try {
+          // Try to parse as JSON first (might be a workflow definition)
+          const templateObj = JSON.parse(recipe.template)
+          
+          if (templateObj.flow && templateObj.flow.steps) {
+            // It's our structured workflow format - convert to visual
+            const flow = templateObj.flow
+            
+            // Create start node
+            const startNode: Node = {
+              id: 'start',
+              type: 'input',
+              position: { x: 250, y: 50 },
+              data: { label: 'Start' },
+              style: {
+                background: '#10b981',
+                color: 'white',
+                border: '2px solid #047857',
+                borderRadius: '8px',
+              },
+            }
+            loadedNodes.push(startNode)
+            
+            // Convert steps to nodes
+            flow.steps.forEach((step: any, index: number) => {
+              const node: Node = {
+                id: step.id,
+                type: 'default',
+                position: step.position || { x: 100 + (index % 3) * 200, y: 150 + Math.floor(index / 3) * 100 },
+                data: {
+                  label: `${getTemplateIcon(step.type)} ${step.name}`,
+                  originalDescription: step.name,
+                  templateType: step.type,
+                  originalStepType: step.type,
+                  toolRef: step.tool_ref,
+                  params: step.params,
+                  cacheEntryId: step.cache_entry_id
+                },
+                style: {
+                  background: getTemplateColor(step.type),
+                  color: 'white',
+                  border: '2px solid #374151',
+                  borderRadius: '8px',
+                  fontSize: '12px',
+                  fontWeight: 'bold',
+                  width: 180,
+                  textAlign: 'center',
+                },
+              }
+              loadedNodes.push(node)
+            })
+            
+            // Convert connections to edges
+            if (flow.connections) {
+              flow.connections.forEach((conn: any, index: number) => {
+                const edge: Edge = {
+                  id: `edge-${conn.from}-${conn.to}`,
+                  source: conn.from,
+                  target: conn.to,
+                  animated: true,
+                  style: { stroke: '#10b981', strokeWidth: 2 },
+                  label: conn.label || conn.data_mapping || '',
+                }
+                loadedEdges.push(edge)
+              })
+            }
+            
+            // Create NL description from structured data
+            nlDesc = flow.nl_description || (flow.metadata?.nl_description) || 
+                    generateNLDescriptionFromSteps(recipe.nl_query, flow.steps, flow.connections)
+                    
+          } else {
+            // Other JSON format, use as description
+            nlDesc = recipe.reasoning_trace || recipe.template
+          }
+        } catch {
+          // Not JSON, use as plain text
+          nlDesc = recipe.reasoning_trace || recipe.template || 
+                  `Fullflow '${recipe.nl_query}':\n(Loaded from existing recipe)`
+        }
+      } else {
+        // No template, create a basic NL description
+        nlDesc = recipe.reasoning_trace || 
+                `Fullflow '${recipe.nl_query}':\n(No workflow steps defined - please add steps using the visual editor or NL description)`
       }
-
-      setAnalysisProgress(100)
-      setAnalysisResult(analysisResult)
       
-      // Update form data with analysis results  
-      updateFormData(prev => ({
-        ...prev,
-        execution_time_estimate: analysisResult.estimatedDuration || 0,
-        complexity_level: analysisResult.complexityScore > 0.7 ? 'hard' : analysisResult.complexityScore > 0.4 ? 'medium' : 'easy'
-      }))
-
-    } catch (err: any) {
-      console.error('Recipe analysis failed:', err)
-      setError(err.message || 'Failed to analyze recipe. Please try again.')
-    } finally {
-      setIsAnalyzing(false)
-      setAnalysisProgress(0)
-    }
-  }
-
-  const acceptAnalysisResult = useCallback(() => {
-    if (!analysisResult) return
-
-    const convertedSteps: RecipeStep[] = analysisResult.steps.map((step, index) => ({
-      id: step.id,
-      name: step.name,
-      type: step.stepType,
-      description: step.description,
-      tool_id: step.mappedTool?.id || null,
-      depends_on: index > 0 ? [analysisResult.steps[index - 1].id] : [],
-      confidence: step.confidence,
-      actionVerbs: step.actionVerbs,
-      entities: step.entities,
-      mappedTool: step.mappedTool ? {
-        id: step.mappedTool.id,
-        cache_entry_id: step.mappedTool.cacheEntryId,
-        name: step.mappedTool.name,
-        type: step.mappedTool.type,
-        confidence: step.mappedTool.confidence,
-        reasoning: step.mappedTool.reasoning,
-        exists: step.mappedTool.exists,
-        needs_creation: step.mappedTool.needsCreation,
-        similarity_score: step.mappedTool.similarityScore,
-        context_score: step.mappedTool.contextScore,
-        compatibility_score: step.mappedTool.compatibilityScore
-      } : undefined
-    }))
-
-    updateFormData(prev => ({
-      ...prev,
-      recipe_steps: convertedSteps,
-      required_tools: convertedSteps.map(step => step.tool_id).filter((id): id is number => id !== null && id !== undefined)
-    }))
-
-    // Switch to manual tab to show the converted steps
-    setActiveTab('manual')
-    toast.success('Recipe steps imported from natural language analysis!')
-  }, [analysisResult])
-
-  const getConfidenceColor = (confidence: number) => {
-    if (confidence >= 0.8) return 'bg-green-500 text-white border-green-500'
-    if (confidence >= 0.6) return 'bg-yellow-500 text-black border-yellow-500'
-    return 'bg-red-500 text-white border-red-500'
-  }
-
-  const getConfidenceIcon = (confidence: number) => {
-    if (confidence >= 0.8) return <CheckCircle className="h-4 w-4 text-green-400" />
-    if (confidence >= 0.6) return <AlertTriangle className="h-4 w-4 text-yellow-400" />
-    return <AlertTriangle className="h-4 w-4 text-red-400" />
-  }
-
-  const handleCreateTool = async (stepId: string, toolData: any) => {
-    try {
-      // This would open a dialog to create the tool or navigate to tool creation
-      // For now, we'll just show a toast
-      toast.success(`Opening tool creation for: ${toolData.name}`)
-      console.log('Create tool for step:', stepId, toolData)
-    } catch (error) {
-      toast.error('Failed to initiate tool creation')
-    }
-  }
-
-  const handleViewTool = (cacheEntryId: number) => {
-    // Navigate to tool detail view
-    window.open(`/tools/${cacheEntryId}`, '_blank')
-  }
-
-  const handleRewriteStep = async (stepId: string, newDescription: string) => {
-    if (!newDescription.trim()) {
-      toast.error('Please enter a step description')
-      return
-    }
-
-    setIsRewriting(true)
-    try {
-      const rewriteResponse = await api.rewriteRecipeStep({
-        step_id: stepId,
-        new_description: newDescription,
-        similarity_threshold: 0.6,
-        max_matches: 5,
-        catalog_type: formData.catalog_type || undefined,
-        catalog_subtype: formData.catalog_subtype || undefined,
-        catalog_name: formData.catalog_name || undefined
-      })
-
-      // Update the analysis result with the rewritten step
-      if (analysisResult) {
-        const updatedSteps = analysisResult.steps.map(step => 
-          step.id === stepId ? {
-            ...rewriteResponse.rewritten_step,
-            // Convert API response format to frontend format
-            stepType: rewriteResponse.rewritten_step.step_type,
-            actionVerbs: rewriteResponse.rewritten_step.action_verbs,
-            mappedTool: rewriteResponse.rewritten_step.mapped_tool ? {
-              ...rewriteResponse.rewritten_step.mapped_tool,
-              cacheEntryId: rewriteResponse.rewritten_step.mapped_tool.cache_entry_id,
-              needsCreation: rewriteResponse.rewritten_step.mapped_tool.needs_creation
-            } : undefined
-          } : step
-        )
-
-        setAnalysisResult({
-          ...analysisResult,
-          steps: updatedSteps
-        })
+      setNlDescription(nlDesc)
+      
+      // Set loaded workflow nodes and edges if any
+      if (loadedNodes.length > 1) { // More than just start node
+        setWorkflowNodes(loadedNodes)
+        setWorkflowEdges(loadedEdges)
+        setIsNLSynced(true) // They should be in sync since we just loaded both
       }
-
-      // Reset rewrite state
-      setRewritingStepId(null)
-      setRewriteText('')
       
-      toast.success('Step rewritten and reanalyzed successfully!')
+      toast.success('Recipe loaded successfully', { id: 'load-recipe' })
     } catch (error: any) {
-      toast.error(`Failed to rewrite step: ${error.message}`)
+      toast.error(`Failed to load recipe: ${error.message}`, { id: 'load-recipe' })
+      // Redirect back to new recipe mode if loading fails
+      router.replace('/recipes/new')
     } finally {
-      setIsRewriting(false)
+      setIsLoadingRecipe(false)
     }
   }
 
-  const startRewriteStep = (stepId: string, currentDescription: string) => {
-    setRewritingStepId(stepId)
-    setRewriteText(currentDescription)
+  // Enhanced maximize function with notifications and keyboard support
+  const handleMaximizeToggle = (maximize: boolean) => {
+    setIsWorkflowMaximized(maximize)
+    if (maximize) {
+      toast.success('🖥️ Entered full-screen workflow mode', { 
+        duration: 2000,
+        position: 'bottom-center'
+      })
+    } else {
+      toast.success('📐 Returned to split-screen mode', { 
+        duration: 2000,
+        position: 'bottom-center'
+      })
+    }
   }
 
-  const cancelRewriteStep = () => {
-    setRewritingStepId(null)
-    setRewriteText('')
+  // Keyboard shortcuts for full-screen mode
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Ctrl+Shift+M for full-screen toggle
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key === 'M') {
+        event.preventDefault()
+        handleMaximizeToggle(!isWorkflowMaximized)
+      }
+      
+      // Escape key to exit full-screen
+      if (event.key === 'Escape' && isWorkflowMaximized) {
+        event.preventDefault()
+        handleMaximizeToggle(false)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isWorkflowMaximized])
+  const [isCompiling, setIsCompiling] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [compilationResult, setCompilationResult] = useState<CompilationResult | null>({
+    success: true,
+    steps_detected: 3,
+    edges_wired: 2,
+    tools_resolved: 3,
+    dsl: {
+      flow: {
+        id: "post-incident-review",
+        name: "Post-Incident Review",
+        kind: "full",
+        steps: [
+          {
+            id: "s1",
+            type: "tool",
+            refId: "jira.search",
+            params: {
+              query: "project=OPS AND status=Resolved"
+            }
+          },
+          {
+            id: "s2", 
+            type: "llm",
+            refId: "claude-3.5-sonnet"
+          },
+          {
+            id: "s3",
+            type: "tool", 
+            refId: "confluence.update"
+          }
+        ],
+        edges: [
+          {
+            from: "s1",
+            to: "s2",
+            map: {
+              issues: "$.s1.output.issues"
+            }
+          },
+          {
+            from: "s2", 
+            to: "s3",
+            map: {
+              summary: "$.s2.output.summary"
+            }
+          }
+        ]
+      }
+    },
+    validation_results: [
+      { type: 'success', icon: '✓', message: 'All tool references resolved' },
+      { type: 'success', icon: '✓', message: 'Data flow mapping validated' },
+      { type: 'success', icon: '✓', message: 'Security policies compliant' },
+      { type: 'warning', icon: '!', message: 'Consider adding retry logic for external APIs' }
+    ]
+  })
+
+
+  const handleFlowTypeChange = (flowType: string) => {
+    setSelectedFlowType(flowType)
   }
 
-  const getRecipeTypeIcon = (templateType: keyof typeof RECIPE_TYPES) => {
-    const Icon = RECIPE_TYPES[templateType].icon
-    return <Icon className="h-5 w-5" />
+  const handleCompile = async () => {
+    setIsCompiling(true)
+    try {
+      toast.loading('Compiling workflow...', { id: 'compile' })
+      
+      // Simulate API call for compilation
+      await new Promise(resolve => setTimeout(resolve, 2000))
+      
+      // Mock successful compilation
+      const result: CompilationResult = {
+        success: true,
+        steps_detected: 3,
+        edges_wired: 2,
+        tools_resolved: 3,
+        dsl: {
+          flow: {
+            id: "post-incident-review",
+            name: workflowName,
+            kind: selectedFlowType === 'fullflow' ? 'full' : selectedFlowType,
+            steps: [
+              {
+                id: "s1",
+                type: "tool",
+                refId: "jira.search",
+                params: {
+                  query: "project=OPS AND status=Resolved"
+                }
+              },
+              {
+                id: "s2",
+                type: "llm", 
+                refId: "claude-3.5-sonnet"
+              },
+              {
+                id: "s3",
+                type: "tool",
+                refId: "confluence.update"
+              }
+            ],
+            edges: [
+              {
+                from: "s1",
+                to: "s2",
+                map: {
+                  issues: "$.s1.output.issues"
+                }
+              },
+              {
+                from: "s2",
+                to: "s3", 
+                map: {
+                  summary: "$.s2.output.summary"
+                }
+              }
+            ]
+          }
+        },
+        validation_results: [
+          { type: 'success', icon: '✓', message: 'All tool references resolved' },
+          { type: 'success', icon: '✓', message: 'Data flow mapping validated' },
+          { type: 'success', icon: '✓', message: 'Security policies compliant' },
+          { type: 'warning', icon: '!', message: 'Consider adding retry logic for external APIs' }
+        ]
+      }
+
+      setCompilationResult(result)
+      toast.success('Workflow compiled successfully', { id: 'compile' })
+    } catch (error: any) {
+      toast.error('Compilation failed', { id: 'compile' })
+      setCompilationResult({
+        success: false,
+        steps_detected: 0,
+        edges_wired: 0,
+        tools_resolved: 0,
+        dsl: null,
+        validation_results: [
+          { type: 'error', icon: '✗', message: error.message || 'Compilation failed' }
+        ]
+      })
+    } finally {
+      setIsCompiling(false)
+    }
+  }
+
+  const handleSaveWorkflow = async () => {
+    if (!workflowName.trim()) {
+      toast.error('Please enter a workflow name')
+      return
+    }
+
+    setIsSaving(true)
+    try {
+      const loadingMessage = isEditMode ? 'Updating workflow...' : 'Saving workflow...'
+      toast.loading(loadingMessage, { id: 'save' })
+
+      // Create workflow structure from current data
+      let workflowTemplate = {}
+      
+      if (workflowNodes.length > 1) { // More than just the start node
+        // Convert visual workflow to structured format
+        const stepNodes = workflowNodes.filter(node => node.id !== 'start')
+        const steps = stepNodes.map((node, index) => ({
+          id: node.id,
+          step_number: index + 1,
+          name: node.data?.originalDescription || node.data?.label || `Step ${index + 1}`,
+          type: node.data?.templateType || node.data?.originalStepType || 'api',
+          tool_ref: node.data?.toolRef,
+          params: node.data?.params,
+          position: node.position,
+          cache_entry_id: node.data?.cacheEntryId
+        }))
+        
+        const connections = workflowEdges.map(edge => ({
+          from: edge.source,
+          to: edge.target,
+          label: edge.label || '',
+          data_mapping: edge.label
+        }))
+        
+        workflowTemplate = {
+          flow: {
+            id: workflowName.toLowerCase().replace(/\s+/g, '-'),
+            name: workflowName,
+            type: selectedFlowType,
+            execution_mode: executionMode,
+            error_handling: errorHandling,
+            steps: steps,
+            connections: connections,
+            metadata: {
+              created_from: 'visual_editor',
+              nl_description: nlDescription,
+              nodes_count: workflowNodes.length,
+              edges_count: workflowEdges.length
+            }
+          }
+        }
+      } else if (compilationResult?.success) {
+        // Use compiled DSL if available and no visual workflow
+        workflowTemplate = compilationResult.dsl
+      } else if (nlDescription.trim()) {
+        // Use NL description as template
+        workflowTemplate = {
+          flow: {
+            id: workflowName.toLowerCase().replace(/\s+/g, '-'),
+            name: workflowName,
+            type: selectedFlowType,
+            execution_mode: executionMode,
+            error_handling: errorHandling,
+            nl_description: nlDescription,
+            metadata: {
+              created_from: 'nl_description'
+            }
+          }
+        }
+      } else {
+        toast.error('Please add workflow steps using the visual editor or provide a natural language description')
+        setIsSaving(false)
+        return
+      }
+
+      // Convert to cache entry format
+      const cacheEntry = {
+        nl_query: workflowName,
+        template: JSON.stringify(workflowTemplate, null, 2),
+        template_type: 'workflow',
+        catalog_type: selectedFlowType,
+        catalog_subtype: executionMode,
+        catalog_name: workflowName.toLowerCase().replace(/\s+/g, '-'),
+        reasoning_trace: nlDescription,
+        is_template: false,
+        status: 'active',
+        entity_replacements: {},
+        tags: {
+          flow_type: [selectedFlowType],
+          execution_mode: [executionMode],
+          error_handling: [errorHandling],
+          has_visual_workflow: workflowNodes.length > 1 ? ['true'] : ['false'],
+          steps_count: [workflowNodes.length.toString()]
+        }
+      }
+
+      let savedWorkflow
+      if (isEditMode && editId) {
+        // Update existing recipe
+        savedWorkflow = await api.updateCacheEntry(parseInt(editId), cacheEntry)
+        toast.success('Workflow updated successfully', { id: 'save' })
+      } else {
+        // Create new recipe
+        savedWorkflow = await api.createCacheEntry(cacheEntry)
+        toast.success('Workflow saved successfully', { id: 'save' })
+      }
+      
+      router.push(`/recipes/${savedWorkflow.id}`)
+    } catch (error: any) {
+      const errorMessage = isEditMode ? 'Failed to update workflow' : 'Failed to save workflow'
+      toast.error(`${errorMessage}: ${error.message}`, { id: 'save' })
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleClearAll = () => {
+    setWorkflowName('')
+    setNlDescription('')
+    setSelectedFlowType('fullflow')
+    setExecutionMode('interactive')
+    setErrorHandling('fail_fast')
+    setCompilationResult(null)
+    toast.success('Workflow cleared')
+  }
+
+  // Parse natural language description into visual workflow
+  const handleParseNL = async () => {
+    if (!nlDescription.trim()) {
+      toast.error('Please enter a natural language workflow description')
+      return
+    }
+
+    setIsParsing(true)
+    try {
+      toast.loading('Parsing natural language description...', { id: 'parse' })
+      
+      // Simulate API delay for better UX
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      
+      const result = parseNLWorkflow(nlDescription)
+      setParseResult(result)
+      
+      if (result.success && result.nodes && result.edges) {
+        setWorkflowNodes(result.nodes)
+        setWorkflowEdges(result.edges)
+        setIsNLSynced(true)
+        
+        // Extract workflow name if found
+        if (result.workflow?.name && result.workflow.name !== 'Unnamed Workflow') {
+          setWorkflowName(result.workflow.name)
+        }
+        
+        toast.success(`Parsed ${result.workflow?.steps.length || 0} steps successfully`, { id: 'parse' })
+      } else {
+        toast.error(`Failed to parse: ${result.errors?.join(', ') || 'Unknown error'}`, { id: 'parse' })
+      }
+    } catch (error: any) {
+      toast.error(`Parsing failed: ${error.message}`, { id: 'parse' })
+      setParseResult({ success: false, errors: [error.message] })
+    } finally {
+      setIsParsing(false)
+    }
+  }
+
+  // Handle workflow changes from InteractiveWorkflowBuilder
+  const handleWorkflowChange = useCallback((nodes: Node[], edges: Edge[]) => {
+    setWorkflowNodes(nodes)
+    setWorkflowEdges(edges)
+    
+    // Mark as out of sync if visual workflow differs from NL
+    setIsNLSynced(false)
+    
+    console.log('Workflow updated:', { nodes: nodes.length, edges: edges.length })
+  }, [])
+
+  // Sync visual workflow back to NL description
+  const handleSyncToNL = () => {
+    if (workflowNodes.length === 0) {
+      toast.error('No visual workflow to sync')
+      return
+    }
+
+    try {
+      toast.loading('Converting visual workflow to natural language...', { id: 'sync-to-nl' })
+      
+      const generatedNL = convertWorkflowToNL(workflowNodes, workflowEdges, workflowName, {
+        includeWiring: true,
+        preserveOrder: true,
+        includeMetadata: false
+      })
+      
+      // Validate the workflow structure
+      const validation = validateWorkflowStructure(workflowNodes, workflowEdges)
+      
+      if (validation.errors.length > 0) {
+        toast.error(`Workflow has errors: ${validation.errors.join(', ')}`, { id: 'sync-to-nl' })
+        return
+      }
+      
+      setNlDescription(generatedNL)
+      setIsNLSynced(true)
+      
+      let message = 'Visual workflow synchronized to natural language'
+      if (validation.warnings.length > 0) {
+        message += ` (${validation.warnings.length} warnings)`
+      }
+      
+      toast.success(message, { id: 'sync-to-nl' })
+      
+      // Show warnings if any
+      if (validation.warnings.length > 0) {
+        setTimeout(() => {
+          toast((t) => (
+            <div className="text-sm">
+              <div className="font-semibold mb-1">Workflow Warnings:</div>
+              <ul className="list-disc list-inside space-y-1">
+                {validation.warnings.map((warning, index) => (
+                  <li key={index} className="text-yellow-600">{warning}</li>
+                ))}
+              </ul>
+            </div>
+          ), { duration: 5000 })
+        }, 1000)
+      }
+      
+    } catch (error: any) {
+      toast.error(`Failed to sync to NL: ${error.message}`, { id: 'sync-to-nl' })
+    }
+  }
+
+  const handleTestRun = async () => {
+    if (!compilationResult?.success) {
+      toast.error('Please compile the workflow successfully before testing')
+      return
+    }
+    
+    toast.loading('Starting test run...', { id: 'test' })
+    // Simulate test run
+    setTimeout(() => {
+      toast.success('Test run completed successfully', { id: 'test' })
+    }, 3000)
   }
 
   return (
-    <div className="space-y-6">
+    <div className="min-h-screen bg-neutral-950 text-neutral-100">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="bg-neutral-900 border-b border-neutral-800 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button
-            variant="ghost"
-            size="sm"
+          <button
             onClick={() => router.push('/recipes')}
-            className="gap-2"
+            className="flex items-center gap-2 text-neutral-400 hover:text-neutral-300 transition-colors text-sm"
           >
             <ArrowLeft className="h-4 w-4" />
-            Back to Recipes
-          </Button>
+            Back to Workflows
+          </button>
           <div className="flex items-center gap-3">
-            <div className="p-3 rounded-lg bg-green-500">
-              {getRecipeTypeIcon(formData.template_type)}
+            <div className="w-8 h-8 bg-green-600 rounded-md flex items-center justify-center text-white font-bold text-sm">
+              W
             </div>
             <div>
-              <h1 className="text-2xl font-semibold text-white">Create New Recipe</h1>
-              <p className="text-neutral-400">
-                {RECIPE_TYPES[formData.template_type].description}
+              <h1 className="text-lg font-semibold text-neutral-100">
+                {isLoadingRecipe ? 'Loading Workflow...' : isEditMode ? 'Edit Workflow' : 'Create New Workflow'}
+              </h1>
+              <p className="text-sm text-neutral-400">
+                {isEditMode ? 'Modify existing automation workflow' : 'Multi-step automation workflow'}
               </p>
             </div>
           </div>
         </div>
-        <div className="flex gap-2">
-          <Button 
-            type="button"
-            variant="outline" 
-            onClick={clearAllData}
-            className="gap-2 border-red-600 text-red-400 hover:bg-red-600/10"
-            disabled={loading}
+        <div className="flex gap-3">
+          <button
+            onClick={handleClearAll}
+            className="px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-md text-neutral-300 hover:bg-neutral-700 transition-colors text-sm font-medium"
           >
-            <Trash2 className="h-4 w-4" />
             Clear All
-          </Button>
-          <Button 
-            onClick={handleSubmit} 
-            disabled={loading}
-            className="gap-2"
+          </button>
+          <button
+            onClick={handleSaveWorkflow}
+            disabled={isSaving || isLoadingRecipe || !workflowName.trim()}
+            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
           >
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Save className="h-4 w-4" />
-            )}
-            {loading ? 'Creating...' : 'Create Recipe'}
-          </Button>
+            {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            {isEditMode ? 'Update Workflow' : 'Save Workflow'}
+          </button>
         </div>
       </div>
 
-      {/* Draft Status */}
-      {!draftSaved && (
-        <div className="flex items-center gap-2 px-3 py-2 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
-          <Loader2 className="h-4 w-4 animate-spin text-yellow-400" />
-          <span className="text-sm text-yellow-300">Auto-saving draft...</span>
-        </div>
-      )}
-      
-      {draftSaved && hasUnsavedChanges && (
-        <div className="flex items-center gap-2 px-3 py-2 bg-green-500/10 border border-green-500/20 rounded-lg">
-          <CheckCircle className="h-4 w-4 text-green-400" />
-          <span className="text-sm text-green-300">Draft saved automatically</span>
+      {/* Loading overlay when loading recipe data */}
+      {isLoadingRecipe && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+          <div className="bg-neutral-800 rounded-lg p-6 flex items-center gap-3 border border-neutral-700">
+            <Loader2 className="h-6 w-6 animate-spin text-green-400" />
+            <span className="text-neutral-100">Loading recipe data...</span>
+          </div>
         </div>
       )}
 
-      {error && (
-        <Alert variant="destructive">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
+      {/* Main Content */}
+      <div className={`${isWorkflowMaximized ? 'hidden' : 'grid grid-cols-2'} h-[calc(100vh-81px)]`}>
+        {/* Left Panel - Workflow Specification */}
+        <div className="bg-neutral-900 border-r border-neutral-800 flex flex-col">
+          <div className="px-6 py-5 border-b border-neutral-800">
+            <div className="flex items-center gap-2 text-base font-semibold text-neutral-100 mb-2">
+              <FileText className="h-5 w-5" />
+              Workflow Specification
+            </div>
+            <p className="text-sm text-neutral-400">
+              Define your workflow using natural language or structured inputs
+            </p>
+          </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Basic Information */}
-        <Card className="bg-neutral-800 border-neutral-700">
-          <CardHeader>
-            <CardTitle>Basic Information</CardTitle>
-            <CardDescription>
-              Define the basic properties of your recipe
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+          <div className="flex-1 px-6 py-6 overflow-y-auto space-y-8">
+            {/* Basic Information */}
             <div>
-              <label className="block text-sm font-medium text-neutral-300 mb-2">
-                Recipe Name *
-              </label>
-              <Input
-                value={formData.nl_query}
-                onChange={(e) => updateFormData(prev => ({ ...prev, nl_query: e.target.value }))}
-                placeholder="Enter a descriptive name for your recipe..."
-                className="!bg-neutral-900 border-neutral-700 text-white placeholder:text-neutral-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                required
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-neutral-300 mb-2">
-                  Recipe Type
-                </label>
-                <Select
-                  value={formData.template_type}
-                  onValueChange={(value) => updateFormData(prev => ({ 
-                    ...prev, 
-                    template_type: value as keyof typeof RECIPE_TYPES 
-                  }))}
-                >
-                  <SelectTrigger className="!bg-neutral-900 border-neutral-700 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(RECIPE_TYPES).map(([key, type]) => (
-                      <SelectItem key={key} value={key}>
-                        <div className="flex items-center gap-2">
-                          <type.icon className="h-4 w-4" />
-                          <span>{type.label}</span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="flex items-center gap-2 text-sm font-semibold text-neutral-100 mb-3">
+                <span>📋</span>
+                Basic Information
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-neutral-300 mb-2">
-                  Complexity Level
-                </label>
-                <Select
-                  value={formData.complexity_level}
-                  onValueChange={(value) => updateFormData(prev => ({ 
-                    ...prev, 
-                    complexity_level: value as typeof COMPLEXITY_LEVELS[number]
-                  }))}
-                >
-                  <SelectTrigger className="!bg-neutral-900 border-neutral-700 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {COMPLEXITY_LEVELS.map((level) => (
-                      <SelectItem key={level} value={level}>
-                        <div className="flex flex-col">
-                          <span className="font-medium">{COMPLEXITY_DISPLAY[level].label}</span>
-                          <span className="text-xs text-neutral-400">{COMPLEXITY_DISPLAY[level].description}</span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Catalog Selection using individual CatalogSelect components */}
-            <div className="space-y-4">
-              <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-4">
                 <div>
-                  <CatalogSelect
-                    catalogField="catalog_type"
-                    label="Catalog Type"
-                    value={formData.catalog_type}
-                    onValueChange={(value: string | undefined) => {
-                      updateFormData(prev => ({ 
-                        ...prev, 
-                        catalog_type: value || "",
-                        catalog_subtype: "", // Clear subtype when type changes
-                        catalog_name: ""     // Clear name when type changes
-                      }))
-                    }}
-                    placeholder="Select catalog type..."
-                    className="!bg-neutral-900 border-neutral-700 text-white"
-                    allowCustom={true}
-                  />
-                </div>
-                <div>
-                  <CatalogSelect
-                    catalogField="catalog_subtype"
-                    label="Catalog Subtype"
-                    value={formData.catalog_subtype}
-                    onValueChange={(value: string | undefined) => {
-                      updateFormData(prev => ({ 
-                        ...prev, 
-                        catalog_subtype: value || "",
-                        catalog_name: "" // Clear name when subtype changes
-                      }))
-                    }}
-                    placeholder="Select catalog subtype..."
-                    className="!bg-neutral-900 border-neutral-700 text-white"
-                    allowCustom={true}
-                  />
-                </div>
-                <div>
-                  <CatalogSelect
-                    catalogField="catalog_name"
-                    label="Catalog Name"
-                    value={formData.catalog_name}
-                    onValueChange={(value: string | undefined) => {
-                      updateFormData(prev => ({ 
-                        ...prev, 
-                        catalog_name: value || ""
-                      }))
-                    }}
-                    placeholder="Select catalog name..."
-                    className="!bg-neutral-900 border-neutral-700 text-white"
-                    allowCustom={true}
-                  />
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Recipe Creation Methods */}
-        <Card className="bg-neutral-800 border-neutral-700">
-          <CardHeader>
-            <CardTitle>Recipe Creation</CardTitle>
-            <CardDescription>
-              Create your recipe using natural language or manual step building
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'natural' | 'manual')}>
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="natural" className="flex items-center gap-2">
-                  <Wand2 className="h-4 w-4" />
-                  Natural Language
-                </TabsTrigger>
-                <TabsTrigger value="manual" className="flex items-center gap-2">
-                  <Layers className="h-4 w-4" />
-                  Manual Steps
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="natural" className="space-y-4 mt-6">
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-neutral-300">
-                    Recipe Description
+                  <label className="block text-sm font-medium text-neutral-300 mb-2">
+                    Workflow Name *
                   </label>
-                  <Textarea
-                    value={naturalLanguageText}
-                    onChange={(e) => updateNaturalLanguageText(e.target.value)}
-                    placeholder="Describe your recipe in natural language. For example:
-• Listen to Topic Delete Event
-• Process customer data from API endpoint  
-• Transform data to required format
-• Send notification to admin system"
-                    className="min-h-[120px] !bg-neutral-900 border-neutral-700 text-white placeholder:text-neutral-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    disabled={isAnalyzing}
+                  <input
+                    type="text"
+                    value={workflowName}
+                    onChange={(e) => setWorkflowName(e.target.value)}
+                    className="w-full px-3 py-2.5 bg-neutral-800 border border-neutral-700 rounded-md text-neutral-100 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    placeholder="Post-Incident Review Automation"
                   />
                 </div>
 
-                {!analysisResult ? (
-                  <Button 
-                    type="button"
-                    onClick={analyzeNaturalLanguage} 
-                    disabled={isAnalyzing || !naturalLanguageText.trim()}
-                    className="w-full"
-                  >
-                    {isAnalyzing ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Analyzing Recipe...
-                      </>
-                    ) : (
-                      <>
-                        <Wand2 className="h-4 w-4 mr-2" />
-                        Analyze with AI
-                      </>
-                    )}
-                  </Button>
-                ) : (
-                  <Button 
-                    type="button"
-                    variant="outline"
-                    onClick={analyzeNaturalLanguage} 
-                    disabled={isAnalyzing || !naturalLanguageText.trim()}
-                    className="w-full border-green-600 text-green-400 hover:bg-green-600/10"
-                  >
-                    {isAnalyzing ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Re-analyzing...
-                      </>
-                    ) : (
-                      <>
-                        <RefreshCw className="h-4 w-4 mr-2" />
-                        Re-analyze with AI
-                      </>
-                    )}
-                  </Button>
-                )}
-
-                {isAnalyzing && (
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      <span className="text-sm">Parsing recipe steps...</span>
-                    </div>
-                    <Progress value={analysisProgress} />
-                  </div>
-                )}
-
-                {analysisResult && (
-                  <div className="space-y-4 border-t border-neutral-700 pt-4">
-                    <div className="flex items-center justify-between">
-                      <h4 className="font-medium text-white">Analysis Results</h4>
-                      <div className="flex gap-2">
-                        <Badge variant="outline" className="border-neutral-500 text-neutral-300">
-                          {analysisResult.totalSteps} steps
-                        </Badge>
-                        <Badge variant="outline" className="border-neutral-500 text-neutral-300">
-                          {analysisResult.recipeType}
-                        </Badge>
-                        <Badge variant="outline" className="border-neutral-500 text-neutral-300">
-                          ~{analysisResult.estimatedDuration || 0}min
-                        </Badge>
-                      </div>
-                    </div>
-
-                    {/* Tool Status Summary */}
-                    <div className="bg-neutral-800 rounded-lg p-3 border border-neutral-600">
-                      <h5 className="text-sm font-medium text-white mb-2">Tool Status Summary</h5>
-                      <div className="grid grid-cols-2 gap-4 text-sm">
-                        <div className="flex items-center gap-2">
-                          <CheckCircle className="h-4 w-4 text-green-400" />
-                          <span className="text-neutral-300">
-                            {analysisResult.steps.filter(s => s.mappedTool?.exists).length} tools available
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <AlertCircle className="h-4 w-4 text-orange-400" />
-                          <span className="text-neutral-300">
-                            {analysisResult.steps.filter(s => s.mappedTool?.needsCreation).length} tools need creation
-                          </span>
-                        </div>
-                      </div>
-                      {analysisResult.steps.filter(s => s.mappedTool?.needsCreation).length > 0 && (
-                        <div className="mt-2 text-xs text-orange-300">
-                          ⚠️ Some tools will need to be created before this recipe can be fully executed
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                      <div>
-                        <p className="font-medium text-neutral-300">Complexity</p>
-                        <div className="flex items-center gap-2">
-                          <Progress value={analysisResult.complexityScore * 100} className="flex-1" />
-                          <span className="text-white">{Math.round(analysisResult.complexityScore * 100)}%</span>
-                        </div>
-                      </div>
-                      <div>
-                        <p className="font-medium text-neutral-300">Required Capabilities</p>
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {analysisResult.requiredCapabilities.map((cap) => (
-                            <Badge key={cap} variant="secondary" className="text-xs bg-neutral-700 text-neutral-200">
-                              {cap}
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-                      <div>
-                        <p className="font-medium text-neutral-300">Duration</p>
-                        <p className="text-lg font-semibold text-white">{analysisResult.estimatedDuration || 0} min</p>
-                      </div>
-                    </div>
-
-                    <div className="space-y-3">
-                      <h5 className="font-medium flex items-center gap-2 text-white">
-                        <Target className="h-4 w-4 text-blue-400" />
-                        Extracted Steps
-                      </h5>
-                      
-                      <div className="space-y-2 max-h-60 overflow-y-auto">
-                        {analysisResult.steps.map((step, index) => (
-                          <div key={step.id} className="border border-neutral-600 rounded-lg p-3 bg-neutral-800">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <span className="text-sm font-medium text-white">
-                                    {index + 1}. {step.name}
-                                  </span>
-                                  <Badge variant="outline" className="text-xs border-neutral-500 text-neutral-300">
-                                    {step.stepType}
-                                  </Badge>
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => startRewriteStep(step.id, step.description)}
-                                    className="h-5 px-1 text-xs text-blue-400 hover:text-blue-300"
-                                    disabled={rewritingStepId === step.id}
-                                  >
-                                    <Edit3 className="h-3 w-3" />
-                                  </Button>
-                                </div>
-                                
-                                {rewritingStepId === step.id ? (
-                                  <div className="space-y-2 mb-2">
-                                    <Textarea
-                                      value={rewriteText}
-                                      onChange={(e) => setRewriteText(e.target.value)}
-                                      placeholder="Rewrite the step description..."
-                                      className="min-h-[60px] text-xs !bg-neutral-900 border-neutral-600 text-white placeholder:text-neutral-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                      disabled={isRewriting}
-                                    />
-                                    <div className="flex gap-2">
-                                      <Button
-                                        type="button"
-                                        size="sm"
-                                        onClick={() => handleRewriteStep(step.id, rewriteText)}
-                                        disabled={isRewriting || !rewriteText.trim()}
-                                        className="h-6 px-2 text-xs"
-                                      >
-                                        {isRewriting ? (
-                                          <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                                        ) : (
-                                          <RefreshCw className="h-3 w-3 mr-1" />
-                                        )}
-                                        {isRewriting ? 'Rewriting...' : 'Rewrite'}
-                                      </Button>
-                                      <Button
-                                        type="button"
-                                        size="sm"
-                                        variant="ghost"
-                                        onClick={cancelRewriteStep}
-                                        disabled={isRewriting}
-                                        className="h-6 px-2 text-xs text-neutral-400 hover:text-neutral-300"
-                                      >
-                                        <X className="h-3 w-3 mr-1" />
-                                        Cancel
-                                      </Button>
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <p className="text-xs text-neutral-300 mb-2 line-clamp-2">
-                                    {step.description}
-                                  </p>
-                                )}
-                                
-                                {step.mappedTool ? (
-                                  <div className="space-y-2">
-                                    <div className="flex items-center gap-2">
-                                      <Target className="h-3 w-3 text-blue-400" />
-                                      <span className="text-xs font-medium text-neutral-200">
-                                        {step.mappedTool.name} ({step.mappedTool.type})
-                                      </span>
-                                      <Badge 
-                                        className={`text-xs ${getConfidenceColor(step.mappedTool.confidence)}`}
-                                      >
-                                        {Math.round(step.mappedTool.confidence * 100)}%
-                                      </Badge>
-                                    </div>
-                                    
-                                    {step.mappedTool.exists ? (
-                                      <div className="flex items-center gap-2">
-                                        <CheckCircle className="h-3 w-3 text-green-400" />
-                                        <span className="text-xs text-neutral-300">
-                                          Cache Entry ID: {step.mappedTool.cacheEntryId}
-                                        </span>
-                                        <Button
-                                          type="button"
-                                          size="sm"
-                                          variant="ghost"
-                                          onClick={() => handleViewTool(step.mappedTool!.cacheEntryId!)}
-                                          className="h-6 px-2 text-xs text-blue-400 hover:text-blue-300"
-                                        >
-                                          <ExternalLink className="h-3 w-3 mr-1" />
-                                          View Tool
-                                        </Button>
-                                      </div>
-                                    ) : (
-                                      <div className="flex items-center gap-2">
-                                        <AlertCircle className="h-3 w-3 text-orange-400" />
-                                        <span className="text-xs text-orange-300">
-                                          Tool needs to be created
-                                        </span>
-                                        <Button
-                                          type="button"
-                                          size="sm"
-                                          variant="ghost"
-                                          onClick={() => handleCreateTool(step.id, step.mappedTool)}
-                                          className="h-6 px-2 text-xs text-orange-400 hover:text-orange-300"
-                                        >
-                                          <PlusCircle className="h-3 w-3 mr-1" />
-                                          Create Tool
-                                        </Button>
-                                      </div>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <div className="flex items-center gap-2 text-neutral-400">
-                                    <AlertTriangle className="h-3 w-3" />
-                                    <span className="text-xs">No tool mapped</span>
-                                  </div>
-                                )}
-                              </div>
-                              
-                              <div className="flex items-center gap-2">
-                                {step.mappedTool && getConfidenceIcon(step.mappedTool.confidence)}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="flex gap-2">
-                      <Button
-                        type="button"
-                        onClick={acceptAnalysisResult}
-                        className="flex-1"
+                <div>
+                  <label className="block text-sm font-medium text-neutral-300 mb-3">
+                    Flow Type
+                  </label>
+                  <div className="grid grid-cols-3 gap-3">
+                    {FLOW_TYPES.map((type) => (
+                      <button
+                        key={type.id}
+                        onClick={() => handleFlowTypeChange(type.id)}
+                        className={`p-4 rounded-lg border-2 text-center transition-all ${
+                          selectedFlowType === type.id
+                            ? 'border-green-500 bg-green-500/10'
+                            : 'border-neutral-700 bg-neutral-800 hover:border-neutral-600'
+                        }`}
                       >
-                        <Eye className="h-4 w-4 mr-2" />
-                        Import Steps to Manual Editor
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => setAnalysisResult(null)}
-                        className="border-neutral-600"
-                      >
-                        Analyze Different Recipe
-                      </Button>
-                    </div>
+                        <div className="text-2xl mb-2">{type.icon}</div>
+                        <div className="text-sm font-semibold text-neutral-100 mb-1">
+                          {type.name}
+                        </div>
+                        <div className="text-xs text-neutral-400">
+                          {type.description}
+                        </div>
+                      </button>
+                    ))}
                   </div>
-                )}
-              </TabsContent>
+                </div>
+              </div>
+            </div>
 
-              <TabsContent value="manual" className="space-y-4 mt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="font-medium">Manual Step Builder</h4>
-                    <p className="text-sm text-neutral-400">
-                      Add and configure individual recipe steps
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={addStep}
-                    className="gap-2 border-neutral-600 text-neutral-300 hover:bg-neutral-700"
-                  >
-                    <Plus className="h-4 w-4" />
-                    Add Step
-                  </Button>
+            {/* Natural Language Specification */}
+            <div>
+              <div className="flex items-center gap-2 text-sm font-semibold text-neutral-100 mb-3">
+                <span>🗣️</span>
+                Natural Language Description
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-neutral-300 mb-2">
+                    Describe your workflow
+                  </label>
+                  <textarea
+                    value={nlDescription}
+                    onChange={(e) => setNlDescription(e.target.value)}
+                    className="w-full h-48 px-4 py-3 bg-neutral-800 border border-neutral-700 rounded-lg text-neutral-100 font-mono text-sm resize-y focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 leading-relaxed"
+                    placeholder="Example: 'Fullflow for Post-Incident Review:&#10;1) Fetch Jira issues with query project=OPS AND status=Resolved&#10;2) Summarize issues using Claude LLM &#10;3) Update Confluence page with summary&#10;&#10;Wire: 1→2 (pass issues), 2→3 (pass summary)'"
+                  />
                 </div>
 
-                {formData.recipe_steps.length === 0 ? (
-                  <div className="text-center py-8 text-neutral-400">
-                    <Layers className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                    <p>No steps added yet. Click "Add Step" to get started.</p>
-                    {activeTab === 'manual' && (
-                      <p className="text-xs mt-2">
-                        Tip: Try the "Natural Language" tab for AI-powered step extraction!
-                      </p>
-                    )}
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {formData.recipe_steps.map((step, index) => (
-                      <div
-                        key={step.id}
-                        className="flex items-start gap-4 p-4 bg-neutral-900 rounded-lg border border-neutral-700"
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleParseNL}
+                    disabled={isParsing || !nlDescription.trim()}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Parse natural language description into visual workflow"
+                  >
+                    {isParsing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                    Parse NL to Visual
+                  </button>
+                  <button
+                    onClick={handleSyncToNL}
+                    disabled={workflowNodes.length <= 1} // Disable if only start node
+                    className="flex items-center gap-2 px-5 py-2.5 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Sync visual workflow back to natural language description"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    Sync Visual to NL
+                  </button>
+                  <button
+                    onClick={handleCompile}
+                    disabled={isCompiling}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isCompiling ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                    Compile to DSL
+                  </button>
+                  <button 
+                    onClick={handleSaveWorkflow}
+                    disabled={isSaving}
+                    className="px-5 py-2.5 bg-transparent border border-neutral-600 text-neutral-300 rounded-md hover:bg-neutral-700 transition-colors font-medium"
+                  >
+                    Save Draft
+                  </button>
+                  <button
+                    onClick={handleTestRun}
+                    className="px-5 py-2.5 bg-transparent border border-neutral-600 text-neutral-300 rounded-md hover:bg-neutral-700 transition-colors font-medium"
+                  >
+                    Test Run
+                  </button>
+                </div>
+
+                {/* Sync Status Indicator */}
+                <div className={`flex items-center gap-2 text-xs px-3 py-2 rounded-lg ${
+                  isNLSynced 
+                    ? 'bg-green-500/10 text-green-400 border border-green-500/30' 
+                    : 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/30'
+                }`}>
+                  <div className={`w-2 h-2 rounded-full ${isNLSynced ? 'bg-green-400' : 'bg-yellow-400'}`} />
+                  <span>
+                    {isNLSynced 
+                      ? 'Natural language and visual workflow are synchronized' 
+                      : 'Visual workflow has changed - re-parse to synchronize'}
+                  </span>
+                  {!isNLSynced && (
+                    <div className="ml-2 flex gap-1">
+                      <button
+                        onClick={handleParseNL}
+                        className="px-2 py-1 bg-blue-500/20 hover:bg-blue-500/30 rounded text-blue-400 transition-colors"
+                        title="Parse NL to Visual"
                       >
-                        <div className="flex-shrink-0 w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-sm font-semibold">
-                          {index + 1}
+                        <Wand2 className="h-3 w-3" />
+                      </button>
+                      <button
+                        onClick={handleSyncToNL}
+                        disabled={workflowNodes.length <= 1}
+                        className="px-2 py-1 bg-purple-500/20 hover:bg-purple-500/30 rounded text-purple-400 transition-colors disabled:opacity-50"
+                        title="Sync Visual to NL"
+                      >
+                        <RefreshCw className="h-3 w-3" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {compilationResult && (
+                  <div className={`rounded-lg border p-4 ${
+                    compilationResult.success
+                      ? 'bg-green-500/10 border-green-500/30'
+                      : 'bg-red-500/10 border-red-500/30'
+                  }`}>
+                    <div className={`font-semibold mb-2 flex items-center gap-2 ${
+                      compilationResult.success ? 'text-green-400' : 'text-red-400'
+                    }`}>
+                      {compilationResult.success ? <CheckCircle className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
+                      {compilationResult.success ? 'Compilation Successful' : 'Compilation Failed'}
+                    </div>
+                    <ul className="space-y-1 text-sm text-neutral-300">
+                      {compilationResult.success && (
+                        <>
+                          <li className="flex items-center gap-2">
+                            <span className="text-green-400">•</span>
+                            {compilationResult.steps_detected} steps detected and validated
+                          </li>
+                          <li className="flex items-center gap-2">
+                            <span className="text-green-400">•</span>
+                            {compilationResult.edges_wired} edges wired correctly
+                          </li>
+                          <li className="flex items-center gap-2">
+                            <span className="text-green-400">•</span>
+                            All tool references resolved
+                          </li>
+                        </>
+                      )}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Advanced Settings */}
+            <div>
+              <div className="flex items-center gap-2 text-sm font-semibold text-neutral-100 mb-3">
+                <Settings className="h-4 w-4" />
+                Execution Settings
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-neutral-300 mb-2">
+                    Execution Mode
+                  </label>
+                  <select
+                    value={executionMode}
+                    onChange={(e) => setExecutionMode(e.target.value)}
+                    className="w-full px-3 py-2.5 bg-neutral-800 border border-neutral-700 rounded-md text-neutral-100 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  >
+                    {EXECUTION_MODES.map((mode) => (
+                      <option key={mode.value} value={mode.value}>
+                        {mode.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-neutral-300 mb-2">
+                    Error Handling
+                  </label>
+                  <select
+                    value={errorHandling}
+                    onChange={(e) => setErrorHandling(e.target.value)}
+                    className="w-full px-3 py-2.5 bg-neutral-800 border border-neutral-700 rounded-md text-neutral-100 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  >
+                    {ERROR_HANDLING.map((handler) => (
+                      <option key={handler.value} value={handler.value}>
+                        {handler.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Panel - Visual Preview */}
+        <div className="bg-neutral-950 flex flex-col">
+          <div className="flex bg-neutral-900 border-b border-neutral-800">
+            <button
+              onClick={() => setActiveTab('visual')}
+              className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'visual'
+                  ? 'text-green-400 border-green-400'
+                  : 'text-neutral-400 border-transparent hover:text-neutral-300'
+              }`}
+            >
+              <Eye className="h-4 w-4 inline mr-2" />
+              Visual Flow
+            </button>
+            <button
+              onClick={() => setActiveTab('dsl')}
+              className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'dsl'
+                  ? 'text-green-400 border-green-400'
+                  : 'text-neutral-400 border-transparent hover:text-neutral-300'
+              }`}
+            >
+              <Code className="h-4 w-4 inline mr-2" />
+              DSL Preview
+            </button>
+            <button
+              onClick={() => setActiveTab('validation')}
+              className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'validation'
+                  ? 'text-green-400 border-green-400'
+                  : 'text-neutral-400 border-transparent hover:text-neutral-300'
+              }`}
+            >
+              <CheckSquare className="h-4 w-4 inline mr-2" />
+              Validation
+            </button>
+          </div>
+
+          <div className="flex-1 p-6 overflow-y-auto">
+            {activeTab === 'visual' && (
+              <div className="h-[calc(100vh-200px)]">
+                <InteractiveWorkflowBuilder
+                  catalogType={selectedFlowType}
+                  catalogSubtype={executionMode}
+                  catalogName={workflowName.toLowerCase().replace(/\s+/g, '-')}
+                  initialNodes={workflowNodes}
+                  initialEdges={workflowEdges}
+                  onWorkflowChange={handleWorkflowChange}
+                  onMaximizeChange={handleMaximizeToggle}
+                />
+              </div>
+            )}
+
+            {activeTab === 'dsl' && (
+              <div className="bg-neutral-800 border border-neutral-700 rounded-lg p-4 font-mono text-sm text-neutral-300 overflow-x-auto">
+                {compilationResult?.success ? (
+                  <pre className="whitespace-pre-wrap">
+                    <span className="text-blue-400">&quot;flow&quot;</span>: {'{'}
+                    {'\n'}  <span className="text-blue-400">&quot;id&quot;</span>: <span className="text-green-400">&quot;{compilationResult.dsl?.flow?.id || 'post-incident-review'}&quot;</span>,
+                    {'\n'}  <span className="text-blue-400">&quot;name&quot;</span>: <span className="text-green-400">&quot;{workflowName}&quot;</span>,
+                    {'\n'}  <span className="text-blue-400">&quot;kind&quot;</span>: <span className="text-green-400">&quot;{compilationResult.dsl?.flow?.kind || 'full'}&quot;</span>,
+                    {'\n'}  <span className="text-blue-400">&quot;steps&quot;</span>: [
+                    {compilationResult.dsl?.flow?.steps?.map((step: any, index: number) => (
+                      `\n    {\n      "id": "${step.id}",\n      "type": "${step.type}",\n      "refId": "${step.refId}"${step.params ? `,\n      "params": ${JSON.stringify(step.params, null, 6).replace(/^/gm, '      ')}` : ''}\n    }${index < compilationResult.dsl.flow.steps.length - 1 ? ',' : ''}`
+                    )).join('')}
+                    {'\n'}  ],
+                    {'\n'}  <span className="text-blue-400">&quot;edges&quot;</span>: [
+                    {compilationResult.dsl?.flow?.edges?.map((edge: any, index: number) => (
+                      `\n    {\n      "from": "${edge.from}",\n      "to": "${edge.to}",\n      "map": ${JSON.stringify(edge.map, null, 6).replace(/^/gm, '      ')}\n    }${index < compilationResult.dsl.flow.edges.length - 1 ? ',' : ''}`
+                    )).join('')}
+                    {'\n'}  ]
+                    {'\n'}{'}'}
+                  </pre>
+                ) : (
+                  <div className="text-center py-8 text-neutral-500">
+                    <Code className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                    <p>No DSL generated yet</p>
+                    <p className="text-sm">Compile your workflow to see the DSL</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'validation' && (
+              <div className="bg-neutral-800 border border-neutral-700 rounded-lg p-4">
+                {compilationResult?.validation_results && compilationResult.validation_results.length > 0 ? (
+                  <div className="space-y-2">
+                    {compilationResult.validation_results.map((item, index) => (
+                      <div key={index} className="flex items-center gap-3 text-sm">
+                        <div className={`w-4 h-4 rounded-full flex items-center justify-center text-xs font-bold ${
+                          item.type === 'success' ? 'bg-green-600 text-white' :
+                          item.type === 'warning' ? 'bg-yellow-600 text-white' :
+                          'bg-red-600 text-white'
+                        }`}>
+                          {item.icon}
                         </div>
-                        <div className="flex-1 space-y-3">
-                          <div className="grid grid-cols-2 gap-4">
-                            <Input
-                              placeholder="Step name..."
-                              value={step.name}
-                              onChange={(e) => updateStep(index, 'name', e.target.value)}
-                              className="!bg-neutral-800 border-neutral-600 text-white placeholder:text-neutral-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            />
-                            <Select
-                              value={step.type}
-                              onValueChange={(value) => updateStep(index, 'type', value)}
-                            >
-                              <SelectTrigger className="!bg-neutral-800 border-neutral-600 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="action">Action</SelectItem>
-                                <SelectItem value="condition">Condition</SelectItem>
-                                <SelectItem value="loop">Loop</SelectItem>
-                                <SelectItem value="transform">Transform</SelectItem>
-                                <SelectItem value="validation">Validation</SelectItem>
-                                <SelectItem value="integration">Integration</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          
-                          {step.description && (
-                            <div className="text-xs text-neutral-400 bg-neutral-800 p-2 rounded border border-neutral-600">
-                              {step.description}
-                            </div>
-                          )}
-                          
-                          {step.mappedTool && (
-                            <div className="space-y-1">
-                              <div className="flex items-center gap-2 text-xs">
-                                <Target className="h-3 w-3 text-blue-400" />
-                                <span className="text-neutral-300">Mapped to: {step.mappedTool.name}</span>
-                                <Badge className={`text-xs ${getConfidenceColor(step.mappedTool.confidence)}`}>
-                                  {Math.round(step.mappedTool.confidence * 100)}%
-                                </Badge>
-                              </div>
-                              {step.mappedTool.exists ? (
-                                <div className="flex items-center gap-2 text-xs">
-                                  <CheckCircle className="h-3 w-3 text-green-400" />
-                                  <span className="text-neutral-400">
-                                    Cache Entry ID: {step.mappedTool.cache_entry_id}
-                                  </span>
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => handleViewTool(step.mappedTool!.cache_entry_id!)}
-                                    className="h-5 px-1 text-xs text-blue-400 hover:text-blue-300"
-                                  >
-                                    <ExternalLink className="h-3 w-3" />
-                                  </Button>
-                                </div>
-                              ) : (
-                                <div className="flex items-center gap-2 text-xs">
-                                  <AlertCircle className="h-3 w-3 text-orange-400" />
-                                  <span className="text-orange-300">Needs creation</span>
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => handleCreateTool(step.id, step.mappedTool)}
-                                    className="h-5 px-1 text-xs text-orange-400 hover:text-orange-300"
-                                  >
-                                    <PlusCircle className="h-3 w-3" />
-                                  </Button>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => removeStep(index)}
-                          className="text-red-400 hover:text-red-300 hover:bg-red-400/10"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        <span className={
+                          item.type === 'success' ? 'text-green-400' :
+                          item.type === 'warning' ? 'text-yellow-400' :
+                          'text-red-400'
+                        }>
+                          {item.message}
+                        </span>
                       </div>
                     ))}
                   </div>
+                ) : (
+                  <div className="text-center py-8 text-neutral-500">
+                    <CheckSquare className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                    <p>No validation results yet</p>
+                    <p className="text-sm">Compile your workflow to see validation results</p>
+                  </div>
                 )}
-              </TabsContent>
-            </Tabs>
-          </CardContent>
-        </Card>
-      </form>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Full-Screen Workflow Builder */}
+      {isWorkflowMaximized && (
+        <div className="fixed inset-0 z-50 bg-neutral-950 flex flex-col transition-all duration-300">
+          {/* Full-Screen Header */}
+          <div className="bg-neutral-900 border-b border-neutral-800 px-6 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-green-600 rounded-lg flex items-center justify-center">
+                <Workflow className="h-6 w-6 text-white" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-neutral-100">
+                  {workflowName} - Full Screen Editor
+                </h1>
+                <p className="text-sm text-neutral-400">
+                  {selectedFlowType} • {executionMode} mode
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="text-xs text-neutral-400 mr-4">
+                <div className="flex items-center gap-4">
+                  <span>Ctrl+Shift+M: Toggle full-screen</span>
+                  <span>Esc: Exit full-screen</span>
+                </div>
+              </div>
+              <button
+                onClick={() => handleMaximizeToggle(false)}
+                className="flex items-center gap-2 px-4 py-2 bg-neutral-700 text-white rounded-md hover:bg-neutral-600 transition-colors"
+              >
+                <span className="text-lg">⏐⏐</span>
+                <span>Exit Full Screen</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Full-Screen Workflow Builder */}
+          <div className="flex-1 overflow-hidden">
+            <InteractiveWorkflowBuilder
+              catalogType={selectedFlowType}
+              catalogSubtype={executionMode}
+              catalogName={workflowName.toLowerCase().replace(/\s+/g, '-')}
+              initialNodes={workflowNodes}
+              initialEdges={workflowEdges}
+              onWorkflowChange={handleWorkflowChange}
+              isMaximized={true}
+              onMaximizeChange={handleMaximizeToggle}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

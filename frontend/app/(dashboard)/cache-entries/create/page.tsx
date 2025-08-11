@@ -2,9 +2,9 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { Button } from "../../../components/ui/button"
-import { Card, CardContent } from "../../../components/ui/card"
-import api, { CacheEntryCreate } from "../../../services/api"
+import { Button } from "@/app/components/ui/button"
+import { Card, CardContent } from "@/app/components/ui/card"
+import api, { CacheEntryCreate } from "@/app/services/api"
 import { CacheEntryForm } from "../[id]/CacheEntryForm"
 
 export default function CreateCacheEntry() {

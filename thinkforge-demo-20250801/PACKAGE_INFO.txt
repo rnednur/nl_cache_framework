@@ -1,0 +1,25 @@
+ThinkForge Demo Package
+=====================
+
+Package: thinkforge-demo-20250801
+Created: Fri Aug  1 15:40:31 EDT 2025
+Version: 1.0.0
+
+Contents:
+- Complete ThinkForge system
+- Docker deployment configuration
+- Demo data and sample content
+- Documentation and guides
+
+Quick Start:
+1. ./QUICK_START.sh
+2. Open http://localhost:3001
+
+For detailed instructions, see DEMO_README.md
+
+System Requirements:
+- Docker & Docker Compose
+- 4GB+ RAM available
+- Ports 3001, 8000, 5432 available
+
+Package Size: 5.3M

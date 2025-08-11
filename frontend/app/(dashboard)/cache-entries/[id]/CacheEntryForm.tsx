@@ -1,12 +1,12 @@
-import { Input } from "../../../components/ui/input";
-import { Textarea } from "../../../components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../components/ui/select";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../../../components/ui/card";
-import { Label } from "../../../components/ui/label";
-import { Button } from "../../../components/ui/button";
-import { CatalogSelect } from "../../../components/ui/CatalogSelect";
+import { Input } from "@/app/components/ui/input";
+import { Textarea } from "@/app/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/app/components/ui/select";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/app/components/ui/card";
+import { Label } from "@/app/components/ui/label";
+import { Button } from "@/app/components/ui/button";
+import { CatalogSelect } from "@/app/components/ui/CatalogSelect";
 import React from "react";
-import WorkflowBuilder from "../../../../components/ui/WorkflowBuilder";
+import WorkflowBuilder from "@/components/ui/WorkflowBuilder";
 
 interface CacheEntryFormProps {
   nlQuery: string;
@@ -237,7 +237,7 @@ export function CacheEntryForm({
                         return undefined; // Or provide default edges
                       }
                     })()}
-                    onWorkflowChange={(nodes, edges) => {
+                    onWorkflowChange={(nodes: any, edges: any) => {
                       if (setTemplate) {
                         // Update the main template state with the workflow structure
                         setTemplate(JSON.stringify({ nodes, edges }, null, 2));

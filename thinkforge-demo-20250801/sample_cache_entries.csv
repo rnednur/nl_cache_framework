@@ -1,0 +1,4 @@
+nl_query,template,template_type,reasoning_trace,is_template,tags,catalog_type,catalog_subtype,catalog_name,status
+Get all customers from New York,SELECT * FROM customers WHERE state = 'NY',sql,This SQL query filters the customers table to show only those from New York state using the state column.,false,"customers,query,new york",customer_data,geographical,customer_location_query,active
+Show orders for customer with ID {{customer_id}},SELECT * FROM orders WHERE customer_id = {{customer_id}},sql,This template allows querying orders for a specific customer by substituting the customer ID.,true,"orders,template,parameterized",order_data,customer_specific,customer_orders_query,active
+Get weather data for {{city}},https://api.weather.example.com/data?location={{city}}&format=json,url,This URL template fetches weather data for a specified city.,true,"weather,api,city",external_data,weather,city_weather_api,active

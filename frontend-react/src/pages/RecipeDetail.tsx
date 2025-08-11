@@ -56,7 +56,6 @@ interface Recipe {
   template_type: string
   recipe_steps?: RecipeStep[]
   required_tools?: number[]
-  execution_time_estimate?: number
   complexity_level?: string
   success_rate?: number
   last_executed?: string
@@ -232,12 +231,6 @@ export default function RecipeDetail() {
     return COMPLEXITY_COLORS[complexity as keyof typeof COMPLEXITY_COLORS] || 'bg-gray-500'
   }
 
-  const formatExecutionTime = (seconds?: number) => {
-    if (!seconds) return 'Unknown'
-    if (seconds < 60) return `${seconds}s`
-    if (seconds < 3600) return `${Math.round(seconds / 60)}m`
-    return `${Math.round(seconds / 3600)}h`
-  }
 
   const formatLastExecuted = (lastExecuted?: string) => {
     if (!lastExecuted) return 'Never'
@@ -317,15 +310,6 @@ export default function RecipeDetail() {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {recipe.execution_time_estimate && (
-                  <div className="flex items-center gap-2">
-                    <Clock className="h-4 w-4 text-muted-foreground" />
-                    <div>
-                      <p className="text-sm font-medium">{formatExecutionTime(recipe.execution_time_estimate)}</p>
-                      <p className="text-xs text-muted-foreground">Est. Time</p>
-                    </div>
-                  </div>
-                )}
                 
                 {recipe.execution_count !== undefined && (
                   <div className="flex items-center gap-2">

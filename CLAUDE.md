@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ThinkForge is a natural language cache framework that maps NL queries to structured outputs (SQL, API calls, URLs, workflows) using semantic similarity search. The system uses vector embeddings to find relevant cached entries and supports entity extraction/substitution for dynamic templates.
 
+The framework includes recipe analysis capabilities that parse natural language workflows into structured steps and map them to available tools using advanced similarity search and confidence scoring algorithms.
+
 ## Architecture
 
 ### Core Components
@@ -68,15 +70,20 @@ npm install && npm run dev  # Port 3000
 
 ### Testing
 ```bash
-# Run all tests
+# Run all tests using the test runner
 python tests/run_tests.py
 
-# Individual test files
+# Run individual test files directly
 python tests/test_controller.py
 python tests/api_integration_test.py
+python tests/simple_test.py
 
-# Test specific components
+# Test specific components interactively
 python -c "from thinkforge.similarity import Text2SQLSimilarity; s = Text2SQLSimilarity(); print('Similarity utility working')"
+python -c "from thinkforge.controller import Text2SQLController; print('Controller module loads correctly')"
+
+# Run pytest if configured (alternative method)
+python -m pytest tests/ -v
 ```
 
 ### Docker Operations
@@ -195,10 +202,16 @@ USE_PG_VECTOR=false
 ## Recipe Analysis Architecture
 
 ### Recipe Processing Pipeline
-1. **Step Analyzer** (`RecipeStepAnalyzer`) - Parses natural language into structured steps
-2. **Tool Mapper** (`RecipeToolMapper`) - Maps steps to available tools via similarity search
-3. **Confidence Engine** (`ConfidenceEngine`) - Scores tool matches for reliability
+1. **Step Analyzer** (`RecipeStepAnalyzer`) - Parses natural language into structured steps with action verbs and entities
+2. **Tool Mapper** (`RecipeToolMapper`) - Maps steps to available tools via multi-phase similarity search
+3. **Confidence Engine** (`ConfidenceEngine`) - Scores tool matches for reliability using weighted scoring
 4. **Recipe Compiler** (`RecipeCompiler`) - Compiles recipes to executable workflow formats
+
+### Tool Mapping Strategy
+- **Multi-phase Search**: Semantic → Broad → Keyword → Ultra-broad fallback
+- **Similarity Thresholds**: Uses proven thresholds from `/v1/complete` endpoint (0.6 initial, 0.4 fallback)
+- **Tool Type Expansion**: Includes function, api, mcp_tool, agent, sql, url, workflow, script, cli types
+- **OR-Logic Catalog Filtering**: Matches approach used by other successful endpoints
 
 ### Workflow Compilation Formats
 - **Langchain**: LCEL (LangChain Expression Language) format
@@ -223,9 +236,22 @@ USE_PG_VECTOR=false
 
 - The project has both `frontend/` (Next.js, legacy) and `frontend-react/` (current Vite-based)
 - Vector embeddings can use either JSONB storage or pgvector extension
-- LLM integration is optional for template generation and enhancement
+- LLM integration is optional for template generation and enhancement (requires OPENROUTER_API_KEY)
 - Supports multiple embedding models via sentence-transformers
 - Template validation ensures quality before caching
 - Usage logging tracks performance metrics and user patterns
 - Recipe analysis uses real similarity search against database tools
 - Execution config enables actual tool invocation with proper parameters
+
+## Troubleshooting
+
+### Recipe Analysis Issues
+- If recipe analysis shows "0 tools available", check that catalog filtering uses OR logic not strict equality
+- Ensure similarity thresholds match proven `/v1/complete` approach (0.6 initial, lower fallback)
+- Verify tool type matching includes broad types (function, api, mcp_tool, agent, sql, url, workflow, script, cli)
+- Check that semantic search preserves original query context instead of transforming to keywords
+
+### Frontend Catalog Dropdowns
+- CatalogSelect component should support hierarchical filtering with catalogType/catalogSubtype props
+- API calls should use query parameters for filtering: `/v1/catalog/values?catalog_type=X&catalog_subtype=Y`
+- Dropdown cascading should clear child selections when parent values change

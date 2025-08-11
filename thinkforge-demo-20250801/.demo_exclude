@@ -1,0 +1,47 @@
+# Exclude development and runtime files
+node_modules
+.git
+.gitignore
+*.log
+__pycache__
+*.pyc
+.pytest_cache
+.coverage
+dist
+build
+.env
+.env.*
+.DS_Store
+Thumbs.db
+
+# Exclude development databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Exclude large model files (will be downloaded on first run)
+models/
+.cache/
+
+# Exclude personal configurations
+config.local.*
+.vscode/
+.idea/
+
+# Exclude temporary files
+tmp/
+temp/
+*.tmp
+*.swp
+*.swo
+
+# Exclude build artifacts
+target/
+.next/
+out/
+
+# Keep demo-specific files
+!.env.demo
+!docker-compose.demo.yml
+!DEMO_README.md
+!DEMO_GUIDE.md

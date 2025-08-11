@@ -1,0 +1,98 @@
+version: '3.8'
+
+services:
+  # PostgreSQL database for better demo experience
+  postgres:
+    image: postgres:15-alpine
+    container_name: thinkforge-postgres
+    environment:
+      POSTGRES_DB: thinkforge_demo
+      POSTGRES_USER: thinkforge
+      POSTGRES_PASSWORD: demo_password_2024
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=C --lc-ctype=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./dbscripts/create_tables.sql:/docker-entrypoint-initdb.d/01-create-tables.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U thinkforge -d thinkforge_demo"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - thinkforge-network
+
+  # Backend API service
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.demo
+    container_name: thinkforge-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - MCP_DB_URL=postgresql://thinkforge:demo_password_2024@postgres:5432/thinkforge_demo
+      - DEFAULT_MODEL_NAME=sentence-transformers/all-mpnet-base-v2
+      - SIMILARITY_THRESHOLD=0.75
+      - SESSION_TTL=3600
+      - SESSION_CLEANUP_INTERVAL=300
+      - PYTHONPATH=/app
+      - DEMO_MODE=true
+      - AUTO_SEED_DATA=true
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./demo_data_export:/app/demo_data
+    networks:
+      - thinkforge-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend React application
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.demo
+    container_name: thinkforge-frontend
+    ports:
+      - "3001:3000"
+    environment:
+      - NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+      - NODE_ENV=production
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - thinkforge-network
+
+  # Optional: Redis for caching (enhances demo performance)
+  redis:
+    image: redis:7-alpine
+    container_name: thinkforge-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - thinkforge-network
+    command: redis-server --appendonly yes
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  thinkforge-network:
+    driver: bridge
+
+# Health check endpoint for the entire stack
+# Access at http://localhost:8000/health for backend
+# Access at http://localhost:3001 for frontend

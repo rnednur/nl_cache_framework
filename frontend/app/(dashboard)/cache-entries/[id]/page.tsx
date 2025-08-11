@@ -1,12 +1,12 @@
 "use client"
 
 import { useEffect, useState } from "react";
-import api from "../../../services/api";
+import api from "@/app/services/api";
 import { CacheEntryForm } from "./CacheEntryForm";
 import { useRouter } from "next/navigation";
-import { Button } from "../../../components/ui/button";
-import { Card } from "../../../components/ui/card";
-import { CacheBreadcrumbs } from "@/components/ui/CacheBreadcrumbs";
+import { Button } from "@/app/components/ui/button";
+import { Card } from "@/app/components/ui/card";
+import { Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink } from "@/app/components/ui/breadcrumb";
 
 export default function CacheEntryDetail({ params }: { params: { id: string } }) {
   const router = useRouter();
@@ -57,14 +57,19 @@ export default function CacheEntryDetail({ params }: { params: { id: string } })
 
   return (
     <div className="space-y-6">
-      <CacheBreadcrumbs 
-        items={[
-          { label: "Dashboard", href: "/dashboard" },
-          { label: "Cache Entries", href: "/cache-entries" },
-          { label: `Cache Entry #${params.id}` }
-        ]}
-        className="mb-2"
-      />
+      <Breadcrumb className="mb-2">
+        <BreadcrumbList>
+          <BreadcrumbItem>
+            <BreadcrumbLink href="/dashboard">Dashboard</BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbItem>
+            <BreadcrumbLink href="/cache-entries">Cache Entries</BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbItem>
+            <span>Cache Entry #{params.id}</span>
+          </BreadcrumbItem>
+        </BreadcrumbList>
+      </Breadcrumb>
     
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold tracking-tight">View Cache Entry</h1>

@@ -9,7 +9,7 @@ import { Input } from "./input"
 import { Button } from "./button"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "./command"
 import { Popover, PopoverContent, PopoverTrigger } from "./popover"
-import api from "../../services/api"
+import api from "@/app/services/api"
 
 export interface CatalogSelectProps {
   value?: string
@@ -51,12 +51,12 @@ export function CatalogSelect({
     const loadCatalogValues = async () => {
       setIsLoading(true)
       try {
-        // Build query parameters for hierarchical filtering
-        const queryParams = new URLSearchParams()
-        if (catalogType) queryParams.append('catalog_type', catalogType)
-        if (catalogSubtype) queryParams.append('catalog_subtype', catalogSubtype)
+        // Build filters for hierarchical filtering
+        const filters: { catalog_type?: string; catalog_subtype?: string } = {}
+        if (catalogType) filters.catalog_type = catalogType
+        if (catalogSubtype) filters.catalog_subtype = catalogSubtype
         
-        const data = await api.getCatalogValues(queryParams.toString() ? `?${queryParams}` : '')
+        const data = await api.getCatalogValues(Object.keys(filters).length > 0 ? filters : undefined)
         
         switch (catalogField) {
           case 'catalog_type':

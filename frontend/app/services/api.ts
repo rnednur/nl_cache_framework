@@ -33,7 +33,6 @@ export interface CacheItem {
     depends_on?: string[];
   }>;
   required_tools?: number[];
-  execution_time_estimate?: number;
   complexity_level?: string;
   success_rate?: number;
   last_executed?: string;
