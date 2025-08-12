@@ -94,8 +94,16 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
     },
   ]
 
-  // ReactFlow state
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes || defaultNodes)
+  // ReactFlow state with start node guarantee
+  const ensureStartNode = (nodeList: Node[]) => {
+    const hasStartNode = nodeList.some(n => n.id === 'start')
+    if (!hasStartNode) {
+      return [defaultNodes[0], ...nodeList] // Add start node at beginning
+    }
+    return nodeList
+  }
+  
+  const [nodes, setNodes, onNodesChange] = useNodesState(ensureStartNode(initialNodes || defaultNodes))
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges || [])
 
   // Search and cache state
@@ -108,6 +116,22 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
   const [internalIsMaximized, setInternalIsMaximized] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
   
+  // Enhanced search state
+  const [searchStatus, setSearchStatus] = useState<'idle' | 'searching' | 'semantic' | 'llm' | 'fallback'>('idle')
+  const [searchResultsCount, setSearchResultsCount] = useState<number>(0)
+  const [searchMethod, setSearchMethod] = useState<'semantic' | 'llm' | 'fallback' | 'none'>('none')
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize] = useState(10)
+  const [totalEntries, setTotalEntries] = useState(0)
+  const [hasMorePages, setHasMorePages] = useState(true)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+  
+  // Semantic search pagination
+  const [semanticSearchLimit, setSemanticSearchLimit] = useState(20) // Increased from 10
+  const [hasMoreSemanticResults, setHasMoreSemanticResults] = useState(false)
+  
   // Use controlled state if onMaximizeChange is provided, otherwise use internal state
   const isMaximized = onMaximizeChange ? (isMaximizedProp ?? false) : internalIsMaximized
   const setIsMaximized = onMaximizeChange ? 
@@ -117,10 +141,20 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
     } : 
     setInternalIsMaximized
   
-  // Advanced filters
+  // Advanced filters with better template type organization
   const [filterCatalogType, setFilterCatalogType] = useState<string>('all')
   const [filterCatalogSubtype, setFilterCatalogSubtype] = useState<string>('all')
   const [filterTemplateType, setFilterTemplateType] = useState<string>('all')
+  
+  // Enhanced template type categories for better UX
+  const templateTypeCategories = {
+    'Data & Queries': ['sql', 'nosql', 'graphql'],
+    'APIs & Services': ['api', 'url', 'mcp_tool'],
+    'Code & Scripts': ['script', 'cli', 'function'],
+    'AI & Processing': ['prompt', 'agent', 'reasoning_steps'],
+    'Workflows': ['workflow', 'recipe', 'recipe_step', 'recipe_template'],
+    'Configuration': ['configuration', 'dsl', 'regex']
+  }
   
   // Available filter options (will be populated from actual data)
   const [availableCatalogTypes, setAvailableCatalogTypes] = useState<string[]>([])
@@ -167,8 +201,33 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
         const hasOnlyStartNode = currentNodeCount <= 1 && nodes.every(n => n.id === 'start')
         
         if (savedNodes && Array.isArray(savedNodes) && savedNodes.length > 0 && hasOnlyStartNode) {
-          setNodes(savedNodes)
-          console.log('Restored nodes from localStorage:', { count: savedNodes.length })
+          // Ensure start node always exists in restored nodes
+          const hasStartNode = savedNodes.some(n => n.id === 'start')
+          let nodesToRestore = savedNodes
+          
+          if (!hasStartNode) {
+            // Add start node if it doesn't exist in saved nodes
+            const startNode = {
+              id: 'start',
+              type: 'input',
+              position: { x: 250, y: 50 },
+              data: { label: 'Start' },
+              style: {
+                background: '#10b981',
+                color: 'white',
+                border: '2px solid #047857',
+                borderRadius: '8px',
+              },
+            }
+            nodesToRestore = [startNode, ...savedNodes]
+            console.log('Added missing start node to restored nodes')
+          }
+          
+          setNodes(nodesToRestore)
+          console.log('Restored nodes from localStorage:', { 
+            count: nodesToRestore.length,
+            hasStartNode: nodesToRestore.some(n => n.id === 'start')
+          })
         }
         
         if (savedEdges && Array.isArray(savedEdges) && edges.length === 0) {
@@ -187,16 +246,45 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
 
   // Save workflow state whenever nodes, edges, or sidebar state changes (debounced)
   useEffect(() => {
+    // Only save if we have nodes (avoid saving empty state)
+    if (nodes.length === 0) return
+    
     const timeoutId = setTimeout(() => {
       try {
+        // Ensure start node is always preserved in saved state
+        const hasStartNode = nodes.some(n => n.id === 'start')
+        let nodesToSave = nodes
+        
+        if (!hasStartNode && nodes.length > 0) {
+          // Add start node if missing before saving
+          const startNode = {
+            id: 'start',
+            type: 'input',
+            position: { x: 250, y: 50 },
+            data: { label: 'Start' },
+            style: {
+              background: '#10b981',
+              color: 'white',
+              border: '2px solid #047857',
+              borderRadius: '8px',
+            },
+          }
+          nodesToSave = [startNode, ...nodes]
+          console.log('Added missing start node before saving')
+        }
+        
         const workflowState = {
-          nodes,
+          nodes: nodesToSave,
           edges,
           sidebarCollapsed,
           timestamp: new Date().toISOString()
         }
         localStorage.setItem(workflowKey, JSON.stringify(workflowState))
-        console.log('Saved workflow state to localStorage:', { nodes: nodes.length, edges: edges.length })
+        console.log('Saved workflow state to localStorage:', { 
+          nodes: nodesToSave.length, 
+          edges: edges.length,
+          hasStartNode: nodesToSave.some(n => n.id === 'start')
+        })
       } catch (error) {
         console.warn('Failed to save workflow state:', error)
       }
@@ -226,23 +314,41 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
     }
   }, [workflowKey])
 
-  // Fetch cache entries
+  // Fetch cache entries with pagination
   useEffect(() => {
     const fetchCacheEntries = async () => {
       setLoading(true)
       try {
-        const response = await api.getCacheEntries(1, 50) // Get first 50 entries
-        setCacheEntries(response.items)
-        setFilteredEntries(response.items)
-        
-        // Extract unique filter options from the data
-        const catalogTypes = [...new Set(response.items.map(item => item.catalog_type).filter(Boolean))]
-        const catalogSubtypes = [...new Set(response.items.map(item => item.catalog_subtype).filter(Boolean))]
-        const templateTypes = [...new Set(response.items.map(item => item.template_type).filter(Boolean))]
-        
-        setAvailableCatalogTypes(catalogTypes)
-        setAvailableCatalogSubtypes(catalogSubtypes)
-        setAvailableTemplateTypes(templateTypes)
+        // Use semantic search for initial load if we have catalog context
+        if (catalogType && catalogType !== 'all' && catalogSubtype && catalogSubtype !== 'all') {
+          // Try to get relevant entries based on catalog context using semantic search
+          try {
+            const response = await api.searchCacheEntries(
+              '', // Empty query to get general matches
+              undefined, // Any template type
+              0.7, // Medium similarity threshold for initial load
+              20,  // Get more results for initial semantic load
+              catalogType,
+              catalogSubtype,
+              catalogName
+            )
+            setCacheEntries(response)
+            setFilteredEntries(response)
+            setSearchMethod('semantic')
+            setSearchResultsCount(response.length)
+            setTotalEntries(response.length)
+            setHasMorePages(false) // Semantic search returns all results at once
+            setCurrentPage(1)
+            console.log(`Initial semantic load found ${response.length} relevant entries`)
+          } catch (semanticError) {
+            console.warn('Initial semantic search failed, falling back to paginated fetch:', semanticError)
+            // Fallback to paginated fetch
+            await fetchPaginatedEntries(1, 'all', 'all', 'all')
+          }
+        } else {
+          // No catalog context, use paginated fetch
+          await fetchPaginatedEntries(1, 'all', 'all', 'all')
+        }
       } catch (error) {
         console.error('Failed to fetch cache entries:', error)
         // Fallback mock data
@@ -257,6 +363,7 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
             entity_replacements: {},
             tags: { database: ['users'] },
             status: 'active',
+            usage_count: 0,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           },
@@ -270,6 +377,7 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
             entity_replacements: {},
             tags: { notification: ['api'] },
             status: 'active',
+            usage_count: 0,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           },
@@ -283,58 +391,401 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
             entity_replacements: {},
             tags: { python: ['transform'] },
             status: 'active',
+            usage_count: 0,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           },
         ]
         setCacheEntries(mockEntries)
         setFilteredEntries(mockEntries)
-        
-        // Set mock filter options
-        setAvailableCatalogTypes(['fullflow', 'subflow', 'automation'])
-        setAvailableCatalogSubtypes(['interactive', 'batch', 'scheduled'])
-        setAvailableTemplateTypes(['sql', 'api', 'script', 'workflow'])
+        setSearchMethod('none')
+        setSearchResultsCount(mockEntries.length)
+        setTotalEntries(mockEntries.length)
+        setHasMorePages(false)
+        setCurrentPage(1)
       } finally {
         setLoading(false)
       }
     }
 
     fetchCacheEntries()
-  }, [])
+  }, [catalogType, catalogSubtype, catalogName])
 
-  // Filter entries based on search query and advanced filters
+  // Fetch catalog values for filters
   useEffect(() => {
-    let filtered = [...cacheEntries]
+    const fetchCatalogValues = async () => {
+      try {
+        // Get catalog values with hierarchical filtering
+        const filters: { catalog_type?: string; catalog_subtype?: string } = {}
+        if (catalogType && catalogType !== 'all') {
+          filters.catalog_type = catalogType
+        }
+        if (catalogSubtype && catalogSubtype !== 'all') {
+          filters.catalog_subtype = catalogSubtype
+        }
+        
+        const catalogData = await api.getCatalogValues(Object.keys(filters).length > 0 ? filters : undefined)
+        
+        setAvailableCatalogTypes(catalogData.catalog_types || [])
+        setAvailableCatalogSubtypes(catalogData.catalog_subtypes || [])
+        
+        // Get template types from the actual data, but provide fallback
+        let templateTypes = catalogData.template_types || []
+        if (templateTypes.length === 0) {
+          // Fallback to predefined enum values
+          templateTypes = [
+            'sql', 'url', 'api', 'workflow', 'graphql', 'regex', 'script', 'nosql',
+            'cli', 'prompt', 'configuration', 'reasoning_steps', 'dsl', 'mcp_tool',
+            'agent', 'function', 'recipe', 'recipe_step', 'recipe_template'
+          ]
+        }
+        setAvailableTemplateTypes(templateTypes)
+        
+        console.log('Catalog values loaded:', {
+          catalogTypes: catalogData.catalog_types?.length || 0,
+          catalogSubtypes: catalogData.catalog_subtypes?.length || 0,
+          templateTypes: templateTypes.length
+        })
+        
+        // Also refresh catalog values to ensure filter state is correct
+        await refreshCatalogValues()
+      } catch (error) {
+        console.error('Failed to fetch catalog values:', error)
+        // Set fallback values
+        setAvailableCatalogTypes(['fullflow', 'subflow', 'automation'])
+        setAvailableCatalogSubtypes(['interactive', 'batch', 'scheduled'])
+        setAvailableTemplateTypes(['sql', 'api', 'script', 'workflow'])
+      }
+    }
 
-    // Apply text search filter
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase()
-      filtered = filtered.filter(entry =>
-        entry.nl_query.toLowerCase().includes(query) ||
-        entry.template_type.toLowerCase().includes(query) ||
-        (entry.reasoning_trace && entry.reasoning_trace.toLowerCase().includes(query)) ||
-        (entry.catalog_type && entry.catalog_type.toLowerCase().includes(query)) ||
-        (entry.catalog_subtype && entry.catalog_subtype.toLowerCase().includes(query))
+    fetchCatalogValues()
+  }, [catalogType, catalogSubtype])
+
+  // Enhanced hierarchical filtering with better state management
+  const refreshCatalogValues = async () => {
+    try {
+      const filters: { catalog_type?: string; catalog_subtype?: string } = {}
+      
+      // Only include catalog_type filter if it's selected (not 'all')
+      if (filterCatalogType !== 'all') {
+        filters.catalog_type = filterCatalogType
+      }
+      
+      // Don't include catalog_subtype in the filter when getting available subtypes
+      // We want to see all subtypes for the selected catalog_type
+      
+      console.log('Refreshing catalog values with filters:', filters)
+      
+      const catalogData = await api.getCatalogValues(Object.keys(filters).length > 0 ? filters : undefined)
+      
+      console.log('Received catalog data:', catalogData)
+      
+      // Always update catalog types (they don't change based on filters)
+      setAvailableCatalogTypes(catalogData.catalog_types || [])
+      
+      // Update subtypes based on selected catalog type only
+      setAvailableCatalogSubtypes(catalogData.catalog_subtypes || [])
+      
+      // If current subtype is not available in the new list, reset it
+      if (filterCatalogSubtype !== 'all' && 
+          catalogData.catalog_subtypes && 
+          !catalogData.catalog_subtypes.includes(filterCatalogSubtype)) {
+        console.log(`Resetting catalog subtype '${filterCatalogSubtype}' as it's not available for catalog type '${filterCatalogType}'`)
+        setFilterCatalogSubtype('all')
+      }
+      
+      console.log('Catalog values refreshed for filters:', {
+        filterCatalogType,
+        filterCatalogSubtype,
+        availableCatalogTypes: catalogData.catalog_types?.length || 0,
+        availableCatalogSubtypes: catalogData.catalog_subtypes?.length || 0
+      })
+    } catch (error) {
+      console.error('Failed to refresh catalog values:', error)
+    }
+  }
+
+  // Paginated fetch function with optional filtering
+  const fetchPaginatedEntries = async (page: number, templateType?: string, catalogType?: string, catalogSubtype?: string) => {
+    try {
+      const response = await api.getCacheEntries(
+        page, 
+        pageSize,
+        templateType !== 'all' ? templateType : undefined,
+        undefined, // searchQuery
+        catalogType !== 'all' ? catalogType : undefined,
+        catalogSubtype !== 'all' ? catalogSubtype : undefined
       )
+      
+      if (page === 1) {
+        // First page - replace all entries
+        setCacheEntries(response.items)
+        setFilteredEntries(response.items)
+        setCurrentPage(1)
+      } else {
+        // Subsequent pages - append to existing entries
+        setCacheEntries(prev => [...prev, ...response.items])
+        setFilteredEntries(prev => [...prev, ...response.items])
+        setCurrentPage(page)
+      }
+      
+      setTotalEntries(response.total)
+      setHasMorePages(response.items.length === pageSize && response.total > page * pageSize)
+      setSearchMethod('none')
+      setSearchResultsCount(response.items.length)
+      console.log(`Fetched filtered page ${page}:`, {
+        entries: response.items.length,
+        total: response.total,
+        templateType,
+        catalogType,
+        catalogSubtype
+      })
+    } catch (error) {
+      console.error(`Failed to fetch filtered page ${page}:`, error)
+    }
+  }
+  
+  // Server-side filtered request
+  const performFilteredRequest = async () => {
+    setLoading(true)
+    try {
+      await fetchPaginatedEntries(
+        1,
+        filterTemplateType,
+        filterCatalogType,
+        filterCatalogSubtype
+      )
+      setSearchStatus('idle')
+      setSearchMethod('none')
+      setHasMoreSemanticResults(false)
+      setSemanticSearchLimit(20)
+    } catch (error) {
+      console.error('Failed to perform filtered request:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Load more paginated entries
+  const loadMoreEntries = async () => {
+    if (isLoadingMore || !hasMorePages) return
+    
+    setIsLoadingMore(true)
+    try {
+      await fetchPaginatedEntries(
+        currentPage + 1,
+        filterTemplateType,
+        filterCatalogType,
+        filterCatalogSubtype
+      )
+    } finally {
+      setIsLoadingMore(false)
+    }
+  }
+
+  // Enhanced search with LLM completion fallback and load more support
+  const performEnhancedSearch = async (query: string, loadMore: boolean = false) => {
+    if (!query.trim()) {
+      // Reset to default entries if no query
+      setSearchStatus('idle')
+      setSearchMethod('none')
+      setSearchResultsCount(0)
+      setHasMoreSemanticResults(false)
+      setSemanticSearchLimit(20) // Increased from 10
+      try {
+        // Reset to paginated view
+        await fetchPaginatedEntries(1, 'all', 'all', 'all')
+      } catch (error) {
+        console.error('Failed to reset cache entries:', error)
+      }
+      return
     }
 
-    // Apply catalog type filter
-    if (filterCatalogType !== 'all') {
-      filtered = filtered.filter(entry => entry.catalog_type === filterCatalogType)
+    setLoading(true)
+    setSearchStatus('searching')
+    
+    // Determine search limit for load more - start with more results
+    const searchLimit = loadMore ? semanticSearchLimit + 20 : 20 // Increased from 10
+    
+    try {
+      // Primary: Semantic search with more lenient threshold
+      console.log('Performing semantic search with filters:', {
+        query,
+        templateType: filterTemplateType,
+        catalogType: filterCatalogType,
+        catalogSubtype: filterCatalogSubtype,
+        catalogName,
+        limit: searchLimit
+      })
+      
+      const searchResults = await api.searchCacheEntries(
+        query,
+        filterTemplateType !== 'all' ? filterTemplateType : undefined,
+        0.6, // Lowered from 0.8 to be less restrictive
+        searchLimit,
+        filterCatalogType !== 'all' ? filterCatalogType : undefined,
+        filterCatalogSubtype !== 'all' ? filterCatalogSubtype : undefined,
+        catalogName
+      )
+
+      console.log('Semantic search results:', searchResults)
+
+      if (searchResults && searchResults.length > 0) {
+        // Good semantic matches found
+        if (loadMore) {
+          // Append to existing results, avoiding duplicates
+          setCacheEntries(prev => {
+            const existingIds = new Set(prev.map(item => item.id))
+            const newResults = searchResults.filter(item => !existingIds.has(item.id))
+            return [...prev, ...newResults]
+          })
+          setFilteredEntries(prev => {
+            const existingIds = new Set(prev.map(item => item.id))
+            const newResults = searchResults.filter(item => !existingIds.has(item.id))
+            return [...prev, ...newResults]
+          })
+        } else {
+          // Replace all results
+          setCacheEntries(searchResults)
+          setFilteredEntries(searchResults)
+        }
+        
+        setSearchStatus('semantic')
+        setSearchMethod('semantic')
+        setSearchResultsCount(searchResults.length)
+        setSemanticSearchLimit(searchLimit)
+        setHasMoreSemanticResults(searchResults.length === searchLimit)
+        console.log(`Found ${searchResults.length} semantic matches for: "${query}"`)
+      } else {
+        // No semantic matches, try LLM completion for suggestions
+        console.log('No semantic matches found, trying LLM completion...')
+        setSearchStatus('llm')
+        
+        try {
+          const completion = await api.complete({
+            prompt: `Suggest cache entries for workflow step: "${query}". Consider workflow context: type=${filterCatalogType}, mode=${filterCatalogSubtype}`,
+            use_llm: true,
+            catalog_type: filterCatalogType !== 'all' ? filterCatalogType : undefined,
+            catalog_subtype: filterCatalogSubtype !== 'all' ? filterCatalogSubtype : undefined,
+            similarity_threshold: 0.5, // Lowered from 0.6 for more suggestions
+            limit: 10 // Increased from 5
+          })
+
+          console.log('LLM completion result:', completion)
+
+          if (completion.cache_hit && completion.considered_entries && completion.considered_entries.length > 0) {
+            // LLM found some suggestions, fetch those entries
+            const suggestedEntries = await api.getBulkCacheEntries(completion.considered_entries)
+            console.log('LLM suggested entries:', suggestedEntries)
+            
+            setCacheEntries(suggestedEntries)
+            setFilteredEntries(suggestedEntries)
+            setSearchStatus('llm')
+            setSearchMethod('llm')
+            setSearchResultsCount(suggestedEntries.length)
+            setHasMoreSemanticResults(false) // LLM suggestions are limited
+            console.log(`LLM suggested ${suggestedEntries.length} alternative entries`)
+          } else {
+            // No LLM suggestions either, show empty state with helpful message
+            setCacheEntries([])
+            setFilteredEntries([])
+            setSearchStatus('idle')
+            setSearchMethod('none')
+            setSearchResultsCount(0)
+            setHasMoreSemanticResults(false)
+            console.log('No LLM suggestions found')
+          }
+        } catch (llmError) {
+          console.warn('LLM completion failed, showing empty results:', llmError)
+          setCacheEntries([])
+          setFilteredEntries([])
+          setSearchStatus('idle')
+          setSearchMethod('none')
+          setSearchResultsCount(0)
+          setHasMoreSemanticResults(false)
+        }
+      }
+    } catch (error) {
+      console.error('Enhanced search failed:', error)
+      setSearchStatus('fallback')
+      // Fallback to basic search
+      try {
+        console.log('Trying fallback search...')
+        const fallbackResults = await api.getCacheEntries(1, 50) // Increased from 20
+        
+        // Apply current filters to fallback results
+        let basicFiltered = fallbackResults.items.filter(entry => {
+          const matchesQuery = entry.nl_query.toLowerCase().includes(query.toLowerCase()) ||
+                              entry.template_type.toLowerCase().includes(query.toLowerCase())
+          
+          const matchesCatalogType = filterCatalogType === 'all' || entry.catalog_type === filterCatalogType
+          const matchesCatalogSubtype = filterCatalogSubtype === 'all' || entry.catalog_subtype === filterCatalogSubtype
+          const matchesTemplateType = filterTemplateType === 'all' || entry.template_type === filterTemplateType
+          
+          return matchesQuery && matchesCatalogType && matchesCatalogSubtype && matchesTemplateType
+        })
+        
+        console.log('Fallback search results:', basicFiltered)
+        
+        setCacheEntries(basicFiltered)
+        setFilteredEntries(basicFiltered)
+        setSearchMethod('fallback')
+        setSearchResultsCount(basicFiltered.length)
+        setHasMoreSemanticResults(false)
+      } catch (fallbackError) {
+        console.error('Fallback search also failed:', fallbackError)
+        setCacheEntries([])
+        setFilteredEntries([])
+        setSearchMethod('none')
+        setSearchResultsCount(0)
+        setHasMoreSemanticResults(false)
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Load more semantic search results
+  const loadMoreSemanticResults = async () => {
+    if (searchQuery.trim() && hasMoreSemanticResults) {
+      await performEnhancedSearch(searchQuery, true)
+    }
+  }
+
+  // Debounced search and filter application
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      // If search is empty, check if we need to apply server-side filters
+      const hasActiveFilters = filterCatalogType !== 'all' || 
+                              filterCatalogSubtype !== 'all' || 
+                              filterTemplateType !== 'all'
+      
+      if (hasActiveFilters) {
+        // Make server-side filtered request
+        performFilteredRequest()
+      } else {
+        // No filters active, use existing entries or fetch default
+        if (cacheEntries.length === 0) {
+          fetchPaginatedEntries(1, 'all', 'all', 'all')
+        } else {
+          setFilteredEntries(cacheEntries)
+          setSearchStatus('idle')
+          setSearchMethod('none')
+          setSearchResultsCount(cacheEntries.length)
+          setHasMoreSemanticResults(false)
+          setSemanticSearchLimit(20)
+        }
+      }
+      return
     }
 
-    // Apply catalog subtype filter
-    if (filterCatalogSubtype !== 'all') {
-      filtered = filtered.filter(entry => entry.catalog_subtype === filterCatalogSubtype)
-    }
+    const timeoutId = setTimeout(() => {
+      console.log('Triggering search for:', searchQuery)
+      performEnhancedSearch(searchQuery)
+    }, 500)
 
-    // Apply template type filter
-    if (filterTemplateType !== 'all') {
-      filtered = filtered.filter(entry => entry.template_type === filterTemplateType)
-    }
-
-    setFilteredEntries(filtered)
-  }, [searchQuery, cacheEntries, filterCatalogType, filterCatalogSubtype, filterTemplateType])
+    return () => clearTimeout(timeoutId)
+  }, [searchQuery, filterCatalogType, filterCatalogSubtype, filterTemplateType])
 
   // Store the latest onWorkflowChange callback in a ref to avoid dependency issues
   const onWorkflowChangeRef = useRef(onWorkflowChange)
@@ -408,7 +859,7 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
     // If no position specified, place node in the center of the visible viewport
     if (!nodePosition) {
       const viewport = getViewport()
-      const centerX = -viewport.x + (window.innerWidth - (sidebarCollapsed ? 0 : 320)) / 2 / viewport.zoom
+      const centerX = -viewport.x + (window.innerWidth - (sidebarCollapsed ? 0 : 384)) / 2 / viewport.zoom
       const centerY = -viewport.y + window.innerHeight / 2 / viewport.zoom
       
       // Add some randomness to avoid overlapping nodes
@@ -430,6 +881,18 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
         cacheEntryId: entry.id,
         templateType: entry.template_type,
         template: entry.template,
+        // Enhanced metadata for better DSL generation
+        catalogType: entry.catalog_type,
+        catalogSubtype: entry.catalog_subtype,
+        catalogName: entry.catalog_name,
+        reasoningTrace: entry.reasoning_trace,
+        entityReplacements: entry.entity_replacements,
+        tags: entry.tags,
+        status: entry.status,
+        // For DSL compilation
+        originalQuery: entry.nl_query,
+        isTemplate: entry.is_template,
+        usageCount: entry.usage_count || 0
       },
       style: {
         background: getTemplateColor(entry.template_type),
@@ -438,8 +901,10 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
         borderRadius: '8px',
         fontSize: '12px',
         fontWeight: 'bold',
-        width: 200,
+        width: 220, // Slightly wider to accommodate more info
         textAlign: 'center',
+        padding: '8px',
+        minHeight: '60px'
       },
       selected: true, // Auto-select the new node for visual feedback
     }
@@ -500,12 +965,21 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
     event.dataTransfer.effectAllowed = 'move'
   }
 
-  // Delete selected nodes
+  // Delete selected nodes (but never delete start node)
   const deleteSelected = () => {
     const selectedNodeIds = nodes.filter(node => node.selected && node.id !== 'start').map(node => node.id)
     const selectedEdgeIds = edges.filter(edge => edge.selected).map(edge => edge.id)
 
-    setNodes(nds => nds.filter(node => !selectedNodeIds.includes(node.id)))
+    const remainingNodes = nodes.filter(node => !selectedNodeIds.includes(node.id))
+    
+    // Ensure start node always exists after deletion
+    const hasStartNode = remainingNodes.some(n => n.id === 'start')
+    if (!hasStartNode) {
+      remainingNodes.unshift(defaultNodes[0]) // Add start node at beginning
+      console.log('Re-added start node after deletion')
+    }
+    
+    setNodes(remainingNodes)
     setEdges(eds => eds.filter(edge => 
       !selectedEdgeIds.includes(edge.id) && 
       !selectedNodeIds.includes(edge.source) && 
@@ -516,20 +990,7 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
   // Clear entire workflow
   const clearWorkflow = () => {
     if (confirm('Are you sure you want to clear the entire workflow? This will remove all nodes and connections.')) {
-      setNodes([
-        {
-          id: 'start',
-          type: 'input',
-          position: { x: 250, y: 50 },
-          data: { label: 'Start' },
-          style: {
-            background: '#10b981',
-            color: 'white',
-            border: '2px solid #047857',
-            borderRadius: '8px',
-          },
-        },
-      ])
+      setNodes(defaultNodes) // Use the defaultNodes to ensure consistent start node
       setEdges([])
       
       // Clear from localStorage
@@ -549,7 +1010,7 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
         : 'h-full'
     }`}>
       {/* Left Sidebar - Cache Entry Search */}
-      <div className={`${sidebarCollapsed ? 'w-0' : 'w-80'} bg-neutral-900 border-r border-neutral-800 flex flex-col transition-all duration-300 overflow-hidden`}>
+      <div className={`${sidebarCollapsed ? 'w-0' : 'w-96'} bg-neutral-900 border-r border-neutral-800 flex flex-col transition-all duration-300 overflow-hidden`}>
         {!sidebarCollapsed && (
           <>
             <div className="p-4 border-b border-neutral-800">
@@ -582,17 +1043,108 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
                 </div>
               </div>
 
+              {/* Compact Search Info */}
+              <div className="mb-3 p-2 bg-neutral-800/30 rounded-md border border-neutral-700/30">
+                <div className="flex items-center justify-between text-xs text-neutral-400">
+                  <span className="font-medium">Smart Search:</span>
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-1">
+                      <div className="w-1.5 h-1.5 bg-green-400 rounded-full"></div>
+                      <span>Semantic</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <div className="w-1.5 h-1.5 bg-blue-400 rounded-full"></div>
+                      <span>LLM</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <div className="w-1.5 h-1.5 bg-orange-400 rounded-full"></div>
+                      <span>Fallback</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* Search Bar */}
               <div className="relative mb-3">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-neutral-400" />
                 <input
                   type="text"
-                  placeholder="Search entries..."
+                  placeholder={`Search ${filterTemplateType !== 'all' ? filterTemplateType + ' ' : ''}entries... (try "fetch user data" or "send email")`}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 bg-neutral-800 border border-neutral-700 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                  className="w-full pl-10 pr-20 py-2 bg-neutral-800 border border-neutral-700 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                  minLength={2}
                 />
+                {searchQuery.trim() && (
+                  <button
+                    onClick={() => {
+                      setSearchQuery('')
+                      setSearchStatus('idle')
+                      setSearchMethod('none')
+                      setSearchResultsCount(0)
+                      setHasMoreSemanticResults(false)
+                      setSemanticSearchLimit(20)
+                      // Reset to paginated view
+                      fetchPaginatedEntries(1)
+                    }}
+                    className="absolute right-2 top-1/2 transform -translate-y-1/2 p-1 text-neutral-400 hover:text-neutral-300 transition-colors"
+                    title="Clear search and return to paginated view"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
               </div>
+
+              {/* Search Status Indicator */}
+              {searchQuery.trim() && (
+                <div className="mb-3 p-2 bg-neutral-800 rounded-md border border-neutral-700">
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      {searchStatus === 'searching' && (
+                        <div className="flex items-center gap-1 text-yellow-400">
+                          <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
+                          Searching...
+                        </div>
+                      )}
+                      {searchStatus === 'semantic' && (
+                        <div className="flex items-center gap-1 text-green-400">
+                          <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                          Semantic Search
+                        </div>
+                      )}
+                      {searchStatus === 'llm' && (
+                        <div className="flex items-center gap-1 text-blue-400">
+                          <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
+                          LLM Enhanced
+                        </div>
+                      )}
+                      {searchStatus === 'fallback' && (
+                        <div className="flex items-center gap-1 text-orange-400">
+                          <div className="w-2 h-2 bg-orange-400 rounded-full"></div>
+                          Fallback Search
+                        </div>
+                      )}
+                    </div>
+                    {searchResultsCount > 0 && (
+                      <span className="text-neutral-400">
+                        {searchResultsCount} result{searchResultsCount !== 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </div>
+                  {searchMethod !== 'none' && (
+                    <div className="mt-1 text-xs text-neutral-500">
+                      {searchMethod === 'semantic' && 'Using vector similarity search (60% threshold)'}
+                      {searchMethod === 'llm' && 'Using LLM-enhanced suggestions'}
+                      {searchMethod === 'fallback' && 'Using basic text matching with filters'}
+                    </div>
+                  )}
+                  {searchQuery.trim().length < 2 && (
+                    <div className="mt-1 text-xs text-yellow-400">
+                      Type at least 2 characters to search
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Advanced Filters */}
               {showFilters && (
@@ -600,10 +1152,12 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold text-neutral-300">Advanced Filters</span>
                     <button
-                      onClick={() => {
+                      onClick={async () => {
                         setFilterCatalogType('all')
                         setFilterCatalogSubtype('all')
                         setFilterTemplateType('all')
+                        // Refresh catalog values after clearing filters
+                        await refreshCatalogValues()
                       }}
                       className="text-xs text-neutral-400 hover:text-neutral-300"
                     >
@@ -615,7 +1169,21 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
                     <label className="block text-xs text-neutral-400 mb-1">Catalog Type</label>
                     <select
                       value={filterCatalogType}
-                      onChange={(e) => setFilterCatalogType(e.target.value)}
+                      onChange={async (e) => {
+                        const newValue = e.target.value
+                        console.log('Catalog type changing from', filterCatalogType, 'to', newValue)
+                        
+                        // Always reset subtype when catalog type changes
+                        setFilterCatalogSubtype('all')
+                        setFilterCatalogType(newValue)
+                        
+                        // Refresh catalog values for hierarchical filtering
+                        console.log('Refreshing catalog values after catalog type change')
+                        // Use setTimeout to ensure state updates are processed
+                        setTimeout(async () => {
+                          await refreshCatalogValues()
+                        }, 100)
+                      }}
                       className="w-full px-2 py-1 bg-neutral-700 border border-neutral-600 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
                     >
                       <option value="all">All Types</option>
@@ -629,7 +1197,13 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
                     <label className="block text-xs text-neutral-400 mb-1">Catalog Subtype</label>
                     <select
                       value={filterCatalogSubtype}
-                      onChange={(e) => setFilterCatalogSubtype(e.target.value)}
+                      onChange={async (e) => {
+                        const newValue = e.target.value
+                        console.log('Catalog subtype changing from', filterCatalogSubtype, 'to', newValue)
+                        setFilterCatalogSubtype(newValue)
+                        // Note: We don't need to refresh catalog values when subtype changes
+                        // as subtypes are already filtered by the current catalog type
+                      }}
                       className="w-full px-2 py-1 bg-neutral-700 border border-neutral-600 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
                     >
                       <option value="all">All Subtypes</option>
@@ -647,14 +1221,59 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
                       className="w-full px-2 py-1 bg-neutral-700 border border-neutral-600 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
                     >
                       <option value="all">All Templates</option>
-                      {availableTemplateTypes.map(type => (
-                        <option key={type} value={type}>{type}</option>
+                      {Object.entries(templateTypeCategories).map(([category, types]) => {
+                        const availableInCategory = types.filter(type => availableTemplateTypes.includes(type))
+                        if (availableInCategory.length === 0) return null
+                        
+                        return (
+                          <optgroup key={category} label={category}>
+                            {availableInCategory.map(type => (
+                              <option key={type} value={type}>
+                                {getTemplateIcon(type)} {type.charAt(0).toUpperCase() + type.slice(1)}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )
+                      })}
+                      {/* Show uncategorized types */}
+                      {availableTemplateTypes.filter(type => 
+                        !Object.values(templateTypeCategories).flat().includes(type)
+                      ).map(type => (
+                        <option key={type} value={type}>
+                          {getTemplateIcon(type)} {type.charAt(0).toUpperCase() + type.slice(1)}
+                        </option>
                       ))}
                     </select>
                   </div>
 
                   <div className="text-xs text-neutral-500 pt-2 border-t border-neutral-700">
-                    Showing {filteredEntries.length} of {cacheEntries.length} entries
+                    {searchMethod === 'semantic' && (
+                      <div className="space-y-1">
+                        <div>Showing {filteredEntries.length} semantic search results</div>
+                        {hasMoreSemanticResults && (
+                          <div className="text-blue-400">More results available - use "Load More" below</div>
+                        )}
+                      </div>
+                    )}
+                    {searchMethod === 'none' && (
+                      <div className="space-y-1">
+                        <div>Showing {filteredEntries.length} of {totalEntries} total entries</div>
+                        {(filterCatalogType !== 'all' || filterCatalogSubtype !== 'all' || filterTemplateType !== 'all') && (
+                          <div className="text-blue-400 text-xs">
+                            Server-side filtered: 
+                            {filterTemplateType !== 'all' && `${filterTemplateType} `}
+                            {filterCatalogType !== 'all' && `${filterCatalogType} `}
+                            {filterCatalogSubtype !== 'all' && `${filterCatalogSubtype}`}
+                          </div>
+                        )}
+                        {hasMorePages && (
+                          <div className="text-green-400">More pages available - use "Load More" below</div>
+                        )}
+                      </div>
+                    )}
+                    {(searchMethod === 'llm' || searchMethod === 'fallback') && (
+                      <div>Showing {filteredEntries.length} {searchMethod === 'llm' ? 'LLM-suggested' : 'fallback'} results</div>
+                    )}
                   </div>
                 </div>
               )}
@@ -665,7 +1284,56 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
                 <div className="text-center text-neutral-400 py-8">Loading cache entries...</div>
               ) : filteredEntries.length === 0 ? (
                 <div className="text-center text-neutral-400 py-8">
-                  {searchQuery ? 'No entries match your search' : 'No cache entries found'}
+                  {searchQuery ? (
+                    <div className="space-y-3">
+                      <div className="text-lg font-medium">No entries match your search</div>
+                      <div className="text-sm space-y-2">
+                        {searchMethod === 'semantic' && (
+                          <div className="text-yellow-400">
+                            Semantic search found no similar entries above 60% similarity threshold.
+                          </div>
+                        )}
+                        {searchMethod === 'llm' && (
+                          <div className="text-blue-400">
+                            LLM couldn't find suitable alternatives for this step.
+                          </div>
+                        )}
+                        {searchMethod === 'fallback' && (
+                          <div className="text-orange-400">
+                            Basic text matching with current filters found no results.
+                          </div>
+                        )}
+                        <div className="text-neutral-500 pt-2">
+                          Try:
+                          <ul className="list-disc list-inside mt-1 space-y-1">
+                            <li>Using different keywords or synonyms</li>
+                            <li>Broadening your search terms</li>
+                            <li>Checking if the step exists in a different catalog</li>
+                            <li>Adjusting the catalog type/subtype filters</li>
+                            <li>Creating a new cache entry for this step</li>
+                          </ul>
+                        </div>
+                        <div className="pt-2">
+                          <button
+                            onClick={() => {
+                              setSearchQuery('')
+                              setSearchStatus('idle')
+                              setSearchMethod('none')
+                              setSearchResultsCount(0)
+                              setHasMoreSemanticResults(false)
+                              setSemanticSearchLimit(20)
+                              fetchPaginatedEntries(1)
+                            }}
+                            className="text-blue-400 hover:text-blue-300 underline"
+                          >
+                            Clear search and browse all entries
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    'No cache entries found'
+                  )}
                 </div>
               ) : (
                 filteredEntries.map((entry) => (
@@ -674,31 +1342,107 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
                     draggable
                     onDragStart={(e) => onDragStart(e, entry)}
                     onDoubleClick={() => addCacheEntryAsNode(entry)}
-                    className="p-3 bg-neutral-800 border border-neutral-700 rounded-lg cursor-grab hover:bg-neutral-750 active:cursor-grabbing transition-colors group"
+                    className="p-2 bg-neutral-800 border border-neutral-700 rounded-md cursor-grab hover:bg-neutral-750 active:cursor-grabbing transition-colors group"
                     onClick={() => setSelectedEntry(entry)}
                     title="Drag to canvas or double-click to add at center"
                   >
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-lg">{getTemplateIcon(entry.template_type)}</span>
-                      <span className="text-xs px-2 py-1 rounded-full" style={{ 
-                        backgroundColor: getTemplateColor(entry.template_type) + '20',
-                        color: getTemplateColor(entry.template_type)
+                      <span className="text-sm">{getTemplateIcon(entry.template_type)}</span>
+                      <span className="text-xs px-1 py-0.5 rounded text-white" style={{ 
+                        backgroundColor: getTemplateColor(entry.template_type)
                       }}>
                         {entry.template_type}
                       </span>
                     </div>
-                    <div className="text-sm font-medium text-white mb-1 line-clamp-2">
+                    <div className="text-sm font-medium text-white mb-1 line-clamp-2 leading-tight">
                       {entry.nl_query}
                     </div>
-                    {entry.reasoning_trace && (
-                      <div className="text-xs text-neutral-400 line-clamp-2">
-                        {entry.reasoning_trace}
+                    {entry.catalog_type && (
+                      <div className="text-xs text-neutral-500 mb-1">
+                        {entry.catalog_type}{entry.catalog_subtype ? ` • ${entry.catalog_subtype}` : ''}
+                      </div>
+                    )}
+                    {entry.usage_count !== undefined && entry.usage_count > 0 && (
+                      <div className="text-xs text-green-400">
+                        Used {entry.usage_count}x
                       </div>
                     )}
                   </div>
                 ))
               )}
             </div>
+
+            {/* Pagination and Load More Controls */}
+            {!loading && filteredEntries.length > 0 && (
+              <div className="p-4 border-t border-neutral-700 bg-neutral-800/50">
+                {/* Search Method Specific Controls */}
+                {searchMethod === 'semantic' && (
+                  <div className="space-y-3">
+                    <div className="text-center text-sm text-neutral-400">
+                      Showing {filteredEntries.length} semantic search results
+                    </div>
+                    {hasMoreSemanticResults && (
+                      <button
+                        onClick={loadMoreSemanticResults}
+                        disabled={isLoadingMore}
+                        className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 text-white text-sm rounded-md transition-colors flex items-center justify-center gap-2"
+                      >
+                        {isLoadingMore ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                            Loading More...
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="h-4 w-4" />
+                            Load More Semantic Results
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {searchMethod === 'none' && (
+                  <div className="space-y-3">
+                    <div className="text-center text-sm text-neutral-400">
+                      Showing {filteredEntries.length} of {totalEntries} total entries
+                    </div>
+                    {hasMorePages && (
+                      <button
+                        onClick={loadMoreEntries}
+                        disabled={isLoadingMore}
+                        className="w-full py-2 px-4 bg-green-600 hover:bg-green-700 disabled:bg-green-800 text-white text-sm rounded-md transition-colors flex items-center justify-center gap-2"
+                      >
+                        {isLoadingMore ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                            Loading Page {currentPage + 1}...
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="h-4 w-4" />
+                            Load More Entries (Page {currentPage + 1})
+                          </>
+                        )}
+                      </button>
+                    )}
+                    {!hasMorePages && totalEntries > 0 && (
+                      <div className="text-center text-xs text-neutral-500">
+                        All {totalEntries} entries loaded
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Other search methods don't need pagination */}
+                {(searchMethod === 'llm' || searchMethod === 'fallback') && (
+                  <div className="text-center text-sm text-neutral-400">
+                    Showing {filteredEntries.length} {searchMethod === 'llm' ? 'LLM-suggested' : 'fallback'} results
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="p-4 border-t border-neutral-800 text-xs text-neutral-400 space-y-1">
               <div className="flex items-center gap-2">

@@ -27,7 +27,7 @@ import {
 import api from '@/app/services/api'
 import InteractiveWorkflowBuilder from '@/app/components/ui/InteractiveWorkflowBuilder'
 import { parseNLWorkflow, type ParserResult } from '@/app/utils/nlWorkflowParser'
-import { convertWorkflowToNL, validateWorkflowStructure } from '@/app/utils/workflowToNL'
+import { convertWorkflowToNL, validateWorkflowStructure, convertWorkflowToDSL, generateExecutableWorkflow } from '@/app/utils/workflowToNL'
 import { Node, Edge } from 'reactflow'
 
 const FLOW_TYPES = [
@@ -394,74 +394,103 @@ export default function WorkflowBuilder() {
     try {
       toast.loading('Compiling workflow...', { id: 'compile' })
       
-      // Simulate API call for compilation
-      await new Promise(resolve => setTimeout(resolve, 2000))
+      // Validate that we have a workflow to compile
+      if (!workflowNodes || workflowNodes.length <= 1) {
+        throw new Error('No workflow steps defined. Please add steps to the visual workflow builder.')
+      }
       
-      // Mock successful compilation
+      // Validate workflow structure first
+      const validation = validateWorkflowStructure(workflowNodes, workflowEdges)
+      const validationResults: ValidationItem[] = []
+      
+      // Add validation results
+      validation.errors.forEach(error => {
+        validationResults.push({ type: 'error', icon: '✗', message: error })
+      })
+      validation.warnings.forEach(warning => {
+        validationResults.push({ type: 'warning', icon: '!', message: warning })
+      })
+      
+      // If there are errors, compilation fails
+      if (!validation.isValid) {
+        const result: CompilationResult = {
+          success: false,
+          steps_detected: workflowNodes.length - 1, // Exclude start node
+          edges_wired: workflowEdges.length,
+          tools_resolved: 0,
+          dsl: null,
+          validation_results: validationResults
+        }
+        setCompilationResult(result)
+        toast.error('Compilation failed due to validation errors', { id: 'compile' })
+        return
+      }
+      
+      // Generate real DSL from the workflow
+      const dslResult = convertWorkflowToDSL(workflowNodes, workflowEdges, workflowName)
+      
+      if (!dslResult.success || !dslResult.dsl) {
+        throw new Error(dslResult.error || 'Failed to generate DSL from workflow')
+      }
+      
+      // Generate executable workflow format
+      const executableResult = generateExecutableWorkflow(workflowNodes, workflowEdges, workflowName)
+      
+      // Count cache-referenced steps vs manual steps
+      const cacheReferencedSteps = workflowNodes.filter(node => 
+        node.id !== 'start' && node.data?.cacheEntryId
+      ).length
+      const manualSteps = (workflowNodes.length - 1) - cacheReferencedSteps // Exclude start node
+      
+      // Add success validation results
+      validationResults.push(
+        { type: 'success', icon: '✓', message: `${workflowNodes.length - 1} workflow steps detected` },
+        { type: 'success', icon: '✓', message: `${workflowEdges.length} connections mapped` },
+        { type: 'success', icon: '✓', message: `${cacheReferencedSteps} steps reference cache entries` }
+      )
+      
+      if (manualSteps > 0) {
+        validationResults.push({
+          type: 'warning', 
+          icon: '!', 
+          message: `${manualSteps} steps need manual template definition (no cache reference)`
+        })
+      }
+      
+      if (executableResult.success) {
+        validationResults.push(
+          { type: 'success', icon: '✓', message: 'Executable workflow format generated' }
+        )
+      }
+      
+      // Build successful compilation result
       const result: CompilationResult = {
         success: true,
-        steps_detected: 3,
-        edges_wired: 2,
-        tools_resolved: 3,
+        steps_detected: workflowNodes.length - 1, // Exclude start node
+        edges_wired: workflowEdges.length,
+        tools_resolved: cacheReferencedSteps,
         dsl: {
-          flow: {
-            id: "post-incident-review",
-            name: workflowName,
-            kind: selectedFlowType === 'fullflow' ? 'full' : selectedFlowType,
-            steps: [
-              {
-                id: "s1",
-                type: "tool",
-                refId: "jira.search",
-                params: {
-                  query: "project=OPS AND status=Resolved"
-                }
-              },
-              {
-                id: "s2",
-                type: "llm", 
-                refId: "claude-3.5-sonnet"
-              },
-              {
-                id: "s3",
-                type: "tool",
-                refId: "confluence.update"
-              }
-            ],
-            edges: [
-              {
-                from: "s1",
-                to: "s2",
-                map: {
-                  issues: "$.s1.output.issues"
-                }
-              },
-              {
-                from: "s2",
-                to: "s3", 
-                map: {
-                  summary: "$.s2.output.summary"
-                }
-              }
-            ]
-          }
+          // Include both DSL and executable formats
+          workflow_dsl: dslResult.dsl,
+          executable_workflow: executableResult.success ? executableResult.workflow : null,
+          cache_references: dslResult.dsl.workflow.metadata.cache_ids,
+          template_types: dslResult.dsl.workflow.metadata.template_types
         },
-        validation_results: [
-          { type: 'success', icon: '✓', message: 'All tool references resolved' },
-          { type: 'success', icon: '✓', message: 'Data flow mapping validated' },
-          { type: 'success', icon: '✓', message: 'Security policies compliant' },
-          { type: 'warning', icon: '!', message: 'Consider adding retry logic for external APIs' }
-        ]
+        validation_results: validationResults
       }
-
+      
       setCompilationResult(result)
-      toast.success('Workflow compiled successfully', { id: 'compile' })
+      toast.success(
+        `Workflow compiled! ${cacheReferencedSteps} cache refs, ${workflowEdges.length} connections`, 
+        { id: 'compile' }
+      )
+      
     } catch (error: any) {
       toast.error('Compilation failed', { id: 'compile' })
       setCompilationResult({
         success: false,
-        steps_detected: 0,
-        edges_wired: 0,
+        steps_detected: workflowNodes ? workflowNodes.length - 1 : 0,
+        edges_wired: workflowEdges ? workflowEdges.length : 0,
         tools_resolved: 0,
         dsl: null,
         validation_results: [
@@ -1067,30 +1096,79 @@ export default function WorkflowBuilder() {
             )}
 
             {activeTab === 'dsl' && (
-              <div className="bg-neutral-800 border border-neutral-700 rounded-lg p-4 font-mono text-sm text-neutral-300 overflow-x-auto">
-                {compilationResult?.success ? (
-                  <pre className="whitespace-pre-wrap">
-                    <span className="text-blue-400">&quot;flow&quot;</span>: {'{'}
-                    {'\n'}  <span className="text-blue-400">&quot;id&quot;</span>: <span className="text-green-400">&quot;{compilationResult.dsl?.flow?.id || 'post-incident-review'}&quot;</span>,
-                    {'\n'}  <span className="text-blue-400">&quot;name&quot;</span>: <span className="text-green-400">&quot;{workflowName}&quot;</span>,
-                    {'\n'}  <span className="text-blue-400">&quot;kind&quot;</span>: <span className="text-green-400">&quot;{compilationResult.dsl?.flow?.kind || 'full'}&quot;</span>,
-                    {'\n'}  <span className="text-blue-400">&quot;steps&quot;</span>: [
-                    {compilationResult.dsl?.flow?.steps?.map((step: any, index: number) => (
-                      `\n    {\n      "id": "${step.id}",\n      "type": "${step.type}",\n      "refId": "${step.refId}"${step.params ? `,\n      "params": ${JSON.stringify(step.params, null, 6).replace(/^/gm, '      ')}` : ''}\n    }${index < compilationResult.dsl.flow.steps.length - 1 ? ',' : ''}`
-                    )).join('')}
-                    {'\n'}  ],
-                    {'\n'}  <span className="text-blue-400">&quot;edges&quot;</span>: [
-                    {compilationResult.dsl?.flow?.edges?.map((edge: any, index: number) => (
-                      `\n    {\n      "from": "${edge.from}",\n      "to": "${edge.to}",\n      "map": ${JSON.stringify(edge.map, null, 6).replace(/^/gm, '      ')}\n    }${index < compilationResult.dsl.flow.edges.length - 1 ? ',' : ''}`
-                    )).join('')}
-                    {'\n'}  ]
-                    {'\n'}{'}'}
-                  </pre>
+              <div className="bg-neutral-800 border border-neutral-700 rounded-lg p-4 overflow-hidden">
+                {compilationResult?.success && compilationResult.dsl ? (
+                  <div className="space-y-4">
+                    {/* Cache References Summary */}
+                    {compilationResult.dsl.cache_references && compilationResult.dsl.cache_references.length > 0 && (
+                      <div className="mb-4 p-3 bg-green-900/20 border border-green-700/50 rounded-lg">
+                        <div className="text-sm font-medium text-green-400 mb-1">Cache References</div>
+                        <div className="text-xs text-neutral-300">
+                          This workflow references {compilationResult.dsl.cache_references.length} cache entries:
+                          <span className="ml-1 text-green-400">
+                            {compilationResult.dsl.cache_references.filter(Boolean).join(', ')}
+                          </span>
+                        </div>
+                        <div className="text-xs text-neutral-400 mt-1">
+                          Template types: {compilationResult.dsl.template_types?.join(', ')}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Actual DSL Content */}
+                    <div className="bg-neutral-900 border border-neutral-600 rounded-lg p-4 font-mono text-sm text-neutral-300 overflow-x-auto max-h-96">
+                      <pre className="whitespace-pre-wrap">
+                        {JSON.stringify(
+                          compilationResult.dsl.workflow_dsl || compilationResult.dsl, 
+                          null, 
+                          2
+                        )}
+                      </pre>
+                    </div>
+                    
+                    {/* Executable Workflow Preview */}
+                    {compilationResult.dsl.executable_workflow && (
+                      <div className="mt-4">
+                        <div className="text-sm font-medium text-blue-400 mb-2">Executable Workflow Format:</div>
+                        <div className="bg-neutral-900 border border-neutral-600 rounded-lg p-4 font-mono text-xs text-neutral-400 overflow-x-auto max-h-64">
+                          <pre className="whitespace-pre-wrap">
+                            {JSON.stringify(compilationResult.dsl.executable_workflow, null, 2)}
+                          </pre>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Copy to Clipboard Button */}
+                    <div className="flex gap-2 pt-2 border-t border-neutral-700">
+                      <button
+                        onClick={() => {
+                          const dslContent = JSON.stringify(compilationResult.dsl.workflow_dsl || compilationResult.dsl, null, 2)
+                          navigator.clipboard.writeText(dslContent)
+                          toast.success('DSL copied to clipboard', { duration: 2000 })
+                        }}
+                        className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-xs rounded-md transition-colors"
+                      >
+                        Copy DSL
+                      </button>
+                      {compilationResult.dsl.executable_workflow && (
+                        <button
+                          onClick={() => {
+                            const execContent = JSON.stringify(compilationResult.dsl.executable_workflow, null, 2)
+                            navigator.clipboard.writeText(execContent)
+                            toast.success('Executable format copied to clipboard', { duration: 2000 })
+                          }}
+                          className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded-md transition-colors"
+                        >
+                          Copy Executable
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 ) : (
                   <div className="text-center py-8 text-neutral-500">
                     <Code className="h-12 w-12 mx-auto mb-3 opacity-50" />
                     <p>No DSL generated yet</p>
-                    <p className="text-sm">Compile your workflow to see the DSL</p>
+                    <p className="text-sm">Compile your workflow to see the DSL with cache references</p>
                   </div>
                 )}
               </div>

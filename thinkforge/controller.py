@@ -56,6 +56,19 @@ class Text2SQLController:
 
         self.session = db_session
         self.similarity_util = Text2SQLSimilarity(model_name=similarity_model_name)
+        
+        # Initialize LLM service for enhanced workflow execution
+        try:
+            if LLMService and LLMService.is_configured():
+                self.llm_service = LLMService()
+                logger.info("LLM service initialized successfully for workflow execution")
+            else:
+                self.llm_service = None
+                logger.info("LLM service not available, workflow execution will use fallback methods")
+        except Exception as e:
+            logger.warning(f"Failed to initialize LLM service: {e}")
+            self.llm_service = None
+        
         logger.info(
             f"Text2SQLController initialized with model: {similarity_model_name}"
         )
@@ -996,10 +1009,13 @@ class Text2SQLController:
         previous_results: Dict[int, Any]
     ) -> Dict[str, Any]:
         """
-        Execute a single step in a workflow by fetching the referenced cache entry and processing it.
+        Execute a single step in a workflow using hybrid approach:
+        1. Primary: Direct ID-based lookup for exact matches
+        2. Secondary: Semantic search fallback for variations
+        3. Tertiary: LLM-enhanced step selection and completion
 
         Args:
-            step: Dictionary containing step details (cache_id, type, description).
+            step: Dictionary containing step details (cache_id, type, description, name).
             entity_values: Optional entity values for substitution.
             previous_results: Results from previous steps for potential data passing.
 
@@ -1007,20 +1023,94 @@ class Text2SQLController:
             Dictionary with the result of the step execution.
         """
         cache_id = step.get('cache_id')
-        if not isinstance(cache_id, int):
-            return {"step": step, "status": "error", "message": "Invalid cache_id in step"}
+        step_description = step.get('description') or step.get('name', '')
+        step_type = step.get('type')
+        
+        # Primary: Direct ID-based lookup (fastest and most reliable)
+        if cache_id and isinstance(cache_id, int):
+            cache_entry = self._get_cache_entry_by_id(cache_id)
+            if cache_entry:
+                logger.info(f"Cache hit for step {step_description} using direct ID lookup")
+                return self._execute_cache_entry(cache_entry, step, entity_values)
+            else:
+                logger.warning(f"Cache entry with ID {cache_id} not found, falling back to semantic search")
+        
+        # Secondary: Semantic search fallback
+        if step_description:
+            logger.info(f"Attempting semantic search for step: {step_description}")
+            similar_entries = self.search_query(
+                nl_query=step_description,
+                template_type=step_type,
+                similarity_threshold=0.85,  # High threshold for workflow steps
+                limit=5,
+                catalog_type=step.get('catalog_type'),
+                catalog_subtype=step.get('catalog_subtype'),
+                catalog_name=step.get('catalog_name')
+            )
+            
+            if similar_entries:
+                logger.info(f"Found {len(similar_entries)} similar entries for step: {step_description}")
+                
+                # Use LLM to select best match if available
+                best_match = self._llm_select_best_match(
+                    step_description, 
+                    similar_entries, 
+                    step_context=step,
+                    previous_results=previous_results
+                )
+                
+                if best_match:
+                    logger.info(f"LLM selected best match for step: {step_description}")
+                    return self._execute_cache_entry(best_match, step, entity_values)
+                else:
+                    # Fallback to highest similarity match
+                    best_match = similar_entries[0]
+                    logger.info(f"Using highest similarity match for step: {step_description}")
+                    return self._execute_cache_entry(best_match, step, entity_values)
+        
+        # Tertiary: LLM completion for missing steps
+        logger.info(f"No suitable cache entry found for step: {step_description}, attempting LLM completion")
+        return self._llm_complete_step(step, entity_values, previous_results)
 
+    def _get_cache_entry_by_id(self, cache_id: int) -> Optional[Text2SQLCache]:
+        """
+        Get a cache entry by ID with status validation.
+        
+        Args:
+            cache_id: The ID of the cache entry to retrieve.
+            
+        Returns:
+            The cache entry if found and active, None otherwise.
+        """
         try:
-            # Fetch the cache entry for this step
             cache_entry = (
                 self.session.query(Text2SQLCache)
                 .filter(Text2SQLCache.id == cache_id, Text2SQLCache.status == Status.ACTIVE)
                 .first()
             )
+            return cache_entry
+        except Exception as e:
+            logger.error(f"Error fetching cache entry by ID {cache_id}: {str(e)}")
+            return None
 
-            if not cache_entry:
-                return {"step": step, "status": "error", "message": f"Cache entry with ID {cache_id} not found or invalid"}
-
+    def _execute_cache_entry(
+        self, 
+        cache_entry: Text2SQLCache, 
+        step: Dict[str, Any], 
+        entity_values: Optional[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        Execute a cache entry with entity substitution and usage tracking.
+        
+        Args:
+            cache_entry: The cache entry to execute.
+            step: The workflow step details.
+            entity_values: Optional entity values for substitution.
+            
+        Returns:
+            Dictionary with the execution result.
+        """
+        try:
             # Increment usage count for the step's cache entry
             cache_entry.usage_count = (cache_entry.usage_count or 0) + 1
 
@@ -1037,16 +1127,21 @@ class Text2SQLController:
                         template_type=cache_entry.template_type
                     )
                 else:
-                    return {"step": step, "status": "error", "message": "Entity substitution needed but no replacements defined"}
+                    return {
+                        "step": step, 
+                        "status": "error", 
+                        "message": "Entity substitution needed but no replacements defined"
+                    }
 
             # Simplified execution: return the substituted template as result
             # In a full implementation, this could execute SQL, call APIs, etc.
             result = {
                 "step": step,
                 "status": "success",
-                "cache_id": cache_id,
+                "cache_id": cache_entry.id,
                 "template_type": cache_entry.template_type,
-                "result": substituted_template
+                "result": substituted_template,
+                "execution_method": "cache_entry_execution"
             }
 
             # Commit usage count update
@@ -1055,8 +1150,183 @@ class Text2SQLController:
             return result
 
         except Exception as e:
-            logger.error(f"Error executing step for cache_id {cache_id}: {str(e)}", exc_info=True)
+            logger.error(f"Error executing cache entry {cache_entry.id}: {str(e)}", exc_info=True)
             return {"step": step, "status": "error", "message": str(e)}
+
+    def _llm_select_best_match(
+        self, 
+        step_description: str, 
+        similar_entries: List[Dict[str, Any]], 
+        step_context: Dict[str, Any],
+        previous_results: Dict[int, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Use LLM to select the best matching cache entry for a workflow step.
+        
+        Args:
+            step_description: Description of the step to match.
+            similar_entries: List of similar cache entries.
+            step_context: Additional context about the step.
+            previous_results: Results from previous steps.
+            
+        Returns:
+            The best matching cache entry or None if no good match.
+        """
+        try:
+            # Check if LLM service is available
+            if not hasattr(self, 'llm_service') or not self.llm_service:
+                logger.info("LLM service not available, using highest similarity match")
+                return similar_entries[0] if similar_entries else None
+            
+            # Prepare context for LLM selection
+            context = {
+                "step_description": step_description,
+                "step_type": step_context.get('type'),
+                "step_position": step_context.get('position'),
+                "previous_steps": list(previous_results.keys()) if previous_results else [],
+                "candidates": [
+                    {
+                        "id": entry.get("id"),
+                        "nl_query": entry.get("nl_query"),
+                        "template_type": entry.get("template_type"),
+                        "similarity": entry.get("similarity", 0.0),
+                        "catalog_type": entry.get("catalog_type"),
+                        "tags": entry.get("tags", {})
+                    }
+                    for entry in similar_entries[:3]  # Limit to top 3 for LLM analysis
+                ]
+            }
+            
+            # Create prompt for LLM selection
+            prompt = f"""
+            Select the best cache entry for this workflow step:
+            
+            Step Description: {step_description}
+            Step Type: {step_context.get('type', 'unknown')}
+            Step Position: {step_context.get('position', 'unknown')}
+            
+            Available candidates:
+            {chr(10).join([f"- ID {c['id']}: {c['nl_query']} (similarity: {c['similarity']:.3f}, type: {c['template_type']})" for c in context['candidates']])}
+            
+            Previous steps completed: {len(context['previous_steps'])}
+            
+            Select the best match by ID number. Consider:
+            1. Semantic similarity to step description
+            2. Template type compatibility
+            3. Position in workflow sequence
+            4. Previous step context
+            
+            Return only the ID number of the best match, or 'none' if no good match exists.
+            """
+            
+            # Get LLM response
+            response = self.llm_service.generate_text(prompt, max_tokens=10)
+            selected_id = response.strip()
+            
+            # Parse LLM response
+            if selected_id.isdigit():
+                selected_entry = next(
+                    (entry for entry in similar_entries if entry.get("id") == int(selected_id)), 
+                    None
+                )
+                if selected_entry:
+                    logger.info(f"LLM selected cache entry {selected_id} for step: {step_description}")
+                    return selected_entry
+            
+            logger.info(f"LLM could not determine best match for step: {step_description}")
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error in LLM step selection: {str(e)}")
+            # Fallback to highest similarity
+            return similar_entries[0] if similar_entries else None
+
+    def _llm_complete_step(
+        self, 
+        step: Dict[str, Any], 
+        entity_values: Optional[Dict[str, Any]], 
+        previous_results: Dict[int, Any]
+    ) -> Dict[str, Any]:
+        """
+        Use LLM to complete a step when no suitable cache entry is found.
+        
+        Args:
+            step: The workflow step details.
+            entity_values: Optional entity values for substitution.
+            previous_results: Results from previous steps.
+            
+        Returns:
+            Dictionary with the LLM-generated step result.
+        """
+        try:
+            step_description = step.get('description') or step.get('name', 'Unknown step')
+            
+            # Check if LLM service is available
+            if not hasattr(self, 'llm_service') or not self.llm_service:
+                return {
+                    "step": step,
+                    "status": "error", 
+                    "message": f"No suitable cache entry found for step: {step_description}. LLM service not available for completion."
+                }
+            
+            # Create completion prompt
+            prompt = f"""
+            Complete this workflow step: {step_description}
+            
+            Step Type: {step.get('type', 'unknown')}
+            Step Position: {step.get('position', 'unknown')}
+            
+            Previous step results: {len(previous_results)} steps completed
+            
+            Generate a template or action that would fulfill this step.
+            Consider the step type and any dependencies from previous steps.
+            
+            Return a JSON object with:
+            - template: The generated template/action
+            - explanation: Brief explanation of what this step does
+            - dependencies: List of any dependencies from previous steps
+            """
+            
+            # Get LLM response
+            response = self.llm_service.generate_text(prompt, max_tokens=200)
+            
+            try:
+                # Parse LLM response
+                llm_result = json.loads(response)
+                template = llm_result.get('template', 'LLM-generated template')
+                explanation = llm_result.get('explanation', 'Generated by LLM')
+                
+                return {
+                    "step": step,
+                    "status": "success",
+                    "cache_id": None,
+                    "template_type": step.get('type', 'llm_generated'),
+                    "result": template,
+                    "execution_method": "llm_completion",
+                    "llm_explanation": explanation,
+                    "warning": "This step was completed using LLM generation, not from cache"
+                }
+                
+            except json.JSONDecodeError:
+                # Fallback if LLM response isn't valid JSON
+                return {
+                    "step": step,
+                    "status": "success",
+                    "cache_id": None,
+                    "template_type": step.get('type', 'llm_generated'),
+                    "result": response,
+                    "execution_method": "llm_completion",
+                    "llm_explanation": "Generated by LLM (raw response)",
+                    "warning": "This step was completed using LLM generation, not from cache"
+                }
+                
+        except Exception as e:
+            logger.error(f"Error in LLM step completion: {str(e)}")
+            return {
+                "step": step,
+                "status": "error",
+                "message": f"Failed to complete step '{step.get('description', 'Unknown')}' using LLM: {str(e)}"
+            }
 
     def change_status(self, query_id: int, new_status: str, reason: Optional[str] = None, changed_by: Optional[str] = None) -> bool:
         """
