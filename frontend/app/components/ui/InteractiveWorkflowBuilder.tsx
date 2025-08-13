@@ -161,8 +161,8 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
   const [availableCatalogSubtypes, setAvailableCatalogSubtypes] = useState<string[]>([])
   const [availableTemplateTypes, setAvailableTemplateTypes] = useState<string[]>([])
 
-  // Generate a unique key for this workflow session
-  const workflowKey = `workflow_${catalogType || 'default'}_${catalogSubtype || 'default'}_${catalogName || 'default'}`
+  // Generate a stable key for this workflow session (excluding volatile catalogName)
+  const workflowKey = `workflow_${catalogType || 'default'}_${catalogSubtype || 'default'}`
 
   // Store previous initial props to detect actual changes
   const prevInitialNodesRef = useRef<Node[] | undefined>(undefined)
@@ -319,36 +319,14 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
     const fetchCacheEntries = async () => {
       setLoading(true)
       try {
-        // Use semantic search for initial load if we have catalog context
-        if (catalogType && catalogType !== 'all' && catalogSubtype && catalogSubtype !== 'all') {
-          // Try to get relevant entries based on catalog context using semantic search
-          try {
-            const response = await api.searchCacheEntries(
-              '', // Empty query to get general matches
-              undefined, // Any template type
-              0.7, // Medium similarity threshold for initial load
-              20,  // Get more results for initial semantic load
-              catalogType,
-              catalogSubtype,
-              catalogName
-            )
-            setCacheEntries(response)
-            setFilteredEntries(response)
-            setSearchMethod('semantic')
-            setSearchResultsCount(response.length)
-            setTotalEntries(response.length)
-            setHasMorePages(false) // Semantic search returns all results at once
-            setCurrentPage(1)
-            console.log(`Initial semantic load found ${response.length} relevant entries`)
-          } catch (semanticError) {
-            console.warn('Initial semantic search failed, falling back to paginated fetch:', semanticError)
-            // Fallback to paginated fetch
-            await fetchPaginatedEntries(1, 'all', 'all', 'all')
-          }
-        } else {
-          // No catalog context, use paginated fetch
-          await fetchPaginatedEntries(1, 'all', 'all', 'all')
-        }
+        // Always use paginated fetch for initial load since search requires non-empty query
+        // The search endpoint doesn't accept empty queries, so we use getCacheEntries instead
+        await fetchPaginatedEntries(
+          1, 
+          'all', 
+          catalogType !== 'all' ? catalogType : 'all', 
+          catalogSubtype !== 'all' ? catalogSubtype : 'all'
+        )
       } catch (error) {
         console.error('Failed to fetch cache entries:', error)
         // Fallback mock data
@@ -409,7 +387,7 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
     }
 
     fetchCacheEntries()
-  }, [catalogType, catalogSubtype, catalogName])
+  }, [catalogType, catalogSubtype])
 
   // Fetch catalog values for filters
   useEffect(() => {
@@ -593,11 +571,22 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
       setHasMoreSemanticResults(false)
       setSemanticSearchLimit(20) // Increased from 10
       try {
-        // Reset to paginated view
-        await fetchPaginatedEntries(1, 'all', 'all', 'all')
+        // Reset to paginated view with current filters
+        await fetchPaginatedEntries(
+          1, 
+          filterTemplateType,
+          filterCatalogType,
+          filterCatalogSubtype
+        )
       } catch (error) {
         console.error('Failed to reset cache entries:', error)
       }
+      return
+    }
+
+    // Don't search if query is too short (backend might reject it)
+    if (query.trim().length < 2) {
+      console.log('Query too short for search, waiting for more input')
       return
     }
 
@@ -1007,7 +996,7 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
     <div className={`flex bg-neutral-950 text-white relative transition-all duration-300 ${
       (isMaximized && !onMaximizeChange)
         ? 'fixed inset-0 z-50 h-screen w-screen' 
-        : 'h-full'
+        : 'h-full w-full'
     }`}>
       {/* Left Sidebar - Cache Entry Search */}
       <div className={`${sidebarCollapsed ? 'w-0' : 'w-96'} bg-neutral-900 border-r border-neutral-800 flex flex-col transition-all duration-300 overflow-hidden`}>
@@ -1084,8 +1073,8 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
                       setSearchResultsCount(0)
                       setHasMoreSemanticResults(false)
                       setSemanticSearchLimit(20)
-                      // Reset to paginated view
-                      fetchPaginatedEntries(1)
+                      // Reset to paginated view with current filters
+                      fetchPaginatedEntries(1, filterTemplateType, filterCatalogType, filterCatalogSubtype)
                     }}
                     className="absolute right-2 top-1/2 transform -translate-y-1/2 p-1 text-neutral-400 hover:text-neutral-300 transition-colors"
                     title="Clear search and return to paginated view"
@@ -1322,7 +1311,7 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
                               setSearchResultsCount(0)
                               setHasMoreSemanticResults(false)
                               setSemanticSearchLimit(20)
-                              fetchPaginatedEntries(1)
+                              fetchPaginatedEntries(1, filterTemplateType, filterCatalogType, filterCatalogSubtype)
                             }}
                             className="text-blue-400 hover:text-blue-300 underline"
                           >
@@ -1503,8 +1492,8 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
       )}
 
       {/* Main Canvas */}
-      <div className="flex-1 flex flex-col">
-        <div className="flex-1" ref={reactFlowWrapper}>
+      <div className="flex-1 flex flex-col bg-neutral-950">
+        <div className="flex-1 w-full h-full" ref={reactFlowWrapper}>
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -1514,7 +1503,7 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
             onDrop={onDrop}
             onDragOver={onDragOver}
             fitView
-            className="bg-neutral-950"
+            className="bg-neutral-950 w-full h-full"
           >
             <Controls className="bg-neutral-800 border-neutral-700 text-white" />
             <Background variant={BackgroundVariant.Dots} gap={12} size={1} className="bg-neutral-950" />

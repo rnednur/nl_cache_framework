@@ -1,0 +1,45 @@
+# Core notebook execution dependencies
+jupyter==1.0.0
+jupyterlab==4.0.12
+ipython==8.18.1
+ipykernel==6.27.1
+
+# Data science and analysis libraries
+pandas==2.1.4
+numpy==1.24.4
+matplotlib==3.8.2
+seaborn==0.13.0
+plotly==5.17.0
+
+# API and HTTP libraries
+requests==2.31.0
+httpx==0.25.2
+aiohttp==3.9.1
+
+# Database connectivity
+sqlalchemy==2.0.23
+psycopg2-binary==2.9.9
+sqlite3
+
+# JSON and data manipulation
+jsonschema==4.20.0
+pydantic==2.5.2
+
+# Workflow and automation
+celery==5.3.4
+redis==5.0.1
+
+# Logging and monitoring
+structlog==23.2.0
+
+# Security and sandboxing  
+timeout-decorator==0.5.0
+
+# Web framework for API server
+fastapi==0.104.1
+uvicorn==0.24.0
+python-multipart==0.0.6
+
+# Development and testing
+pytest==7.4.3
+pytest-asyncio==0.21.1

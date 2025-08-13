@@ -95,4 +95,32 @@
 }
 
 /* Import ReactFlow styles */
-@import 'reactflow/dist/style.css'; 
+@import 'reactflow/dist/style.css';
+
+/* ReactFlow Dark Theme Overrides */
+.react-flow {
+  background-color: rgb(9, 9, 11) !important; /* neutral-950 */
+}
+
+.react-flow__background {
+  background-color: rgb(9, 9, 11) !important; /* neutral-950 */
+}
+
+.react-flow__minimap {
+  background-color: rgb(38, 38, 38) !important; /* neutral-800 */
+}
+
+.react-flow__controls {
+  background-color: rgb(38, 38, 38) !important; /* neutral-800 */
+  border-color: rgb(64, 64, 64) !important; /* neutral-700 */
+}
+
+.react-flow__controls button {
+  background-color: rgb(38, 38, 38) !important; /* neutral-800 */
+  border-color: rgb(64, 64, 64) !important; /* neutral-700 */
+  color: white !important;
+}
+
+.react-flow__controls button:hover {
+  background-color: rgb(64, 64, 64) !important; /* neutral-700 */
+} 

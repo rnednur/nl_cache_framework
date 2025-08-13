@@ -1068,6 +1068,291 @@ const api = {
       throw error;
     }
   },
+
+  // Workflow Execution API methods
+  async executeWorkflow(
+    workflowId: number,
+    inputVariables: Record<string, any> = {},
+    background: boolean = false
+  ): Promise<{
+    run_id: string;
+    workflow_id: number;
+    status: string;
+    message: string;
+    execution_url: string;
+  }> {
+    try {
+      const response = await fetch(`${API_BASE}/v1/workflows/${workflowId}/execute`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          input_variables: inputVariables,
+          background: background
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error executing workflow:', error);
+      throw error;
+    }
+  },
+
+  async getExecutionStatus(
+    workflowId: number,
+    runId: string
+  ): Promise<{
+    workflow_id: number;
+    run_id: string;
+    status: string;
+    current_step?: string;
+    progress: {
+      completed: number;
+      total: number;
+      percentage: number;
+    };
+    step_results: Record<string, any>;
+    started_at?: string;
+    completed_at?: string;
+    error_message?: string;
+  }> {
+    try {
+      const response = await fetch(`${API_BASE}/v1/workflows/${workflowId}/execution/${runId}`);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error getting execution status:', error);
+      throw error;
+    }
+  },
+
+  async pauseExecution(workflowId: number, runId: string): Promise<{
+    run_id: string;
+    workflow_id: number;
+    status: string;
+    message: string;
+  }> {
+    try {
+      const response = await fetch(`${API_BASE}/v1/workflows/${workflowId}/execution/${runId}/pause`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error pausing execution:', error);
+      throw error;
+    }
+  },
+
+  async resumeExecution(workflowId: number, runId: string): Promise<{
+    run_id: string;
+    workflow_id: number;
+    status: string;
+    message: string;
+  }> {
+    try {
+      const response = await fetch(`${API_BASE}/v1/workflows/${workflowId}/execution/${runId}/resume`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error resuming execution:', error);
+      throw error;
+    }
+  },
+
+  async cancelExecution(workflowId: number, runId: string): Promise<{
+    run_id: string;
+    workflow_id: number;
+    status: string;
+    message: string;
+  }> {
+    try {
+      const response = await fetch(`${API_BASE}/v1/workflows/${workflowId}/execution/${runId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error cancelling execution:', error);
+      throw error;
+    }
+  },
+
+  async listActiveExecutions(): Promise<{
+    active_executions: Array<{
+      workflow_id: number;
+      run_id: string;
+      status: string;
+      current_step?: string;
+      progress: {
+        completed: number;
+        total: number;
+        percentage: number;
+      };
+      started_at?: string;
+    }>;
+    total: number;
+  }> {
+    try {
+      const response = await fetch(`${API_BASE}/v1/workflows/executions`);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error listing active executions:', error);
+      throw error;
+    }
+  },
+
+  // Notebook Generation API methods
+  async generateNotebook(
+    workflowId: number,
+    options: {
+      workflowName?: string;
+      includeDocumentation?: boolean;
+      addSetupCells?: boolean;
+    } = {}
+  ): Promise<{
+    success: boolean;
+    notebook?: any;
+    download_url?: string;
+    metadata: {
+      workflow_id: number;
+      workflow_name: string;
+      total_cells: number;
+      total_steps: number;
+      step_types: string[];
+      generated_at: string;
+      generator_version: string;
+      notebook_format: string;
+    };
+    error?: string;
+  }> {
+    try {
+      const response = await fetch(`${API_BASE}/v1/workflows/${workflowId}/generate-notebook`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          workflow_name: options.workflowName,
+          include_documentation: options.includeDocumentation ?? true,
+          add_setup_cells: options.addSetupCells ?? true
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error generating notebook:', error);
+      throw error;
+    }
+  },
+
+  async downloadNotebook(
+    workflowId: number,
+    options: {
+      workflowName?: string;
+      includeDocumentation?: boolean;
+      addSetupCells?: boolean;
+    } = {}
+  ): Promise<Blob> {
+    try {
+      const params = new URLSearchParams();
+      
+      if (options.workflowName) {
+        params.append('workflow_name', options.workflowName);
+      }
+      
+      if (options.includeDocumentation !== undefined) {
+        params.append('include_documentation', options.includeDocumentation.toString());
+      }
+      
+      if (options.addSetupCells !== undefined) {
+        params.append('add_setup_cells', options.addSetupCells.toString());
+      }
+
+      const url = `${API_BASE}/v1/workflows/${workflowId}/download-notebook${params.toString() ? '?' + params.toString() : ''}`;
+      
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      return await response.blob();
+    } catch (error) {
+      console.error('Error downloading notebook:', error);
+      throw error;
+    }
+  },
+
+  // Helper method to trigger notebook download in browser
+  async downloadNotebookFile(
+    workflowId: number,
+    options: {
+      workflowName?: string;
+      includeDocumentation?: boolean;
+      addSetupCells?: boolean;
+    } = {}
+  ): Promise<void> {
+    try {
+      const blob = await this.downloadNotebook(workflowId, options);
+      
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      
+      // Use the workflow name or fallback to a generic name
+      const filename = options.workflowName 
+        ? `${options.workflowName.replace(/[^a-zA-Z0-9]/g, '_')}.ipynb`
+        : `Workflow_${workflowId}.ipynb`;
+      
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      
+      // Cleanup
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error downloading notebook file:', error);
+      throw error;
+    }
+  },
 };
 
 export default api; 

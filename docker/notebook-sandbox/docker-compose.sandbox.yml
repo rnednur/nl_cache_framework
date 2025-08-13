@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  notebook-sandbox:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: thinkforge-notebook-sandbox
+    ports:
+      - "8888:8888"  # Jupyter Lab / API server
+    volumes:
+      - ./notebooks:/sandbox/notebooks
+      - ./output:/sandbox/output
+      - ./scripts:/sandbox/scripts:ro
+    environment:
+      - PYTHONPATH=/sandbox
+      - JUPYTER_ENABLE_LAB=yes
+      - JUPYTER_TOKEN=""
+      - LOG_LEVEL=info
+      - MAX_MEMORY_MB=512
+      - MAX_CPU_TIME=300
+      - MAX_WALL_TIME=600
+      - MAX_FILE_SIZE_MB=100
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETUID
+      - SETGID
+    read_only: false
+    tmpfs:
+      - /tmp:size=100m,noexec,nosuid,nodev
+    ulimits:
+      memlock:
+        soft: 134217728  # 128MB
+        hard: 134217728
+      nproc: 10
+      fsize: 104857600  # 100MB
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - sandbox-network
+
+networks:
+  sandbox-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  notebook-storage:
+    driver: local
+  output-storage:
+    driver: local

@@ -213,6 +213,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Include sandbox API routes
+try:
+    from sandbox_api import include_sandbox_routes
+    include_sandbox_routes(app)
+except ImportError as e:
+    print(f"Warning: Sandbox API not available: {e}")
+    pass
+
 # Mount static files directory
 # Use an absolute path based on the current file's location
 # static_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../frontend/static"))
@@ -1654,10 +1662,10 @@ async def compile_recipe(
             raise HTTPException(status_code=404, detail="Recipe not found")
         
         # Validate recipe type
-        if recipe.template_type not in ['recipe', 'recipe_step', 'recipe_template']:
+        if recipe.template_type not in ['recipe', 'recipe_step', 'recipe_template', 'workflow']:
             raise HTTPException(
                 status_code=400, 
-                detail=f"Invalid recipe type: {recipe.template_type}. Must be recipe, recipe_step, or recipe_template"
+                detail=f"Invalid recipe type: {recipe.template_type}. Must be recipe, recipe_step, recipe_template, or workflow"
             )
         
         # Create tool resolver function
@@ -1708,7 +1716,7 @@ async def get_supported_formats(recipe_id: int, db: Session = Depends(get_db)):
             raise HTTPException(status_code=404, detail="Recipe not found")
         
         # Check if it's a compilable recipe type
-        if recipe.template_type not in ['recipe', 'recipe_step', 'recipe_template']:
+        if recipe.template_type not in ['recipe', 'recipe_step', 'recipe_template', 'workflow']:
             return {
                 "supported_formats": [],
                 "reason": f"Recipe type '{recipe.template_type}' is not compilable"
@@ -2031,6 +2039,459 @@ async def rewrite_recipe_step(
         
     except Exception as e:
         error_msg = f"Step rewrite failed: {str(e)}"
+        logger.error(error_msg, exc_info=True)
+        raise HTTPException(status_code=500, detail=error_msg)
+
+
+# Workflow Execution API Endpoints
+from thinkforge.execution_engine import WorkflowExecutor, ExecutionStatus, ExecutionContext
+from thinkforge.tool_invoker import ToolInvoker
+from thinkforge.notebook_generator import PythonNotebookGenerator
+import asyncio
+
+
+class WorkflowExecutionRequest(BaseModel):
+    """Request model for workflow execution."""
+    input_variables: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Input variables for workflow")
+    background: bool = Field(default=False, description="Execute in background")
+
+
+class WorkflowExecutionResponse(BaseModel):
+    """Response model for workflow execution."""
+    run_id: str
+    workflow_id: int
+    status: str
+    message: str
+    execution_url: str
+
+
+class ExecutionStatusResponse(BaseModel):
+    """Response model for execution status."""
+    workflow_id: int
+    run_id: str
+    status: str
+    current_step: Optional[str]
+    progress: Dict[str, Any]
+    step_results: Dict[str, Any]
+    started_at: Optional[str]
+    completed_at: Optional[str]
+    error_message: Optional[str]
+
+
+class NotebookGenerationRequest(BaseModel):
+    """Request model for notebook generation."""
+    workflow_name: Optional[str] = Field(default=None, description="Name for the generated notebook")
+    include_documentation: bool = Field(default=True, description="Include markdown documentation cells")
+    add_setup_cells: bool = Field(default=True, description="Include environment setup cells")
+
+
+class NotebookGenerationResponse(BaseModel):
+    """Response model for notebook generation."""
+    success: bool
+    notebook: Optional[Dict[str, Any]] = None
+    download_url: Optional[str] = None
+    metadata: Dict[str, Any]
+    error: Optional[str] = None
+
+
+# Global workflow executor instance
+workflow_executor: Optional[WorkflowExecutor] = None
+
+
+def get_workflow_executor(db: Session = Depends(get_db)) -> WorkflowExecutor:
+    """Get or create the global workflow executor instance."""
+    global workflow_executor
+    if workflow_executor is None:
+        tool_invoker = ToolInvoker(db)
+        workflow_executor = WorkflowExecutor(db, tool_invoker)
+    return workflow_executor
+
+
+@app.post("/v1/workflows/{workflow_id}/execute", response_model=WorkflowExecutionResponse)
+async def execute_workflow(
+    workflow_id: int,
+    request: WorkflowExecutionRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    executor: WorkflowExecutor = Depends(get_workflow_executor)
+):
+    """
+    Start execution of a workflow.
+    
+    Args:
+        workflow_id: ID of the workflow to execute
+        request: Execution parameters
+        background_tasks: FastAPI background tasks
+        db: Database session
+        executor: Workflow executor instance
+    
+    Returns:
+        Execution response with run ID and status
+    """
+    try:
+        # Verify workflow exists
+        workflow = db.query(Text2SQLCache).filter_by(id=workflow_id).first()
+        if not workflow:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+        
+        # Verify it's a workflow type
+        if workflow.template_type not in ['workflow', 'recipe', 'recipe_template']:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Cache entry {workflow_id} is not a workflow (type: {workflow.template_type})"
+            )
+
+        if request.background:
+            # Execute in background
+            async def background_execution():
+                try:
+                    await executor.execute_workflow(
+                        workflow_id=workflow_id,
+                        input_variables=request.input_variables
+                    )
+                except Exception as e:
+                    logger.error(f"Background workflow execution failed: {e}")
+            
+            background_tasks.add_task(background_execution)
+            
+            # Return immediately with a placeholder run_id
+            import uuid
+            run_id = str(uuid.uuid4())
+            
+            return WorkflowExecutionResponse(
+                run_id=run_id,
+                workflow_id=workflow_id,
+                status="queued",
+                message="Workflow execution started in background",
+                execution_url=f"/v1/workflows/{workflow_id}/execution/{run_id}"
+            )
+        else:
+            # Execute synchronously
+            context = await executor.execute_workflow(
+                workflow_id=workflow_id,
+                input_variables=request.input_variables
+            )
+            
+            return WorkflowExecutionResponse(
+                run_id=context.run_id,
+                workflow_id=workflow_id,
+                status=context.status.value,
+                message="Workflow execution completed",
+                execution_url=f"/v1/workflows/{workflow_id}/execution/{context.run_id}"
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Workflow execution failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Execution failed: {str(e)}")
+
+
+@app.get("/v1/workflows/{workflow_id}/execution/{run_id}", response_model=ExecutionStatusResponse)
+async def get_execution_status(
+    workflow_id: int,
+    run_id: str,
+    executor: WorkflowExecutor = Depends(get_workflow_executor)
+):
+    """
+    Get the status of a workflow execution.
+    
+    Args:
+        workflow_id: ID of the workflow
+        run_id: Execution run ID
+        executor: Workflow executor instance
+    
+    Returns:
+        Execution status and progress
+    """
+    try:
+        status_dict = executor.get_execution_status(run_id)
+        
+        if not status_dict:
+            raise HTTPException(status_code=404, detail="Execution not found")
+        
+        return ExecutionStatusResponse(
+            workflow_id=status_dict["workflow_id"],
+            run_id=status_dict["run_id"],
+            status=status_dict["status"],
+            current_step=status_dict.get("current_step"),
+            progress=status_dict["progress"],
+            step_results=status_dict["step_results"],
+            started_at=status_dict.get("started_at"),
+            completed_at=status_dict.get("completed_at"),
+            error_message=status_dict.get("error_message")
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting execution status: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get status: {str(e)}")
+
+
+@app.post("/v1/workflows/{workflow_id}/execution/{run_id}/pause")
+async def pause_execution(
+    workflow_id: int,
+    run_id: str,
+    executor: WorkflowExecutor = Depends(get_workflow_executor)
+):
+    """Pause a running workflow execution."""
+    try:
+        success = await executor.pause_execution(run_id)
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="Execution not found or not running")
+        
+        return {
+            "run_id": run_id,
+            "workflow_id": workflow_id,
+            "status": "paused",
+            "message": "Workflow execution paused"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error pausing execution: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to pause: {str(e)}")
+
+
+@app.post("/v1/workflows/{workflow_id}/execution/{run_id}/resume")
+async def resume_execution(
+    workflow_id: int,
+    run_id: str,
+    executor: WorkflowExecutor = Depends(get_workflow_executor)
+):
+    """Resume a paused workflow execution."""
+    try:
+        success = await executor.resume_execution(run_id)
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="Execution not found or not paused")
+        
+        return {
+            "run_id": run_id,
+            "workflow_id": workflow_id,
+            "status": "running",
+            "message": "Workflow execution resumed"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error resuming execution: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to resume: {str(e)}")
+
+
+@app.delete("/v1/workflows/{workflow_id}/execution/{run_id}")
+async def cancel_execution(
+    workflow_id: int,
+    run_id: str,
+    executor: WorkflowExecutor = Depends(get_workflow_executor)
+):
+    """Cancel a workflow execution."""
+    try:
+        success = await executor.cancel_execution(run_id)
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="Execution not found")
+        
+        return {
+            "run_id": run_id,
+            "workflow_id": workflow_id,
+            "status": "cancelled",
+            "message": "Workflow execution cancelled"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error cancelling execution: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to cancel: {str(e)}")
+
+
+@app.get("/v1/workflows/executions")
+async def list_active_executions(
+    executor: WorkflowExecutor = Depends(get_workflow_executor)
+):
+    """List all active workflow executions."""
+    try:
+        executions = executor.list_active_executions()
+        
+        return {
+            "active_executions": executions,
+            "total": len(executions)
+        }
+
+    except Exception as e:
+        logger.error(f"Error listing executions: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to list executions: {str(e)}")
+
+
+@app.post("/v1/workflows/{workflow_id}/generate-notebook", response_model=NotebookGenerationResponse)
+async def generate_workflow_notebook(
+    workflow_id: int,
+    request: NotebookGenerationRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Generate a Jupyter notebook from a workflow DSL.
+    
+    Converts a workflow's DSL template into an executable Jupyter notebook
+    with Python code cells for each step, including setup, execution,
+    and validation code with proper variable passing between steps.
+    
+    Args:
+        workflow_id: ID of the workflow to convert
+        request: Notebook generation parameters
+        db: Database session
+    
+    Returns:
+        Generated notebook in Jupyter format ready for execution
+    """
+    try:
+        # Get the workflow from the cache
+        workflow = db.query(Text2SQLCache).filter_by(id=workflow_id).first()
+        if not workflow:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+        
+        # Verify it's a workflow type
+        if workflow.template_type not in ['workflow', 'recipe', 'recipe_template']:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Cache entry {workflow_id} is not a workflow (type: {workflow.template_type})"
+            )
+        
+        # Parse the workflow DSL template
+        try:
+            workflow_dsl = json.loads(workflow.template)
+        except json.JSONDecodeError as e:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid workflow DSL JSON: {str(e)}"
+            )
+        
+        # Initialize the notebook generator
+        generator = PythonNotebookGenerator()
+        
+        # Determine workflow name
+        workflow_name = request.workflow_name or workflow.nl_query or f"Workflow_{workflow_id}"
+        
+        # Generate the notebook
+        notebook = generator.generate_notebook(
+            workflow_dsl=workflow_dsl,
+            workflow_name=workflow_name,
+            include_documentation=request.include_documentation,
+            add_setup_cells=request.add_setup_cells
+        )
+        
+        # Calculate metadata
+        workflow_dict = workflow_dsl.get("workflow", {})
+        steps = workflow_dict.get("steps", [])
+        
+        metadata = {
+            "workflow_id": workflow_id,
+            "workflow_name": workflow_name,
+            "total_cells": len(notebook["cells"]),
+            "total_steps": len(steps),
+            "step_types": list(set(step.get("type", "unknown") for step in steps)),
+            "generated_at": datetime.datetime.now().isoformat(),
+            "generator_version": "1.0.0",
+            "notebook_format": f"v{notebook['nbformat']}.{notebook['nbformat_minor']}"
+        }
+        
+        # Log successful generation
+        logger.info(f"Generated notebook for workflow {workflow_id}: {len(notebook['cells'])} cells, {len(steps)} steps")
+        
+        return NotebookGenerationResponse(
+            success=True,
+            notebook=notebook,
+            download_url=f"/v1/workflows/{workflow_id}/download-notebook",
+            metadata=metadata
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        error_msg = f"Notebook generation failed: {str(e)}"
+        logger.error(error_msg, exc_info=True)
+        
+        return NotebookGenerationResponse(
+            success=False,
+            metadata={"workflow_id": workflow_id, "error_type": type(e).__name__},
+            error=error_msg
+        )
+
+
+@app.get("/v1/workflows/{workflow_id}/download-notebook")
+async def download_workflow_notebook(
+    workflow_id: int,
+    workflow_name: Optional[str] = Query(None, description="Custom name for the notebook"),
+    include_documentation: bool = Query(True, description="Include documentation cells"),
+    add_setup_cells: bool = Query(True, description="Include setup cells"),
+    db: Session = Depends(get_db)
+):
+    """
+    Download a workflow as a Jupyter notebook file.
+    
+    Returns the notebook as a downloadable .ipynb file.
+    """
+    try:
+        # Get the workflow from the cache
+        workflow = db.query(Text2SQLCache).filter_by(id=workflow_id).first()
+        if not workflow:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+        
+        # Verify it's a workflow type  
+        if workflow.template_type not in ['workflow', 'recipe', 'recipe_template']:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Cache entry {workflow_id} is not a workflow (type: {workflow.template_type})"
+            )
+        
+        # Parse the workflow DSL template
+        try:
+            workflow_dsl = json.loads(workflow.template)
+        except json.JSONDecodeError as e:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid workflow DSL JSON: {str(e)}"
+            )
+        
+        # Initialize the notebook generator
+        generator = PythonNotebookGenerator()
+        
+        # Determine workflow name
+        name = workflow_name or workflow.nl_query or f"Workflow_{workflow_id}"
+        filename = f"{name.replace(' ', '_').replace('/', '_')}.ipynb"
+        
+        # Generate the notebook
+        notebook = generator.generate_notebook(
+            workflow_dsl=workflow_dsl,
+            workflow_name=name,
+            include_documentation=include_documentation,
+            add_setup_cells=add_setup_cells
+        )
+        
+        # Convert to JSON string
+        notebook_json = json.dumps(notebook, indent=2)
+        
+        # Return as downloadable file
+        from fastapi.responses import Response
+        
+        return Response(
+            content=notebook_json,
+            media_type="application/json",
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}",
+                "Content-Type": "application/x-ipynb+json"
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        error_msg = f"Notebook download failed: {str(e)}"
         logger.error(error_msg, exc_info=True)
         raise HTTPException(status_code=500, detail=error_msg)
 

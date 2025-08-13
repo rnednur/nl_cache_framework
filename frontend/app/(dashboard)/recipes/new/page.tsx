@@ -30,29 +30,6 @@ import { parseNLWorkflow, type ParserResult } from '@/app/utils/nlWorkflowParser
 import { convertWorkflowToNL, validateWorkflowStructure, convertWorkflowToDSL, generateExecutableWorkflow } from '@/app/utils/workflowToNL'
 import { Node, Edge } from 'reactflow'
 
-const FLOW_TYPES = [
-  { 
-    id: 'fullflow', 
-    name: 'Fullflow', 
-    icon: '🔄', 
-    description: 'Complete workflow',
-    active: true 
-  },
-  { 
-    id: 'subflow', 
-    name: 'Subflow', 
-    icon: '⚡', 
-    description: 'Reusable component',
-    active: false 
-  },
-  { 
-    id: 'copyflow', 
-    name: 'Copy Flow', 
-    icon: '📋', 
-    description: 'Clone & modify',
-    active: false 
-  }
-] as const
 
 const EXECUTION_MODES = [
   { value: 'interactive', label: 'Interactive (with user prompts)' },
@@ -90,8 +67,8 @@ export default function WorkflowBuilder() {
   
   // Form state
   const [workflowName, setWorkflowName] = useState('')
-  const [selectedFlowType, setSelectedFlowType] = useState('fullflow')
   const [nlDescription, setNlDescription] = useState('')
+  const [selectedFlowType, setSelectedFlowType] = useState('workflow')
   const [executionMode, setExecutionMode] = useState('interactive')
   const [errorHandling, setErrorHandling] = useState('fail_fast')
   const [isLoadingRecipe, setIsLoadingRecipe] = useState(isEditMode)
@@ -99,6 +76,9 @@ export default function WorkflowBuilder() {
   // UI state
   const [activeTab, setActiveTab] = useState<'visual' | 'dsl' | 'validation'>('visual')
   const [isWorkflowMaximized, setIsWorkflowMaximized] = useState(false)
+  
+  // Debounced catalog name to prevent cache refreshing on every keystroke
+  const [debouncedCatalogName, setDebouncedCatalogName] = useState('workflow')
   
   // Workflow synchronization state
   const [workflowNodes, setWorkflowNodes] = useState<Node[]>([])
@@ -113,6 +93,15 @@ export default function WorkflowBuilder() {
       loadExistingRecipe(parseInt(editId))
     }
   }, [isEditMode, editId])
+
+  // Debounce catalog name to prevent unnecessary cache refreshes
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedCatalogName(workflowName.toLowerCase().replace(/\s+/g, '-'))
+    }, 500) // 500ms debounce
+
+    return () => clearTimeout(timer)
+  }, [workflowName])
 
   // Helper function to generate NL description from workflow steps
   const generateNLDescriptionFromSteps = (workflowName: string, steps: any[], connections?: any[]) => {
@@ -177,7 +166,7 @@ export default function WorkflowBuilder() {
       
       // Populate form fields with existing data
       setWorkflowName(recipe.nl_query || '')
-      setSelectedFlowType(recipe.catalog_type || 'fullflow')
+      setSelectedFlowType(recipe.catalog_type || 'workflow')
       setExecutionMode(recipe.catalog_subtype || 'interactive')
       
       // Convert existing recipe template to visual workflow if possible
@@ -328,66 +317,9 @@ export default function WorkflowBuilder() {
   }, [isWorkflowMaximized])
   const [isCompiling, setIsCompiling] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
-  const [compilationResult, setCompilationResult] = useState<CompilationResult | null>({
-    success: true,
-    steps_detected: 3,
-    edges_wired: 2,
-    tools_resolved: 3,
-    dsl: {
-      flow: {
-        id: "post-incident-review",
-        name: "Post-Incident Review",
-        kind: "full",
-        steps: [
-          {
-            id: "s1",
-            type: "tool",
-            refId: "jira.search",
-            params: {
-              query: "project=OPS AND status=Resolved"
-            }
-          },
-          {
-            id: "s2", 
-            type: "llm",
-            refId: "claude-3.5-sonnet"
-          },
-          {
-            id: "s3",
-            type: "tool", 
-            refId: "confluence.update"
-          }
-        ],
-        edges: [
-          {
-            from: "s1",
-            to: "s2",
-            map: {
-              issues: "$.s1.output.issues"
-            }
-          },
-          {
-            from: "s2", 
-            to: "s3",
-            map: {
-              summary: "$.s2.output.summary"
-            }
-          }
-        ]
-      }
-    },
-    validation_results: [
-      { type: 'success', icon: '✓', message: 'All tool references resolved' },
-      { type: 'success', icon: '✓', message: 'Data flow mapping validated' },
-      { type: 'success', icon: '✓', message: 'Security policies compliant' },
-      { type: 'warning', icon: '!', message: 'Consider adding retry logic for external APIs' }
-    ]
-  })
+  const [compilationResult, setCompilationResult] = useState<CompilationResult | null>(null)
 
 
-  const handleFlowTypeChange = (flowType: string) => {
-    setSelectedFlowType(flowType)
-  }
 
   const handleCompile = async () => {
     setIsCompiling(true)
@@ -622,7 +554,7 @@ export default function WorkflowBuilder() {
   const handleClearAll = () => {
     setWorkflowName('')
     setNlDescription('')
-    setSelectedFlowType('fullflow')
+    setSelectedFlowType('workflow')
     setExecutionMode('interactive')
     setErrorHandling('fail_fast')
     setCompilationResult(null)
@@ -735,16 +667,28 @@ export default function WorkflowBuilder() {
   }
 
   const handleTestRun = async () => {
-    if (!compilationResult?.success) {
-      toast.error('Please compile the workflow successfully before testing')
+    if (!compilationResult) {
+      toast.error('Please compile the workflow first before testing')
       return
     }
     
-    toast.loading('Starting test run...', { id: 'test' })
-    // Simulate test run
+    if (!compilationResult.success) {
+      toast.error('Please fix compilation errors before testing')
+      return
+    }
+    
+    const stepCount = compilationResult.steps_detected
+    const edgeCount = compilationResult.edges_wired
+    
+    toast.loading(`Testing workflow with ${stepCount} steps and ${edgeCount} connections...`, { id: 'test' })
+    
+    // Simulate test run with realistic timing
     setTimeout(() => {
-      toast.success('Test run completed successfully', { id: 'test' })
-    }, 3000)
+      toast.success(
+        `Test run completed! Executed ${stepCount} steps successfully.`, 
+        { id: 'test', duration: 4000 }
+      )
+    }, 2000 + (stepCount * 500)) // More steps = longer test time
   }
 
   return (
@@ -754,10 +698,10 @@ export default function WorkflowBuilder() {
         <div className="flex items-center gap-4">
           <button
             onClick={() => router.push('/recipes')}
-            className="flex items-center gap-2 text-neutral-400 hover:text-neutral-300 transition-colors text-sm"
+            className="p-2 text-neutral-400 hover:text-neutral-300 transition-colors rounded-md hover:bg-neutral-800"
+            title="Back to Workflows"
           >
             <ArrowLeft className="h-4 w-4" />
-            Back to Workflows
           </button>
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 bg-green-600 rounded-md flex items-center justify-center text-white font-bold text-sm">
@@ -802,9 +746,9 @@ export default function WorkflowBuilder() {
       )}
 
       {/* Main Content */}
-      <div className={`${isWorkflowMaximized ? 'hidden' : 'grid grid-cols-2'} h-[calc(100vh-81px)]`}>
+      <div className={`${isWorkflowMaximized ? 'hidden' : 'grid grid-cols-[400px_1fr]'} h-[calc(100vh-81px)]`}>
         {/* Left Panel - Workflow Specification */}
-        <div className="bg-neutral-900 border-r border-neutral-800 flex flex-col">
+        <div className="bg-neutral-900 border-r border-neutral-800 flex flex-col min-w-0">
           <div className="px-6 py-5 border-b border-neutral-800">
             <div className="flex items-center gap-2 text-base font-semibold text-neutral-100 mb-2">
               <FileText className="h-5 w-5" />
@@ -837,32 +781,6 @@ export default function WorkflowBuilder() {
                   />
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-neutral-300 mb-3">
-                    Flow Type
-                  </label>
-                  <div className="grid grid-cols-3 gap-3">
-                    {FLOW_TYPES.map((type) => (
-                      <button
-                        key={type.id}
-                        onClick={() => handleFlowTypeChange(type.id)}
-                        className={`p-4 rounded-lg border-2 text-center transition-all ${
-                          selectedFlowType === type.id
-                            ? 'border-green-500 bg-green-500/10'
-                            : 'border-neutral-700 bg-neutral-800 hover:border-neutral-600'
-                        }`}
-                      >
-                        <div className="text-2xl mb-2">{type.icon}</div>
-                        <div className="text-sm font-semibold text-neutral-100 mb-1">
-                          {type.name}
-                        </div>
-                        <div className="text-xs text-neutral-400">
-                          {type.description}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
               </div>
             </div>
 
@@ -922,7 +840,9 @@ export default function WorkflowBuilder() {
                   </button>
                   <button
                     onClick={handleTestRun}
-                    className="px-5 py-2.5 bg-transparent border border-neutral-600 text-neutral-300 rounded-md hover:bg-neutral-700 transition-colors font-medium"
+                    disabled={!compilationResult?.success}
+                    className="px-5 py-2.5 bg-transparent border border-neutral-600 text-neutral-300 rounded-md hover:bg-neutral-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    title={!compilationResult?.success ? "Compile the workflow first before testing" : "Test the compiled workflow"}
                   >
                     Test Run
                   </button>
@@ -986,7 +906,7 @@ export default function WorkflowBuilder() {
                           </li>
                           <li className="flex items-center gap-2">
                             <span className="text-green-400">•</span>
-                            All tool references resolved
+                            {compilationResult.tools_resolved} tool references resolved
                           </li>
                         </>
                       )}
@@ -1043,7 +963,7 @@ export default function WorkflowBuilder() {
         </div>
 
         {/* Right Panel - Visual Preview */}
-        <div className="bg-neutral-950 flex flex-col">
+        <div className="bg-neutral-950 flex flex-col min-w-0 overflow-hidden relative">
           <div className="flex bg-neutral-900 border-b border-neutral-800">
             <button
               onClick={() => setActiveTab('visual')}
@@ -1080,13 +1000,13 @@ export default function WorkflowBuilder() {
             </button>
           </div>
 
-          <div className="flex-1 p-6 overflow-y-auto">
+          <div className="flex-1 overflow-hidden">
             {activeTab === 'visual' && (
-              <div className="h-[calc(100vh-200px)]">
+              <div className="h-full w-full relative">
                 <InteractiveWorkflowBuilder
-                  catalogType={selectedFlowType}
+                  catalogType="workflow"
                   catalogSubtype={executionMode}
-                  catalogName={workflowName.toLowerCase().replace(/\s+/g, '-')}
+                  catalogName={debouncedCatalogName || 'workflow'}
                   initialNodes={workflowNodes}
                   initialEdges={workflowEdges}
                   onWorkflowChange={handleWorkflowChange}
@@ -1096,7 +1016,8 @@ export default function WorkflowBuilder() {
             )}
 
             {activeTab === 'dsl' && (
-              <div className="bg-neutral-800 border border-neutral-700 rounded-lg p-4 overflow-hidden">
+              <div className="p-6 h-full overflow-y-auto">
+                <div className="bg-neutral-800 border border-neutral-700 rounded-lg p-4 overflow-hidden">
                 {compilationResult?.success && compilationResult.dsl ? (
                   <div className="space-y-4">
                     {/* Cache References Summary */}
@@ -1171,11 +1092,13 @@ export default function WorkflowBuilder() {
                     <p className="text-sm">Compile your workflow to see the DSL with cache references</p>
                   </div>
                 )}
+                </div>
               </div>
             )}
 
             {activeTab === 'validation' && (
-              <div className="bg-neutral-800 border border-neutral-700 rounded-lg p-4">
+              <div className="p-6 h-full overflow-y-auto">
+                <div className="bg-neutral-800 border border-neutral-700 rounded-lg p-4">
                 {compilationResult?.validation_results && compilationResult.validation_results.length > 0 ? (
                   <div className="space-y-2">
                     {compilationResult.validation_results.map((item, index) => (
@@ -1204,6 +1127,7 @@ export default function WorkflowBuilder() {
                     <p className="text-sm">Compile your workflow to see validation results</p>
                   </div>
                 )}
+                </div>
               </div>
             )}
           </div>
@@ -1224,7 +1148,7 @@ export default function WorkflowBuilder() {
                   {workflowName} - Full Screen Editor
                 </h1>
                 <p className="text-sm text-neutral-400">
-                  {selectedFlowType} • {executionMode} mode
+                  {executionMode} mode
                 </p>
               </div>
             </div>
@@ -1248,7 +1172,7 @@ export default function WorkflowBuilder() {
           {/* Full-Screen Workflow Builder */}
           <div className="flex-1 overflow-hidden">
             <InteractiveWorkflowBuilder
-              catalogType={selectedFlowType}
+              catalogType="workflow"
               catalogSubtype={executionMode}
               catalogName={workflowName.toLowerCase().replace(/\s+/g, '-')}
               initialNodes={workflowNodes}

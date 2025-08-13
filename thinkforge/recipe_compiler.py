@@ -145,7 +145,7 @@ class RecipeCompiler:
         errors = []
         
         # Check recipe type
-        if recipe.template_type not in [TemplateType.RECIPE, TemplateType.RECIPE_STEP]:
+        if recipe.template_type not in [TemplateType.RECIPE, TemplateType.RECIPE_STEP, TemplateType.RECIPE_TEMPLATE, TemplateType.WORKFLOW]:
             errors.append(f"Invalid recipe type: {recipe.template_type}")
         
         # Check template is valid JSON

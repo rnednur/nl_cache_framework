@@ -35,6 +35,17 @@ import {
   Save,
   X,
   Target,
+  Home,
+  ChevronRight,
+  Copy,
+  Share,
+  MoreHorizontal,
+  Clock,
+  TrendingUp,
+  Database,
+  Code,
+  Globe,
+  Zap,
 } from 'lucide-react'
 import api, { type CacheItem } from '@/app/services/api'
 
@@ -90,7 +101,7 @@ export default function RecipeDetail() {
   const [error, setError] = useState<string | null>(null)
   const [selectedFormat, setSelectedFormat] = useState('langchain')
   const [isExporting, setIsExporting] = useState(false)
-  const [activeTab, setActiveTab] = useState<'overview' | 'settings'>('overview')
+  const [stepsTab, setStepsTab] = useState<'visual' | 'xml'>('visual')
   const [isEditingName, setIsEditingName] = useState(false)
   const [editedName, setEditedName] = useState('')
   const [isEditingDescription, setIsEditingDescription] = useState(false)
@@ -186,6 +197,29 @@ export default function RecipeDetail() {
       setIsEditingDescription(false)
     }
   }
+
+  const handleExecuteWorkflow = async () => {
+    if (!recipe) return
+
+    try {
+      toast.loading('Starting workflow execution...', { id: 'execute' })
+
+      const result = await api.executeWorkflow(recipe.id, {}, false)
+
+      toast.success('Workflow execution started successfully', { id: 'execute' })
+
+      // For now, just show the execution URL in a toast
+      toast.success(`Execution URL: ${result.execution_url}`)
+
+      // In a full implementation, you might navigate to an execution monitoring page
+      // or show a real-time execution progress dialog
+      console.log('Workflow execution started:', result)
+
+    } catch (error: any) {
+      toast.error(`Workflow execution failed: ${error.message}`, { id: 'execute' })
+      console.error('Workflow execution error:', error)
+    }
+  }
   
 
   const handleExportRecipe = async () => {
@@ -245,6 +279,72 @@ export default function RecipeDetail() {
     return COMPLEXITY_COLORS[complexity as keyof typeof COMPLEXITY_COLORS] || 'bg-neutral-500'
   }
 
+  const getStepTypeIcon = (stepType: string) => {
+    const iconMap: Record<string, any> = {
+      'sql': Database,
+      'api': Globe,
+      'script': Code,
+      'workflow': Zap,
+      'function': Code,
+      'data': Database,
+      'transform': Layers,
+      'validation': Target,
+    }
+    
+    const IconComponent = iconMap[stepType.toLowerCase()] || Code
+    return <IconComponent className="h-4 w-4" />
+  }
+
+  const getStepTypeColor = (stepType: string) => {
+    const colorMap: Record<string, string> = {
+      'sql': 'bg-blue-500',
+      'api': 'bg-green-500', 
+      'script': 'bg-purple-500',
+      'workflow': 'bg-yellow-500',
+      'function': 'bg-indigo-500',
+      'data': 'bg-cyan-500',
+      'transform': 'bg-orange-500',
+      'validation': 'bg-red-500',
+    }
+    
+    return colorMap[stepType.toLowerCase()] || 'bg-neutral-500'
+  }
+
+  const generateRecipeXML = (recipe: Recipe) => {
+    const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<recipe id="${recipe.id}" name="${recipe.nl_query}" status="${recipe.status}">
+  <metadata>
+    <description>${recipe.template || 'No description'}</description>
+    <templateType>${recipe.template_type}</templateType>
+    <complexity>${recipe.complexity_level || 'unknown'}</complexity>
+    <usageCount>${recipe.usage_count || 0}</usageCount>
+    <created>${recipe.created_at}</created>
+    <updated>${recipe.updated_at}</updated>
+  </metadata>
+  
+  <steps count="${recipe.recipe_steps?.length || 0}">
+${recipe.recipe_steps?.map((step, index) => `    <step id="${step.id}" order="${index + 1}">
+      <name>${step.name}</name>
+      <type>${step.type}</type>
+      ${step.tool_id ? `<toolId>${step.tool_id}</toolId>` : ''}
+      ${step.depends_on && step.depends_on.length > 0 ? 
+        `<dependencies>\n${step.depends_on.map(dep => `        <dependsOn>${dep}</dependsOn>`).join('\n')}\n      </dependencies>` : 
+        ''}
+    </step>`).join('\n') || '    <!-- No steps defined -->'}
+  </steps>
+  
+  ${tools.length > 0 ? `<requiredTools count="${tools.length}">
+${tools.map(tool => `    <tool id="${tool.id}">
+      <name>${tool.nl_query}</name>
+      <type>${tool.template_type}</type>
+      ${tool.health_status ? `<healthStatus>${tool.health_status}</healthStatus>` : ''}
+    </tool>`).join('\n')}
+  </requiredTools>` : '  <requiredTools count="0" />'}
+</recipe>`
+
+    return xmlContent
+  }
+
 
   if (loading) {
     return (
@@ -269,29 +369,42 @@ export default function RecipeDetail() {
 
   return (
     <div className="space-y-6">
+      {/* Breadcrumb Navigation */}
+      <div className="flex items-center gap-2 text-sm text-neutral-400">
+        <button
+          onClick={() => router.push('/')}
+          className="flex items-center gap-1 hover:text-neutral-300 transition-colors"
+        >
+          <Home className="h-4 w-4" />
+          Home
+        </button>
+        <ChevronRight className="h-4 w-4" />
+        <button
+          onClick={() => router.push('/recipes')}
+          className="hover:text-neutral-300 transition-colors"
+        >
+          Workflows
+        </button>
+        <ChevronRight className="h-4 w-4" />
+        <span className="text-neutral-300 truncate max-w-[200px]" title={recipe.nl_query}>
+          {recipe.nl_query}
+        </span>
+      </div>
+
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => router.push('/recipes')}
-            className="gap-2"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back
-          </Button>
-          <div className="flex items-center gap-3">
-            <div className={`p-3 rounded-lg ${getRecipeTypeColor(recipe.template_type)}`}>
+      <div className="bg-neutral-900 rounded-lg border border-neutral-800 p-6">
+        <div className="flex items-start justify-between">
+          <div className="flex items-start gap-4">
+            <div className={`p-3 rounded-lg ${getRecipeTypeColor(recipe.template_type)} flex-shrink-0`}>
               {getRecipeIcon(recipe.template_type)}
             </div>
-            <div>
+            <div className="min-w-0 flex-1">
               {isEditingName ? (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 mb-2">
                   <Input
                     value={editedName}
                     onChange={(e) => setEditedName(e.target.value)}
-                    className="text-xl font-semibold bg-neutral-900 border-neutral-700"
+                    className="text-xl font-semibold bg-neutral-800 border-neutral-700"
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') handleSaveInlineEdit('name')
                       if (e.key === 'Escape') handleCancelInlineEdit('name')
@@ -316,374 +429,523 @@ export default function RecipeDetail() {
                   </Button>
                 </div>
               ) : (
-                <div className="flex items-center gap-2 group">
-                  <h1 className="text-2xl font-semibold text-white">{recipe.nl_query}</h1>
+                <div className="flex items-center gap-2 group mb-2">
+                  <h1 className="text-2xl font-semibold text-white truncate">{recipe.nl_query}</h1>
                   <Button
                     size="sm"
                     variant="ghost"
                     onClick={() => setIsEditingName(true)}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity p-1 h-auto"
+                    className="opacity-0 group-hover:opacity-100 transition-opacity p-1 h-auto shrink-0"
                   >
                     <Edit className="h-3 w-3" />
                   </Button>
                 </div>
               )}
-              <p className="text-neutral-400 capitalize">
-                {RECIPE_TYPES[recipe.template_type as keyof typeof RECIPE_TYPES]?.label || recipe.template_type}
-              </p>
+              <div className="flex items-center gap-3 text-sm">
+                <span className="text-neutral-400 capitalize">
+                  {RECIPE_TYPES[recipe.template_type as keyof typeof RECIPE_TYPES]?.label || recipe.template_type}
+                </span>
+                <Badge 
+                  variant={recipe.status === 'active' ? 'default' : recipe.status === 'pending' ? 'secondary' : 'outline'}
+                  className={`capitalize ${
+                    recipe.status === 'active' ? 'bg-green-600' : 
+                    recipe.status === 'pending' ? 'bg-yellow-600' : 
+                    'bg-neutral-600'
+                  }`}
+                >
+                  {recipe.status}
+                </Badge>
+                <span className="text-neutral-500 flex items-center gap-1">
+                  <Clock className="h-3 w-3" />
+                  Created {new Date(recipe.created_at).toLocaleDateString()}
+                </span>
+              </div>
             </div>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={() => router.push(`/recipes/new?edit=${recipe.id}`)}
-            className="gap-2 border-neutral-600 text-neutral-300 hover:bg-neutral-700"
-          >
-            <Edit className="h-4 w-4" />
-            Edit
-          </Button>
+          
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                navigator.clipboard.writeText(recipe.id.toString())
+                toast.success('Recipe ID copied to clipboard')
+              }}
+              className="gap-2 border-neutral-600 text-neutral-400 hover:bg-neutral-800"
+            >
+              <Copy className="h-3 w-3" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const url = window.location.href
+                navigator.clipboard.writeText(url)
+                toast.success('Recipe URL copied to clipboard')
+              }}
+              className="gap-2 border-neutral-600 text-neutral-400 hover:bg-neutral-800"
+            >
+              <Share className="h-3 w-3" />
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => router.push(`/recipes/new?edit=${recipe.id}`)}
+              className="gap-2 border-neutral-600 text-neutral-300 hover:bg-neutral-700"
+            >
+              <Edit className="h-4 w-4" />
+              Edit
+            </Button>
+            {recipe.template_type === 'workflow' && (
+              <Button
+                onClick={() => handleExecuteWorkflow()}
+                className="gap-2 bg-green-600 hover:bg-green-700"
+              >
+                <Target className="h-4 w-4" />
+                Execute
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Recipe Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card className="bg-neutral-800 border-neutral-700">
+      {/* Recipe Overview Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <Card className="bg-neutral-800 border-neutral-700 hover:bg-neutral-750 transition-colors cursor-pointer">
           <CardContent className="pt-6">
-            <div className="text-center">
-              <div className="text-2xl font-bold text-white mb-1">
-                {recipe.recipe_steps?.length || 0}
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-2xl font-bold text-white mb-1">
+                  {recipe.recipe_steps?.length || 0}
+                </div>
+                <div className="text-sm text-neutral-400">Steps</div>
               </div>
-              <div className="text-sm text-neutral-400">Steps</div>
+              <div className="p-3 bg-blue-500/10 rounded-full">
+                <Layers className="h-6 w-6 text-blue-400" />
+              </div>
             </div>
           </CardContent>
         </Card>
         
-        <Card className="bg-neutral-800 border-neutral-700">
+        <Card className="bg-neutral-800 border-neutral-700 hover:bg-neutral-750 transition-colors cursor-pointer">
           <CardContent className="pt-6">
-            <div className="text-center">
-              <div className="text-2xl font-bold text-white mb-1">
-                {recipe.usage_count || 0}
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-2xl font-bold text-white mb-1">
+                  {recipe.usage_count || 0}
+                </div>
+                <div className="text-sm text-neutral-400">Usage Count</div>
+                {recipe.usage_count && recipe.usage_count > 0 && (
+                  <div className="flex items-center gap-1 text-xs text-green-400 mt-1">
+                    <TrendingUp className="h-3 w-3" />
+                    Active
+                  </div>
+                )}
               </div>
-              <div className="text-sm text-neutral-400">Usage Count</div>
+              <div className="p-3 bg-green-500/10 rounded-full">
+                <TrendingUp className="h-6 w-6 text-green-400" />
+              </div>
             </div>
           </CardContent>
         </Card>
         
-        <Card className="bg-neutral-800 border-neutral-700">
+        <Card className="bg-neutral-800 border-neutral-700 hover:bg-neutral-750 transition-colors cursor-pointer">
           <CardContent className="pt-6">
-            <div className="text-center">
-              <div className="text-2xl font-bold text-white mb-1">
-                {new Date(recipe.created_at).toLocaleDateString()}
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-2xl font-bold text-white mb-1">
+                  {tools.length || 0}
+                </div>
+                <div className="text-sm text-neutral-400">Required Tools</div>
+                {tools.length > 0 && (
+                  <div className="text-xs text-neutral-500 mt-1">
+                    {tools.filter(t => t.health_status === 'healthy').length} healthy
+                  </div>
+                )}
               </div>
-              <div className="text-sm text-neutral-400">Created</div>
+              <div className="p-3 bg-purple-500/10 rounded-full">
+                <Zap className="h-6 w-6 text-purple-400" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card className="bg-neutral-800 border-neutral-700 hover:bg-neutral-750 transition-colors cursor-pointer">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-lg font-bold text-white mb-1">
+                  {new Date(recipe.created_at).toLocaleDateString()}
+                </div>
+                <div className="text-sm text-neutral-400">Created</div>
+                <div className="text-xs text-neutral-500 mt-1">
+                  {Math.floor((Date.now() - new Date(recipe.created_at).getTime()) / (1000 * 60 * 60 * 24))} days ago
+                </div>
+              </div>
+              <div className="p-3 bg-orange-500/10 rounded-full">
+                <Clock className="h-6 w-6 text-orange-400" />
+              </div>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Recipe Details with Tabs */}
-      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="overview" className="flex items-center gap-2">
-            <Target className="h-4 w-4" />
-            Overview
-          </TabsTrigger>
-          <TabsTrigger value="settings" className="flex items-center gap-2">
-            <Settings className="h-4 w-4" />
-            Settings
-          </TabsTrigger>
-        </TabsList>
+      {/* Recipe Content - Unified View */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Recipe Steps */}
+        <div className="lg:col-span-2">
+          <Card className="bg-neutral-800 border-neutral-700">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Layers className="h-5 w-5" />
+                Recipe Steps
+              </CardTitle>
+              <CardDescription>
+                Workflow execution steps in order
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Tabs value={stepsTab} onValueChange={(value) => setStepsTab(value as typeof stepsTab)}>
+                <TabsList className="grid w-full grid-cols-2 mb-6 bg-neutral-900 border border-neutral-700">
+                  <TabsTrigger value="visual" className="flex items-center gap-2 data-[state=active]:bg-neutral-800 data-[state=active]:text-green-400 text-neutral-400">
+                    <Layers className="h-4 w-4" />
+                    Visual Steps
+                  </TabsTrigger>
+                  <TabsTrigger value="xml" className="flex items-center gap-2 data-[state=active]:bg-neutral-800 data-[state=active]:text-green-400 text-neutral-400">
+                    <Code className="h-4 w-4" />
+                    XML View
+                  </TabsTrigger>
+                </TabsList>
 
-        {/* Overview Tab */}
-        <TabsContent value="overview" className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Recipe Steps */}
-            <div className="lg:col-span-2">
-              <Card className="bg-neutral-800 border-neutral-700">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Layers className="h-5 w-5" />
-                    Recipe Steps
-                  </CardTitle>
-                  <CardDescription>
-                    Workflow execution steps in order
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
+                <TabsContent value="visual" className="space-y-3">
                   {recipe.recipe_steps && recipe.recipe_steps.length > 0 ? (
-                    recipe.recipe_steps.map((step, index) => (
-                      <div
-                        key={step.id}
-                        className="flex items-center gap-4 p-4 bg-neutral-900 rounded-lg border border-neutral-700"
-                      >
-                        <div className="flex-shrink-0 w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-sm font-semibold">
-                          {index + 1}
-                        </div>
-                        <div className="flex-1">
-                          <h4 className="font-medium text-white">{step.name}</h4>
-                          <p className="text-sm text-neutral-400 capitalize">{step.type}</p>
-                          {step.depends_on && step.depends_on.length > 0 && (
-                            <div className="mt-2">
-                              <span className="text-xs text-neutral-500">Depends on: </span>
-                              {step.depends_on.map((dep, i) => (
-                                <Badge key={i} variant="outline" className="text-xs ml-1 border-neutral-600">
-                                  Step {dep}
-                                </Badge>
-                              ))}
+                    <>
+                      {recipe.recipe_steps.map((step, index) => (
+                        <div
+                          key={step.id}
+                          className="group relative"
+                        >
+                          <div className="flex items-start gap-4 p-4 bg-neutral-900 rounded-lg border border-neutral-700 hover:border-neutral-600 transition-colors">
+                            <div className="flex-shrink-0 w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-sm font-semibold">
+                              {index + 1}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-start gap-2 mb-2">
+                                <h4 className="font-medium text-white truncate">{step.name}</h4>
+                                <div className={`flex items-center gap-1 px-2 py-1 rounded text-xs text-white ${getStepTypeColor(step.type)}`}>
+                                  {getStepTypeIcon(step.type)}
+                                  <span className="capitalize">{step.type}</span>
+                                </div>
+                              </div>
+                              
+                              {step.depends_on && step.depends_on.length > 0 && (
+                                <div className="flex items-center gap-2 mb-2">
+                                  <span className="text-xs text-neutral-500">Depends on:</span>
+                                  <div className="flex gap-1">
+                                    {step.depends_on.map((dep, i) => (
+                                      <Badge key={i} variant="outline" className="text-xs border-neutral-600 text-neutral-400">
+                                        #{dep}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              
+                              <div className="flex items-center gap-3 text-xs text-neutral-500">
+                                <span>Step {index + 1} of {recipe.recipe_steps?.length}</span>
+                                {step.tool_id && (
+                                  <span className="flex items-center gap-1">
+                                    <Zap className="h-3 w-3" />
+                                    Tool #{step.tool_id}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            
+                            {/* Step Actions - shown on hover */}
+                            <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                              <Button 
+                                size="sm" 
+                                variant="ghost" 
+                                className="h-6 w-6 p-0"
+                                onClick={() => {
+                                  // TODO: Implement step editing
+                                  toast.info('Step editing coming soon!')
+                                }}
+                              >
+                                <Edit className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </div>
+                          
+                          {/* Connection line to next step */}
+                          {index < (recipe.recipe_steps?.length || 0) - 1 && (
+                            <div className="flex justify-center">
+                              <div className="w-px h-4 bg-neutral-700 mt-2 mb-2"></div>
                             </div>
                           )}
                         </div>
-                        {step.tool_id && (
-                          <div className="flex-shrink-0">
-                            <Badge variant="secondary" className="bg-neutral-700 text-neutral-300">
-                              Tool #{step.tool_id}
-                            </Badge>
-                          </div>
-                        )}
-                      </div>
-                    ))
+                      ))}
+                    </>
                   ) : (
-                    <div className="text-center py-8 text-neutral-400">
-                      No steps defined for this recipe
+                    <div className="text-center py-12">
+                      <Layers className="h-12 w-12 text-neutral-600 mx-auto mb-4" />
+                      <h3 className="text-lg font-medium text-neutral-400 mb-2">No steps defined</h3>
+                      <p className="text-sm text-neutral-500 mb-4">This workflow doesn't have any steps yet.</p>
+                      <Button
+                        onClick={() => router.push(`/recipes/new?edit=${recipe.id}`)}
+                        variant="outline"
+                        size="sm"
+                        className="gap-2"
+                      >
+                        <Edit className="h-4 w-4" />
+                        Add Steps
+                      </Button>
                     </div>
                   )}
-                </CardContent>
-              </Card>
-            </div>
+                </TabsContent>
 
-            {/* Recipe Info & Tools */}
-            <div className="space-y-6">
-              {/* Recipe Information */}
-              <Card className="bg-neutral-800 border-neutral-700">
-                <CardHeader>
-                  <CardTitle>Recipe Information</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {recipe.complexity_level && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-neutral-400">Complexity</span>
-                      <div className="flex items-center gap-2">
-                        <div className={`w-3 h-3 rounded-full ${getComplexityColor(recipe.complexity_level)}`} />
-                        <span className="text-sm capitalize text-white">{recipe.complexity_level}</span>
-                      </div>
+                <TabsContent value="xml">
+                  <div className="relative">
+                    <div className="absolute top-3 right-3 z-10">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          const xmlContent = generateRecipeXML(recipe)
+                          navigator.clipboard.writeText(xmlContent)
+                          toast.success('XML copied to clipboard!')
+                        }}
+                        className="gap-2 text-xs bg-neutral-800 border-neutral-600 text-neutral-200 hover:bg-neutral-700 hover:text-white"
+                      >
+                        <Copy className="h-3 w-3" />
+                        Copy XML
+                      </Button>
                     </div>
-                  )}
-                  
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-neutral-400">Status</span>
-                    <Badge variant={recipe.status === 'valid' ? 'default' : 'destructive'} className="capitalize">
-                      {recipe.status}
-                    </Badge>
+                    <pre className="bg-neutral-900 border border-neutral-700 rounded-lg p-4 text-sm text-neutral-300 overflow-x-auto max-h-[600px] overflow-y-auto">
+                      <code className="language-xml">
+                        {generateRecipeXML(recipe)}
+                      </code>
+                    </pre>
                   </div>
-                  
+                </TabsContent>
+              </Tabs>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Recipe Info & Settings */}
+        <div className="space-y-6">
+          {/* Recipe Information */}
+          <Card className="bg-neutral-800 border-neutral-700">
+            <CardHeader>
+              <CardTitle className="text-neutral-100">Recipe Information</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-3">
+                {recipe.complexity_level && (
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-neutral-400">Usage Count</span>
-                    <span className="text-sm text-white">{recipe.usage_count || 0}</span>
+                    <span className="text-sm text-neutral-300">Complexity</span>
+                    <div className="flex items-center gap-2">
+                      <div className={`w-3 h-3 rounded-full ${getComplexityColor(recipe.complexity_level)}`} />
+                      <span className="text-sm capitalize text-neutral-100">{recipe.complexity_level}</span>
+                    </div>
                   </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-neutral-400">Updated</span>
-                    <span className="text-sm text-white">{new Date(recipe.updated_at).toLocaleDateString()}</span>
+                )}
+                
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-neutral-300">Status</span>
+                  <Badge 
+                    variant={recipe.status === 'active' ? 'default' : 'secondary'} 
+                    className={`capitalize text-white font-medium ${
+                      recipe.status === 'active' ? 'bg-green-600 hover:bg-green-700' : 
+                      recipe.status === 'pending' ? 'bg-yellow-600 hover:bg-yellow-700' : 
+                      'bg-neutral-600 hover:bg-neutral-700'
+                    }`}
+                  >
+                    {recipe.status}
+                  </Badge>
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-neutral-300">Usage Count</span>
+                  <div className="text-right">
+                    <span className="text-sm text-neutral-100 font-medium">{recipe.usage_count || 0}</span>
+                    <div className="text-xs text-neutral-400">times executed</div>
                   </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-neutral-400">Created</span>
-                    <span className="text-sm text-white">
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-neutral-300">Recipe ID</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-neutral-100 font-mono">#{recipe.id}</span>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 w-6 p-0 text-neutral-400 hover:text-neutral-200 hover:bg-neutral-700"
+                      onClick={() => {
+                        navigator.clipboard.writeText(recipe.id.toString())
+                        toast.success('ID copied!')
+                      }}
+                    >
+                      <Copy className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="pt-4 border-t border-neutral-600 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-neutral-300">Updated</span>
+                  <div className="text-right">
+                    <span className="text-sm text-neutral-100">{new Date(recipe.updated_at).toLocaleDateString()}</span>
+                    <div className="text-xs text-neutral-400">
+                      {Math.floor((Date.now() - new Date(recipe.updated_at).getTime()) / (1000 * 60 * 60 * 24))} days ago
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-neutral-300">Created</span>
+                  <div className="text-right">
+                    <span className="text-sm text-neutral-100">
                       {new Date(recipe.created_at).toLocaleDateString()}
                     </span>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Required Tools */}
-              {tools.length > 0 && (
-                <Card className="bg-neutral-800 border-neutral-700">
-                  <CardHeader>
-                    <CardTitle>Required Tools</CardTitle>
-                    <CardDescription>
-                      Tools needed for recipe execution
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {tools.map((tool) => (
-                      <div
-                        key={tool.id}
-                        className="flex items-center gap-3 p-3 bg-neutral-900 rounded-lg border border-neutral-700 cursor-pointer hover:border-neutral-600"
-                        onClick={() => router.push(`/tools/${tool.id}`)}
-                      >
-                        <div className="flex-1">
-                          <h4 className="font-medium text-white text-sm">{tool.nl_query}</h4>
-                          <p className="text-xs text-neutral-400 capitalize">{tool.template_type}</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {tool.health_status && (
-                            <div
-                              className={`w-2 h-2 rounded-full ${
-                                tool.health_status === 'healthy' ? 'bg-green-500' :
-                                tool.health_status === 'degraded' ? 'bg-yellow-500' :
-                                tool.health_status === 'unhealthy' ? 'bg-red-500' :
-                                'bg-neutral-500'
-                              }`}
-                            />
-                          )}
-                          <ExternalLink className="h-3 w-3 text-neutral-400" />
-                        </div>
-                      </div>
-                    ))}
-                  </CardContent>
-                </Card>
-              )}
-            </div>
-          </div>
-        </TabsContent>
-
-
-        {/* Settings Tab */}
-        <TabsContent value="settings" className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Recipe Settings */}
-            <Card className="bg-neutral-800 border-neutral-700">
-              <CardHeader>
-                <CardTitle>Recipe Settings</CardTitle>
-                <CardDescription>
-                  Configure recipe behavior and metadata
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-neutral-300 mb-2">
-                    Description
-                  </label>
-                  {isEditingDescription ? (
-                    <div className="space-y-2">
-                      <Textarea
-                        value={editedDescription}
-                        onChange={(e) => setEditedDescription(e.target.value)}
-                        className="bg-neutral-900 border-neutral-700"
-                        placeholder="Enter recipe description..."
-                        rows={4}
-                      />
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          onClick={() => handleSaveInlineEdit('description')}
-                          disabled={isSaving}
-                        >
-                          {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-                          Save
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleCancelInlineEdit('description')}
-                        >
-                          Cancel
-                        </Button>
-                      </div>
+                    <div className="text-xs text-neutral-400">
+                      {Math.floor((Date.now() - new Date(recipe.created_at).getTime()) / (1000 * 60 * 60 * 24))} days ago
                     </div>
-                  ) : (
-                    <div className="group">
-                      <div className="p-3 bg-neutral-900 rounded-lg border border-neutral-700 min-h-[100px] relative">
-                        <p className="text-sm text-neutral-300 whitespace-pre-wrap">
-                          {recipe.template || 'No description provided'}
-                        </p>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setIsEditingDescription(true)}
-                          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 h-auto"
-                        >
-                          <Edit className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-neutral-300 mb-2">
-                      Complexity Level
-                    </label>
-                    <Select value={recipe.complexity_level || 'easy'} onValueChange={() => {}}>
-                      <SelectTrigger className="bg-neutral-900 border-neutral-700">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="easy">Easy</SelectItem>
-                        <SelectItem value="medium">Medium</SelectItem>
-                        <SelectItem value="hard">Hard</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-neutral-300 mb-2">
-                      Status
-                    </label>
-                    <Select value={recipe.status || 'active'} onValueChange={() => {}}>
-                      <SelectTrigger className="bg-neutral-900 border-neutral-700">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="active">Active</SelectItem>
-                        <SelectItem value="pending">Pending</SelectItem>
-                        <SelectItem value="archived">Archived</SelectItem>
-                      </SelectContent>
-                    </Select>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+              
+              {/* Quick Actions */}
+              <div className="pt-4 border-t border-neutral-600">
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      // TODO: Implement duplicate functionality
+                      toast.info('Duplicate recipe coming soon!')
+                    }}
+                    className="gap-2 text-xs bg-neutral-700 border-neutral-600 text-neutral-200 hover:bg-neutral-600 hover:text-white"
+                  >
+                    <Copy className="h-3 w-3" />
+                    Duplicate
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      const url = window.location.href
+                      navigator.clipboard.writeText(url)
+                      toast.success('URL copied!')
+                    }}
+                    className="gap-2 text-xs bg-neutral-700 border-neutral-600 text-neutral-200 hover:bg-neutral-600 hover:text-white"
+                  >
+                    <Share className="h-3 w-3" />
+                    Share
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
 
-            {/* Export Settings */}
-            <Card className="bg-neutral-800 border-neutral-700">
-              <CardHeader>
-                <CardTitle>Export & Integration</CardTitle>
-                <CardDescription>
-                  Export recipe to different workflow formats
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
+          {/* Export Settings */}
+          <Card className="bg-neutral-800 border-neutral-700">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-neutral-100">
+                <Download className="h-4 w-4" />
+                Export Recipe
+              </CardTitle>
+              <CardDescription className="text-neutral-300">
+                Export to different workflow formats
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-neutral-200 mb-2">
+                  Export Format
+                </label>
                 <Select value={selectedFormat} onValueChange={setSelectedFormat}>
-                  <SelectTrigger className="bg-neutral-900 border-neutral-700">
+                  <SelectTrigger className="bg-neutral-900 border-neutral-600 text-neutral-100">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="bg-neutral-900 border-neutral-700">
                     {SUPPORTED_FORMATS.map((format) => (
-                      <SelectItem key={format.value} value={format.value}>
+                      <SelectItem 
+                        key={format.value} 
+                        value={format.value}
+                        className="text-neutral-100 hover:bg-neutral-800 focus:bg-neutral-800"
+                      >
                         <div>
-                          <div className="font-medium">{format.label}</div>
+                          <div className="font-medium text-neutral-100">{format.label}</div>
                           <div className="text-xs text-neutral-400">{format.description}</div>
                         </div>
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                
-                <Button
-                  onClick={handleExportRecipe}
-                  disabled={isExporting}
-                  className="w-full gap-2"
-                  variant="outline"
-                >
-                  {isExporting ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Download className="h-4 w-4" />
-                  )}
-                  {isExporting ? 'Compiling...' : 'Export Recipe'}
-                </Button>
+              </div>
+              
+              <Button
+                onClick={handleExportRecipe}
+                disabled={isExporting}
+                className="w-full gap-2 bg-neutral-700 border-neutral-600 text-neutral-200 hover:bg-neutral-600 hover:text-white"
+                variant="outline"
+              >
+                {isExporting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4" />
+                )}
+                {isExporting ? 'Compiling...' : 'Export Recipe'}
+              </Button>
+            </CardContent>
+          </Card>
 
-                <div className="text-xs text-neutral-500 mt-2">
-                  Exported workflows can be imported into compatible platforms for execution.
-                </div>
+          {/* Required Tools */}
+          {tools.length > 0 && (
+            <Card className="bg-neutral-800 border-neutral-700">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Zap className="h-4 w-4" />
+                  Required Tools
+                </CardTitle>
+                <CardDescription>
+                  Tools needed for recipe execution
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {tools.map((tool) => (
+                  <div
+                    key={tool.id}
+                    className="flex items-center gap-3 p-3 bg-neutral-900 rounded-lg border border-neutral-700 cursor-pointer hover:border-neutral-600"
+                    onClick={() => router.push(`/tools/${tool.id}`)}
+                  >
+                    <div className="flex-1">
+                      <h4 className="font-medium text-white text-sm">{tool.nl_query}</h4>
+                      <p className="text-xs text-neutral-400 capitalize">{tool.template_type}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {tool.health_status && (
+                        <div
+                          className={`w-2 h-2 rounded-full ${
+                            tool.health_status === 'healthy' ? 'bg-green-500' :
+                            tool.health_status === 'degraded' ? 'bg-yellow-500' :
+                            tool.health_status === 'unhealthy' ? 'bg-red-500' :
+                            'bg-neutral-500'
+                          }`}
+                        />
+                      )}
+                      <ExternalLink className="h-3 w-3 text-neutral-400" />
+                    </div>
+                  </div>
+                ))}
               </CardContent>
             </Card>
-          </div>
-        </TabsContent>
-      </Tabs>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
