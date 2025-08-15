@@ -26,6 +26,7 @@ import {
 } from 'lucide-react'
 import api from '@/app/services/api'
 import InteractiveWorkflowBuilder from '@/app/components/ui/InteractiveWorkflowBuilder'
+import { CatalogSelect } from '@/app/components/ui/CatalogSelect'
 import { parseNLWorkflow, type ParserResult } from '@/app/utils/nlWorkflowParser'
 import { convertWorkflowToNL, validateWorkflowStructure, convertWorkflowToDSL, generateExecutableWorkflow } from '@/app/utils/workflowToNL'
 import { Node, Edge } from 'reactflow'
@@ -71,6 +72,8 @@ export default function WorkflowBuilder() {
   const [selectedFlowType, setSelectedFlowType] = useState('workflow')
   const [executionMode, setExecutionMode] = useState('interactive')
   const [errorHandling, setErrorHandling] = useState('fail_fast')
+  const [catalogType, setCatalogType] = useState<string>('')
+  const [catalogSubtype, setCatalogSubtype] = useState<string>('')
   const [isLoadingRecipe, setIsLoadingRecipe] = useState(isEditMode)
   
   // Generate unique workflow session ID for new workflows
@@ -181,6 +184,8 @@ export default function WorkflowBuilder() {
       setWorkflowName(recipe.nl_query || '')
       setSelectedFlowType(recipe.catalog_type || 'workflow')
       setExecutionMode(recipe.catalog_subtype || 'interactive')
+      setCatalogType(recipe.catalog_type || '')
+      setCatalogSubtype(recipe.catalog_subtype || '')
       
       // Convert existing recipe template to visual workflow if possible
       let nlDesc = ''
@@ -528,8 +533,8 @@ export default function WorkflowBuilder() {
         nl_query: workflowName,
         template: JSON.stringify(workflowTemplate, null, 2),
         template_type: 'workflow',
-        catalog_type: selectedFlowType,
-        catalog_subtype: executionMode,
+        catalog_type: catalogType || selectedFlowType,
+        catalog_subtype: catalogSubtype || executionMode,
         catalog_name: workflowName.toLowerCase().replace(/\s+/g, '-'),
         reasoning_trace: nlDescription,
         is_template: false,
@@ -570,6 +575,8 @@ export default function WorkflowBuilder() {
     setSelectedFlowType('workflow')
     setExecutionMode('interactive')
     setErrorHandling('fail_fast')
+    setCatalogType('')
+    setCatalogSubtype('')
     setCompilationResult(null)
     toast.success('Workflow cleared')
   }
@@ -601,7 +608,9 @@ export default function WorkflowBuilder() {
       const startTime = Date.now()
       const analysisResult = await api.analyzeRecipeText({
         recipe_text: nlDescription,
-        recipe_name: workflowName || 'New Workflow'
+        recipe_name: workflowName || 'New Workflow',
+        catalog_type: catalogType || undefined,
+        catalog_subtype: catalogSubtype || undefined
       })
       const endTime = Date.now()
       
@@ -938,6 +947,34 @@ export default function WorkflowBuilder() {
                     onChange={(e) => setWorkflowName(e.target.value)}
                     className="w-full px-3 py-2.5 bg-neutral-800 border border-neutral-700 rounded-md text-neutral-100 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
                     placeholder="Post-Incident Review Automation"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <CatalogSelect
+                    value={catalogType}
+                    onValueChange={(value) => {
+                      setCatalogType(value || '')
+                      // Clear catalog subtype when catalog type changes
+                      if (catalogSubtype) {
+                        setCatalogSubtype('')
+                      }
+                    }}
+                    catalogField="catalog_type"
+                    label="Catalog Type"
+                    placeholder="Select catalog type..."
+                    className="w-full"
+                  />
+                  
+                  <CatalogSelect
+                    value={catalogSubtype}
+                    onValueChange={(value) => setCatalogSubtype(value || '')}
+                    catalogField="catalog_subtype"
+                    catalogType={catalogType || undefined}
+                    label="Catalog Subtype"
+                    placeholder="Select catalog subtype..."
+                    className="w-full"
+                    disabled={!catalogType}
                   />
                 </div>
 
