@@ -121,6 +121,7 @@ export function CatalogSelect({
 
   // Handle selecting existing value
   const handleSelect = (selectedValue: string) => {
+    console.log('CatalogSelect handleSelect called with:', selectedValue)
     if (selectedValue === value) {
       onValueChange?.(undefined)
     } else {
@@ -159,8 +160,8 @@ export function CatalogSelect({
           </Button>
         </PopoverTrigger>
         
-        <PopoverContent className="w-full p-0" align="start">
-          <Command>
+        <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0 z-50" align="start">
+          <Command shouldFilter={false}>
             <CommandInput
               placeholder={`Search ${catalogField.replace('catalog_', '')}...`}
               value={searchValue}
@@ -187,7 +188,7 @@ export function CatalogSelect({
                           key={item}
                           value={item}
                           onSelect={() => handleSelect(item)}
-                          className="cursor-pointer"
+                          className="cursor-pointer hover:bg-accent hover:text-accent-foreground"
                         >
                           <Check
                             className={cn(
