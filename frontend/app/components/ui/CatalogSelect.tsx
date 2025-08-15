@@ -7,7 +7,6 @@ import * as SelectPrimitive from "@radix-ui/react-select"
 import { cn } from "../../lib/utils"
 import { Input } from "./input"
 import { Button } from "./button"
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "./command"
 import { Popover, PopoverContent, PopoverTrigger } from "./popover"
 import api from "@/app/services/api"
 
@@ -161,15 +160,17 @@ export function CatalogSelect({
         </PopoverTrigger>
         
         <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0 z-50" align="start">
-          <Command shouldFilter={false}>
-            <CommandInput
-              placeholder={`Search ${catalogField.replace('catalog_', '')}...`}
-              value={searchValue}
-              onValueChange={setSearchValue}
-              className="h-9"
-            />
+          <div className="flex flex-col">
+            <div className="px-3 py-2 border-b">
+              <Input
+                placeholder={`Search ${catalogField.replace('catalog_', '')}...`}
+                value={searchValue}
+                onChange={(e) => setSearchValue(e.target.value)}
+                className="h-9 border-0 bg-transparent p-0 focus-visible:ring-0"
+              />
+            </div>
             
-            <CommandList className="max-h-[200px]">
+            <div className="max-h-[200px] overflow-y-auto">
               {isLoading ? (
                 <div className="flex items-center justify-center py-6">
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -178,17 +179,18 @@ export function CatalogSelect({
               ) : (
                 <>
                   {filteredValues.length === 0 && !canAddNewFromSearch && (
-                    <CommandEmpty>No results found.</CommandEmpty>
+                    <div className="px-3 py-6 text-center text-sm text-muted-foreground">
+                      No results found.
+                    </div>
                   )}
                   
                   {filteredValues.length > 0 && (
-                    <CommandGroup>
+                    <div className="p-1">
                       {filteredValues.map((item) => (
-                        <CommandItem
+                        <div
                           key={item}
-                          value={item}
-                          onSelect={() => handleSelect(item)}
-                          className="cursor-pointer hover:bg-accent hover:text-accent-foreground"
+                          onClick={() => handleSelect(item)}
+                          className="flex items-center px-2 py-1.5 text-sm cursor-pointer rounded-sm hover:bg-accent hover:text-accent-foreground"
                         >
                           <Check
                             className={cn(
@@ -197,43 +199,43 @@ export function CatalogSelect({
                             )}
                           />
                           <span className="truncate">{item}</span>
-                        </CommandItem>
+                        </div>
                       ))}
-                    </CommandGroup>
+                    </div>
                   )}
                   
                   {canAddNewFromSearch && (
-                    <CommandGroup>
-                      <CommandItem
-                        onSelect={() => {
+                    <div className="p-1 border-t">
+                      <div
+                        onClick={() => {
                           onValueChange?.(searchValue.trim())
                           setCatalogValues(prev => [...prev, searchValue.trim()])
                           setIsOpen(false)
                           setSearchValue("")
                         }}
-                        className="cursor-pointer font-medium text-primary"
+                        className="flex items-center px-2 py-1.5 text-sm cursor-pointer rounded-sm hover:bg-accent hover:text-accent-foreground font-medium text-primary"
                       >
                         <Plus className="mr-2 h-4 w-4" />
                         Add "{searchValue.trim()}"
-                      </CommandItem>
-                    </CommandGroup>
+                      </div>
+                    </div>
                   )}
                   
                   {allowCustom && !isAddingNew && !canAddNewFromSearch && (
-                    <CommandGroup>
-                      <CommandItem
-                        onSelect={() => setIsAddingNew(true)}
-                        className="cursor-pointer font-medium text-primary"
+                    <div className="p-1 border-t">
+                      <div
+                        onClick={() => setIsAddingNew(true)}
+                        className="flex items-center px-2 py-1.5 text-sm cursor-pointer rounded-sm hover:bg-accent hover:text-accent-foreground font-medium text-primary"
                       >
                         <Plus className="mr-2 h-4 w-4" />
                         Add new option...
-                      </CommandItem>
-                    </CommandGroup>
+                      </div>
+                    </div>
                   )}
                 </>
               )}
-            </CommandList>
-          </Command>
+            </div>
+          </div>
           
           {isAddingNew && (
             <div className="border-t p-3 space-y-2">
