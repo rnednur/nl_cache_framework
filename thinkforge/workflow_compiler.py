@@ -107,10 +107,29 @@ def compile_workflow_template(nodes: List[Dict[str, Any]], edges: List[Dict[str,
             continue
         
         data = node.get("data", {})
+        template_type = data.get("originalStepType", "unknown")
+        
+        # Special handling for LLM steps
+        inputs = {"template": data.get("template")}
+        if template_type == "llm_step":
+            # For LLM steps, add specific inputs for parameters
+            llm_config = data.get("llmConfig", {})
+            inputs.update({
+                "prompt_template": llm_config.get("promptTemplate", ""),
+                "input_parameters": llm_config.get("inputParameters", []),
+                "output_format": llm_config.get("outputFormat", "json"),
+                "expected_output": llm_config.get("expectedOutput", {}),
+                "model": llm_config.get("model", "google/gemini-pro"),
+                "temperature": llm_config.get("temperature", 0.3),
+                "max_tokens": llm_config.get("maxTokens", 500),
+                "system_prompt": llm_config.get("systemPrompt"),
+                "validation_rules": llm_config.get("validationRules")
+            })
+        
         step = WorkflowStep(
             id=node.get("id"),
-            template_type=data.get("originalStepType", "unknown"),
-            inputs={"template": data.get("template")},
+            template_type=template_type,
+            inputs=inputs,
             dependencies=[],
             output_key=f"{node.get('id')}_result",
             metadata={
@@ -119,7 +138,8 @@ def compile_workflow_template(nodes: List[Dict[str, Any]], edges: List[Dict[str,
                 "catalogType": data.get("catalogType"),
                 "catalogSubtype": data.get("catalogSubtype"),
                 "catalogName": data.get("catalogName"),
-                "inputModifications": data.get("inputModifications", "")
+                "inputModifications": data.get("inputModifications", ""),
+                "llmConfig": data.get("llmConfig", {}) if template_type == "llm_step" else None
             }
         )
         steps[node.get("id")] = step
@@ -244,4 +264,248 @@ def serialize_workflow(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]])
     """
     import json
     template = compile_workflow_template(nodes, edges)
-    return json.dumps(template, indent=2) 
+    return json.dumps(template, indent=2)
+
+
+def compile_llm_step_to_langchain(step: WorkflowStep) -> Dict[str, Any]:
+    """
+    Convert an LLM step to LangChain LCEL format.
+    
+    Args:
+        step: WorkflowStep representing an LLM step
+        
+    Returns:
+        LangChain compatible step configuration
+    """
+    if step.template_type != "llm_step":
+        raise ValueError(f"Step {step.id} is not an LLM step")
+    
+    inputs = step.inputs
+    metadata = step.metadata.get("llmConfig", {})
+    
+    # Build the LangChain prompt template
+    prompt_template = inputs.get("prompt_template", "")
+    input_params = inputs.get("input_parameters", [])
+    
+    # Create LangChain-style configuration
+    langchain_step = {
+        "id": step.id,
+        "type": "llm_chain",
+        "config": {
+            "llm": {
+                "model": inputs.get("model", "google/gemini-pro"),
+                "temperature": inputs.get("temperature", 0.3),
+                "max_tokens": inputs.get("max_tokens", 500)
+            },
+            "prompt": {
+                "template": prompt_template,
+                "input_variables": input_params
+            },
+            "output_parser": {
+                "type": inputs.get("output_format", "json"),
+                "schema": inputs.get("expected_output", {})
+            }
+        },
+        "inputs": {param: f"{{{{ {param} }}}}" for param in input_params},
+        "outputs": [step.output_key],
+        "metadata": {
+            "label": metadata.get("label", step.id),
+            "description": f"LLM processing step: {step.id}"
+        }
+    }
+    
+    # Add system prompt if provided
+    system_prompt = inputs.get("system_prompt")
+    if system_prompt:
+        langchain_step["config"]["system_prompt"] = system_prompt
+    
+    # Add validation rules if provided
+    validation_rules = inputs.get("validation_rules")
+    if validation_rules:
+        langchain_step["config"]["validation"] = validation_rules
+    
+    return langchain_step
+
+
+def compile_llm_step_to_langflow(step: WorkflowStep) -> Dict[str, Any]:
+    """
+    Convert an LLM step to Langflow node format.
+    
+    Args:
+        step: WorkflowStep representing an LLM step
+        
+    Returns:
+        Langflow compatible node configuration
+    """
+    if step.template_type != "llm_step":
+        raise ValueError(f"Step {step.id} is not an LLM step")
+    
+    inputs = step.inputs
+    metadata = step.metadata.get("llmConfig", {})
+    
+    # Build Langflow node
+    langflow_node = {
+        "id": step.id,
+        "type": "LLMChain",
+        "position": {"x": 100, "y": 100},  # Default position
+        "data": {
+            "node": {
+                "template": {
+                    "llm": {
+                        "type": "ChatOpenAI",
+                        "model": inputs.get("model", "google/gemini-pro"),
+                        "temperature": inputs.get("temperature", 0.3),
+                        "max_tokens": inputs.get("max_tokens", 500)
+                    },
+                    "prompt": {
+                        "type": "PromptTemplate",
+                        "template": inputs.get("prompt_template", ""),
+                        "input_variables": inputs.get("input_parameters", [])
+                    },
+                    "output_parser": {
+                        "type": inputs.get("output_format", "json").upper() + "OutputParser"
+                    }
+                },
+                "base_classes": ["LLMChain", "Chain"],
+                "name": step.id,
+                "display_name": metadata.get("label", step.id),
+                "description": f"LLM processing step: {step.id}"
+            }
+        }
+    }
+    
+    # Add system message if provided
+    system_prompt = inputs.get("system_prompt")
+    if system_prompt:
+        langflow_node["data"]["node"]["template"]["system_message"] = {
+            "type": "SystemMessagePromptTemplate",
+            "content": system_prompt
+        }
+    
+    return langflow_node
+
+
+def compile_llm_step_to_langgraph(step: WorkflowStep) -> Dict[str, Any]:
+    """
+    Convert an LLM step to LangGraph node format.
+    
+    Args:
+        step: WorkflowStep representing an LLM step
+        
+    Returns:
+        LangGraph compatible node configuration
+    """
+    if step.template_type != "llm_step":
+        raise ValueError(f"Step {step.id} is not an LLM step")
+    
+    inputs = step.inputs
+    metadata = step.metadata.get("llmConfig", {})
+    
+    # Build LangGraph node
+    langgraph_node = {
+        "id": step.id,
+        "type": "llm_node",
+        "config": {
+            "llm": {
+                "provider": "openai",  # Or detect from model string
+                "model": inputs.get("model", "google/gemini-pro"),
+                "temperature": inputs.get("temperature", 0.3),
+                "max_tokens": inputs.get("max_tokens", 500)
+            },
+            "prompt_template": inputs.get("prompt_template", ""),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    param: {"type": "string"} for param in inputs.get("input_parameters", [])
+                },
+                "required": inputs.get("input_parameters", [])
+            },
+            "output_schema": inputs.get("expected_output", {}),
+            "output_format": inputs.get("output_format", "json")
+        },
+        "state": {
+            "input_keys": inputs.get("input_parameters", []),
+            "output_keys": [step.output_key]
+        },
+        "metadata": {
+            "name": metadata.get("label", step.id),
+            "description": f"LLM processing step: {step.id}"
+        }
+    }
+    
+    # Add system prompt if provided
+    system_prompt = inputs.get("system_prompt")
+    if system_prompt:
+        langgraph_node["config"]["system_prompt"] = system_prompt
+    
+    # Add validation if provided
+    validation_rules = inputs.get("validation_rules")
+    if validation_rules:
+        langgraph_node["config"]["validation"] = validation_rules
+    
+    return langgraph_node
+
+
+def compile_workflow_with_llm_steps(
+    nodes: List[Dict[str, Any]], 
+    edges: List[Dict[str, Any]], 
+    target_format: str = "generic"
+) -> Dict[str, Any]:
+    """
+    Compile a workflow that may contain LLM steps to a specific format.
+    
+    Args:
+        nodes: List of ReactFlow nodes
+        edges: List of ReactFlow edges  
+        target_format: Target format ("langchain", "langflow", "langgraph", "generic")
+        
+    Returns:
+        Compiled workflow in the specified format
+    """
+    # First compile to generic format
+    generic_workflow = compile_workflow_template(nodes, edges)
+    
+    if target_format == "generic":
+        return generic_workflow
+    
+    # Convert LLM steps to target format
+    converted_steps = {}
+    for step_id, step_data in generic_workflow["steps"].items():
+        # Reconstruct WorkflowStep object
+        step = WorkflowStep(
+            id=step_data["id"],
+            template_type=step_data["templateType"],
+            inputs=step_data["inputs"],
+            dependencies=step_data["dependencies"],
+            output_key=step_data["outputKey"],
+            metadata=step_data["metadata"]
+        )
+        
+        if step.template_type == "llm_step":
+            if target_format == "langchain":
+                converted_steps[step_id] = compile_llm_step_to_langchain(step)
+            elif target_format == "langflow":
+                converted_steps[step_id] = compile_llm_step_to_langflow(step)
+            elif target_format == "langgraph":
+                converted_steps[step_id] = compile_llm_step_to_langgraph(step)
+            else:
+                # Keep generic format for unknown targets
+                converted_steps[step_id] = step_data
+        else:
+            # Keep non-LLM steps as-is
+            converted_steps[step_id] = step_data
+    
+    # Update the workflow with converted steps
+    result = generic_workflow.copy()
+    result["steps"] = converted_steps
+    result["format"] = target_format
+    result["metadata"] = {
+        "compiled_at": "now",  # Would use datetime in real implementation
+        "target_format": target_format,
+        "contains_llm_steps": any(
+            step.get("templateType") == "llm_step" or step.get("type") in ["llm_node", "LLMChain"]
+            for step in converted_steps.values()
+        )
+    }
+    
+    return result 

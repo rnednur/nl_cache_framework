@@ -18,6 +18,9 @@ from .models import Text2SQLCache, TemplateType
 
 logger = logging.getLogger(__name__)
 
+# Configuration flag for tool mapping approach
+USE_LEGACY_TOOL_MAPPING = False  # Set to True to use the old complex multi-phase search
+
 
 @dataclass
 class ToolMatch:
@@ -144,30 +147,45 @@ class RecipeToolMapper:
         Returns:
             List of potential tool matches
         """
-        # Get candidate tools using hybrid search
+        # Get candidate tools using simplified or legacy search
         candidates = self._get_candidate_tools(step, max_results * 2, catalog_filters)
         
-        # Score and rank candidates
-        tool_matches = []
-        filtered_count = 0
-        
-        for candidate in candidates:
-            try:
-                match = self._evaluate_tool_match(step, candidate)
-                logger.info(f"Tool {candidate.get('id')}: similarity={match.similarity_score:.3f}, "
-                           f"context={match.context_score:.3f}, compatibility={match.compatibility_score:.3f}, "
-                           f"overall={match.overall_confidence:.3f}")
-                
-                if match.overall_confidence > 0.05:  # Very permissive threshold like /v1/complete
-                    tool_matches.append(match)
-                else:
-                    filtered_count += 1
-                    logger.info(f"Filtered out tool {candidate.get('id')} due to low confidence: {match.overall_confidence:.3f}")
+        # Score and rank candidates - simplified or legacy approach
+        if USE_LEGACY_TOOL_MAPPING:
+            # Legacy approach with complex filtering
+            tool_matches = []
+            filtered_count = 0
+            
+            for candidate in candidates:
+                try:
+                    match = self._evaluate_tool_match(step, candidate)
+                    logger.info(f"Tool {candidate.get('id')}: similarity={match.similarity_score:.3f}, "
+                               f"context={match.context_score:.3f}, compatibility={match.compatibility_score:.3f}, "
+                               f"overall={match.overall_confidence:.3f}")
                     
-            except Exception as e:
-                logger.warning(f"Failed to evaluate tool {candidate.get('id', 'unknown')}: {e}")
-        
-        logger.info(f"Found {len(tool_matches)} matches above 0.05 threshold, filtered out {filtered_count}")
+                    if match.overall_confidence > 0.05:  # Very permissive threshold like /v1/complete
+                        tool_matches.append(match)
+                    else:
+                        filtered_count += 1
+                        logger.info(f"Filtered out tool {candidate.get('id')} due to low confidence: {match.overall_confidence:.3f}")
+                        
+                except Exception as e:
+                    logger.warning(f"Failed to evaluate tool {candidate.get('id', 'unknown')}: {e}")
+            
+            logger.info(f"Found {len(tool_matches)} matches above 0.05 threshold, filtered out {filtered_count}")
+        else:
+            # Simplified approach - no additional filtering, candidates already above 0.4 threshold
+            tool_matches = []
+            
+            for candidate in candidates:
+                try:
+                    match = self._evaluate_tool_match(step, candidate)
+                    tool_matches.append(match)  # No filtering - already filtered by 0.4 threshold in search
+                    
+                except Exception as e:
+                    logger.warning(f"Failed to evaluate tool {candidate.get('id', 'unknown')}: {e}")
+            
+            logger.info(f"SIMPLIFIED: Processed {len(tool_matches)} candidates (all above 0.4 threshold)")
         
         # Sort by overall confidence and return top matches
         tool_matches.sort(key=lambda x: x.overall_confidence, reverse=True)
@@ -185,16 +203,21 @@ class RecipeToolMapper:
         # Find potential tool matches
         matches = self.find_tools_for_step(step, max_matches, catalog_filters)
         
-        # Filter matches by threshold
-        filtered_matches = [m for m in matches if m.overall_confidence >= threshold]
-        
-        logger.info(f"Step '{step.name}': Found {len(matches)} initial matches, "
-                   f"{len(filtered_matches)} passed threshold {threshold}")
-        
-        if matches and not filtered_matches:
-            best_unfiltered = max(matches, key=lambda x: x.overall_confidence)
-            logger.info(f"No matches passed threshold {threshold}. Best match was {best_unfiltered.overall_confidence:.3f} "
-                       f"for tool {best_unfiltered.tool_id}")
+        if USE_LEGACY_TOOL_MAPPING:
+            # Legacy approach with additional threshold filtering
+            filtered_matches = [m for m in matches if m.overall_confidence >= threshold]
+            
+            logger.info(f"Step '{step.name}': Found {len(matches)} initial matches, "
+                       f"{len(filtered_matches)} passed threshold {threshold}")
+            
+            if matches and not filtered_matches:
+                best_unfiltered = max(matches, key=lambda x: x.overall_confidence)
+                logger.info(f"No matches passed threshold {threshold}. Best match was {best_unfiltered.overall_confidence:.3f} "
+                           f"for tool {best_unfiltered.tool_id}")
+        else:
+            # Simplified approach - no additional threshold filtering
+            filtered_matches = matches  # Use all matches (already filtered at 0.4 in search)
+            logger.info(f"SIMPLIFIED Step '{step.name}': Using all {len(matches)} matches (pre-filtered at 0.4)")
         
         # Determine best match
         best_match = filtered_matches[0] if filtered_matches else None
@@ -223,7 +246,7 @@ class RecipeToolMapper:
             suggestions=suggestions
         )
     
-    def _get_candidate_tools(self, step: ParsedStep, max_candidates: int, catalog_filters: Dict[str, str] = None) -> List[Dict[str, Any]]:
+    def _get_candidate_tools_legacy(self, step: ParsedStep, max_candidates: int, catalog_filters: Dict[str, str] = None) -> List[Dict[str, Any]]:
         """Get candidate tools using hybrid search approach."""
         # Create search query from step description and context
         search_query = self._build_search_query(step)
@@ -465,7 +488,7 @@ class RecipeToolMapper:
         
         return list(set(relevant_types))
     
-    def _evaluate_tool_match(self, step: ParsedStep, tool_data: Dict[str, Any]) -> ToolMatch:
+    def _evaluate_tool_match_legacy(self, step: ParsedStep, tool_data: Dict[str, Any]) -> ToolMatch:
         """Evaluate how well a tool matches a recipe step."""
         # Extract tool information
         tool_id = tool_data['id']
@@ -478,7 +501,7 @@ class RecipeToolMapper:
             tool_capabilities = []
         
         # Calculate different scoring components
-        similarity_score = tool_data.get('similarity_score', 0.0)
+        similarity_score = tool_data.get('similarity', 0.0)  # Fixed: Use 'similarity' key, not 'similarity_score'
         context_score = self._calculate_context_score(step, tool_data)
         compatibility_score = self._calculate_compatibility_score(step, tool_data)
         
@@ -692,3 +715,80 @@ class RecipeToolMapper:
             StepType.INTEGRATION: ["api", "mcp_tool", "agent"],
             StepType.UNKNOWN: ["function", "mcp_tool", "agent", "api"]
         }
+    
+    # ========================
+    # SIMPLIFIED TOOL MAPPING METHODS
+    # ========================
+    
+    def _get_candidate_tools(self, step: ParsedStep, max_candidates: int, catalog_filters: Dict[str, str] = None) -> List[Dict[str, Any]]:
+        """
+        Simplified tool candidate search using direct similarity search with 0.4+ threshold.
+        
+        This replaces the complex multi-phase search with a single, focused similarity search.
+        """
+        if USE_LEGACY_TOOL_MAPPING:
+            return self._get_candidate_tools_legacy(step, max_candidates, catalog_filters)
+        
+        # Build search query from step description
+        search_query = step.description
+        logger.info(f"SIMPLIFIED SEARCH: '{search_query}' (threshold: 0.4)")
+        
+        # Apply catalog filters if provided
+        catalog_type = catalog_filters.get('catalog_type') if catalog_filters else None
+        catalog_subtype = catalog_filters.get('catalog_subtype') if catalog_filters else None
+        catalog_name = catalog_filters.get('catalog_name') if catalog_filters else None
+        
+        try:
+            # Single similarity search across all tool types with 0.4 threshold
+            results = self.controller.search_query(
+                nl_query=search_query,
+                template_type=None,  # Search all tool types
+                similarity_threshold=0.4,  # Primary threshold for quality results
+                limit=max(max_candidates, 50),  # Ensure we get more results than the artificial 10 limit
+                catalog_type=catalog_type,
+                catalog_subtype=catalog_subtype,
+                catalog_name=catalog_name
+            )
+            
+            # Add search metadata to results
+            for result in results:
+                result['search_method'] = 'simplified_similarity'
+                result['original_similarity'] = result.get('similarity', 0.0)
+            
+            logger.info(f"SIMPLIFIED SEARCH: Found {len(results)} candidates above 0.4 threshold")
+            return results
+            
+        except Exception as e:
+            logger.error(f"Simplified search failed: {e}")
+            return []
+    
+    def _evaluate_tool_match(self, step: ParsedStep, tool_data: Dict[str, Any]) -> ToolMatch:
+        """
+        Simplified tool match evaluation focusing on similarity score as primary factor.
+        
+        This replaces complex scoring with a straightforward similarity-based approach.
+        """
+        if USE_LEGACY_TOOL_MAPPING:
+            return self._evaluate_tool_match_legacy(step, tool_data)
+        
+        # Get similarity score (using correct key)
+        similarity_score = tool_data.get('similarity', 0.0)
+        
+        # Simple confidence calculation: use similarity score directly if above 0.4
+        overall_confidence = max(similarity_score, 0.4) if similarity_score >= 0.4 else similarity_score
+        
+        # Create tool match with simplified scoring
+        tool_match = ToolMatch(
+            tool_id=tool_data.get('id', 0),
+            tool_name=tool_data.get('nl_query', f"Tool {tool_data.get('id', 'Unknown')}"),
+            tool_type=tool_data.get('template_type', 'unknown'),
+            similarity_score=similarity_score,
+            context_score=0.5,  # Simplified: fixed moderate score
+            compatibility_score=0.5,  # Simplified: fixed moderate score  
+            overall_confidence=overall_confidence,
+            reasoning=f"Similarity match: {similarity_score:.3f} (simplified scoring)",
+            tool_capabilities=[],  # Could be enhanced later if needed
+            tool_data=tool_data
+        )
+        
+        return tool_match

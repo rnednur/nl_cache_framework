@@ -73,6 +73,11 @@ export default function WorkflowBuilder() {
   const [errorHandling, setErrorHandling] = useState('fail_fast')
   const [isLoadingRecipe, setIsLoadingRecipe] = useState(isEditMode)
   
+  // Generate unique workflow session ID for new workflows
+  const [workflowSessionId] = useState(() => 
+    isEditMode ? editId : `new-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+  )
+  
   // UI state
   const [activeTab, setActiveTab] = useState<'visual' | 'dsl' | 'validation'>('visual')
   const [isWorkflowMaximized, setIsWorkflowMaximized] = useState(false)
@@ -134,9 +139,13 @@ export default function WorkflowBuilder() {
       url: '🔗',
       cli: '💻',
       prompt: '🤖',
+      llm_step: '🧠',
       configuration: '⚙️',
       graphql: '📊',
       nosql: '🍃',
+      function: '⚙️',
+      mcp_tool: '🔧',
+      agent: '🤖',
     }
     return iconMap[templateType] || '📋'
   }
@@ -150,9 +159,13 @@ export default function WorkflowBuilder() {
       url: '#06b6d4',
       cli: '#6b7280',
       prompt: '#ec4899',
+      llm_step: '#a855f7',
       configuration: '#84cc16',
       graphql: '#f97316',
       nosql: '#14b8a6',
+      function: '#f59e0b',
+      mcp_tool: '#059669',
+      agent: '#dc2626',
     }
     return colorMap[templateType] || '#6b7280'
   }
@@ -561,41 +574,188 @@ export default function WorkflowBuilder() {
     toast.success('Workflow cleared')
   }
 
-  // Parse natural language description into visual workflow
+  // Parse natural language description into visual workflow using backend API
   const handleParseNL = async () => {
+    console.log('🖱️ Parse NL button clicked')
+    console.log('Current isParsing state:', isParsing)
+    
     if (!nlDescription.trim()) {
       toast.error('Please enter a natural language workflow description')
       return
     }
 
+    console.log('✅ Validation passed, setting isParsing to true')
     setIsParsing(true)
+    
+    // Add a small delay to ensure the UI updates
+    await new Promise(resolve => setTimeout(resolve, 100))
     try {
-      toast.loading('Parsing natural language description...', { id: 'parse' })
+      toast.loading('Analyzing natural language with AI...', { id: 'parse', duration: 30000 }) // Persist for 30 seconds
       
-      // Simulate API delay for better UX
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      console.log('🚀 Starting recipe analysis...')
+      console.log('Recipe text:', nlDescription.substring(0, 100) + '...')
+      console.log('Workflow name:', workflowName || 'New Workflow')
+      console.log('isParsing set to:', true)
       
-      const result = parseNLWorkflow(nlDescription)
-      setParseResult(result)
+      // Call backend API for recipe analysis
+      const startTime = Date.now()
+      const analysisResult = await api.analyzeRecipeText({
+        recipe_text: nlDescription,
+        recipe_name: workflowName || 'New Workflow'
+      })
+      const endTime = Date.now()
       
-      if (result.success && result.nodes && result.edges) {
-        setWorkflowNodes(result.nodes)
-        setWorkflowEdges(result.edges)
-        setIsNLSynced(true)
+      console.log(`✅ Recipe analysis completed in ${endTime - startTime}ms`)
+      console.log('Analysis result:', analysisResult)
+      
+      // Update the toast to show success
+      toast.loading('Processing analysis results...', { id: 'parse', duration: 10000 })
+      
+      if (analysisResult.steps && analysisResult.steps.length > 0) {
+        console.log(`📋 Found ${analysisResult.steps.length} steps, creating visual workflow...`)
+        // Convert backend analysis result to ReactFlow nodes and edges
+        const nodes: any[] = []
+        const edges: any[] = []
         
-        // Extract workflow name if found
-        if (result.workflow?.name && result.workflow.name !== 'Unnamed Workflow') {
-          setWorkflowName(result.workflow.name)
+        // Add start node
+        nodes.push({
+          id: 'start',
+          type: 'input',
+          position: { x: 250, y: 50 },
+          data: { label: 'Start' },
+          style: {
+            background: '#10b981',
+            color: 'white',
+            border: '2px solid #047857',
+            borderRadius: '8px',
+          },
+        })
+        
+        // Add step nodes from backend analysis
+        const stepSpacing = 200
+        analysisResult.steps.forEach((step: any, index: number) => {
+          // Use mapped tool information if available, otherwise fall back to step info
+          const mappedTool = step.mapped_tool
+          const toolType = mappedTool?.type || step.step_type
+          const toolName = mappedTool?.name || step.name
+          const confidence = mappedTool?.confidence || step.confidence
+          
+          // Create enhanced label with tool mapping info
+          let label = `${getTemplateIcon(toolType)} ${toolName}`
+          if (mappedTool && confidence) {
+            label += ` (${(confidence * 100).toFixed(0)}%)`
+          }
+          
+          const node = {
+            id: `step-${index + 1}`,
+            type: 'default',
+            position: { 
+              x: 100 + (index % 3) * stepSpacing, 
+              y: 150 + Math.floor(index / 3) * 100 
+            },
+            data: {
+              label: label,
+              stepNumber: index + 1,
+              templateType: toolType,
+              originalStepType: step.step_type,
+              template: step.description,
+              confidence: confidence,
+              entities: step.entities,
+              originalDescription: step.description,
+              // Add mapped tool information
+              mappedTool: mappedTool,
+              alternativeTools: step.alternative_tools || [],
+              requiresReview: step.requires_review || false,
+              suggestions: step.suggestions || []
+            },
+            style: {
+              background: mappedTool ? getTemplateColor(toolType) : '#6b7280', // Gray if no tool mapped
+              color: 'white',
+              border: mappedTool && confidence > 0.7 ? '2px solid #10b981' : 
+                      mappedTool && confidence > 0.5 ? '2px solid #f59e0b' :
+                      mappedTool ? '2px solid #ef4444' : '2px solid #374151',
+              borderRadius: '8px',
+              fontSize: '12px',
+              fontWeight: 'bold',
+              width: 200, // Slightly wider to accommodate confidence %
+              textAlign: 'center',
+            },
+          }
+          nodes.push(node)
+        })
+        
+        // Create sequential edges (start -> step1 -> step2 -> ...)
+        if (analysisResult.steps.length > 0) {
+          // Connect start to first step
+          edges.push({
+            id: 'edge-start-1',
+            source: 'start',
+            target: `step-1`,
+            animated: true,
+            style: { stroke: '#10b981', strokeWidth: 2 },
+          })
+          
+          // Connect steps sequentially
+          for (let i = 0; i < analysisResult.steps.length - 1; i++) {
+            edges.push({
+              id: `edge-${i + 1}-${i + 2}`,
+              source: `step-${i + 1}`,
+              target: `step-${i + 2}`,
+              animated: true,
+              style: { stroke: '#10b981', strokeWidth: 2 },
+            })
+          }
         }
         
-        toast.success(`Parsed ${result.workflow?.steps.length || 0} steps successfully`, { id: 'parse' })
+        // Update workflow state
+        setWorkflowNodes(nodes)
+        setWorkflowEdges(edges)
+        setIsNLSynced(true)
+        
+        // Update workflow name if provided by analysis
+        if (analysisResult.recipe_name) {
+          setWorkflowName(analysisResult.recipe_name)
+        }
+        
+        toast.success(`Analyzed ${analysisResult.steps.length} steps successfully`, { id: 'parse' })
+        
+        // Store parse result for debugging
+        setParseResult({
+          success: true,
+          workflow: {
+            name: analysisResult.recipe_name || workflowName,
+            steps: analysisResult.steps,
+            wiring: []
+          },
+          nodes,
+          edges
+        })
+        
       } else {
-        toast.error(`Failed to parse: ${result.errors?.join(', ') || 'Unknown error'}`, { id: 'parse' })
+        console.warn('⚠️ No steps found in analysis result:', analysisResult)
+        toast.error('Failed to analyze recipe - no steps identified', { id: 'parse' })
+        setParseResult({ success: false, errors: ['No steps identified'] })
       }
     } catch (error: any) {
-      toast.error(`Parsing failed: ${error.message}`, { id: 'parse' })
+      console.error('❌ Parse NL error:', error)
+      console.error('Error details:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        stack: error.stack
+      })
+      
+      let errorMessage = 'Analysis failed'
+      if (error.response?.data?.detail) {
+        errorMessage += `: ${error.response.data.detail}`
+      } else if (error.message) {
+        errorMessage += `: ${error.message}`
+      }
+      
+      toast.error(errorMessage, { id: 'parse' })
       setParseResult({ success: false, errors: [error.message] })
     } finally {
+      console.log('🏁 Finally block: setting isParsing to false')
       setIsParsing(false)
     }
   }
@@ -1011,6 +1171,8 @@ export default function WorkflowBuilder() {
                   initialEdges={workflowEdges}
                   onWorkflowChange={handleWorkflowChange}
                   onMaximizeChange={handleMaximizeToggle}
+                  clearOnMount={!isEditMode}  // Clear on mount for new workflows, preserve for edit mode
+                  workflowId={workflowSessionId}  // Use unique session ID
                 />
               </div>
             )}
@@ -1180,6 +1342,8 @@ export default function WorkflowBuilder() {
               onWorkflowChange={handleWorkflowChange}
               isMaximized={true}
               onMaximizeChange={handleMaximizeToggle}
+              clearOnMount={!isEditMode}  // Clear on mount for new workflows, preserve for edit mode
+              workflowId={workflowSessionId}  // Use unique session ID
             />
           </div>
         </div>

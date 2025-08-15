@@ -24,6 +24,7 @@ class StepType(str, Enum):
     TRANSFORM = "transform"     # Data transformation
     VALIDATION = "validation"   # Data validation/checking
     INTEGRATION = "integration" # API/service integration
+    LLM_PROCESSING = "llm_processing"  # LLM-powered analysis/processing step
     UNKNOWN = "unknown"        # Unclassified step
 
 
@@ -299,6 +300,7 @@ class RecipeStepAnalyzer:
             StepType.VALIDATION: 0,
             StepType.CONDITION: 0,
             StepType.LOOP: 0,
+            StepType.LLM_PROCESSING: 0,
             StepType.ACTION: 0
         }
         
@@ -342,6 +344,35 @@ class RecipeStepAnalyzer:
         for keyword in loop_keywords:
             if keyword in text_lower:
                 scores[StepType.LOOP] += 2
+        
+        # LLM Processing keywords (high priority for AI tasks)
+        llm_keywords = [
+            'analyze', 'classify', 'categorize', 'summarize', 'interpret',
+            'understand', 'explain', 'reason', 'predict', 'generate',
+            'detect', 'identify', 'recognize', 'transcribe', 'translate',
+            'score', 'rank', 'prioritize', 'recommend', 'suggest',
+            'decide', 'determine', 'infer', 'deduce', 'conclude',
+            'sentiment', 'extract sentiment', 'classify sentiment',
+            'categorize into', 'bucket', 'group into', 'tag as',
+            'rate', 'evaluate quality', 'assess priority',
+            'natural language', 'text analysis', 'content analysis',
+            'ai analysis', 'llm analysis', 'machine learning',
+            'intent classification', 'entity extraction'
+        ]
+        for keyword in llm_keywords:
+            if keyword in text_lower:
+                scores[StepType.LLM_PROCESSING] += 2
+        
+        # Boost LLM scoring for AI-specific phrases
+        ai_phrases = [
+            'using ai', 'using llm', 'with machine learning', 
+            'natural language processing', 'text classification',
+            'sentiment analysis', 'intent analysis', 'semantic analysis',
+            'prompt', 'model', 'openai', 'gpt', 'claude', 'gemini'
+        ]
+        for phrase in ai_phrases:
+            if phrase in text_lower:
+                scores[StepType.LLM_PROCESSING] += 3
         
         # Action verbs boost
         action_boost_verbs = ['send', 'notify', 'create', 'delete', 'execute', 'run', 'perform']
@@ -613,6 +644,9 @@ class RecipeStepAnalyzer:
                 capabilities.add("iteration")
             elif step.step_type == StepType.CONDITION:
                 capabilities.add("conditional-logic")
+            elif step.step_type == StepType.LLM_PROCESSING:
+                capabilities.add("llm-processing")
+                capabilities.add("natural-language-analysis")
             
             # Add capabilities based on entities
             for entity in step.entities:
@@ -638,7 +672,9 @@ class RecipeStepAnalyzer:
         total_steps = len(steps)
         
         # Classification logic
-        if type_counts.get(StepType.INTEGRATION, 0) / total_steps > 0.5:
+        if type_counts.get(StepType.LLM_PROCESSING, 0) / total_steps > 0.3:
+            return "ai-analysis"
+        elif type_counts.get(StepType.INTEGRATION, 0) / total_steps > 0.5:
             return "integration"
         elif type_counts.get(StepType.TRANSFORM, 0) / total_steps > 0.4:
             return "data-processing"
@@ -682,7 +718,14 @@ class RecipeStepAnalyzer:
             
             # Analysis
             'analyze', 'calculate', 'compute', 'evaluate', 'assess',
-            'compare', 'match', 'find', 'search', 'lookup', 'query'
+            'compare', 'match', 'find', 'search', 'lookup', 'query',
+            
+            # LLM/AI Processing
+            'classify', 'categorize', 'summarize', 'extract', 'interpret', 
+            'understand', 'explain', 'reason', 'predict', 'generate',
+            'detect', 'identify', 'recognize', 'transcribe', 'translate',
+            'score', 'rank', 'prioritize', 'recommend', 'suggest',
+            'decide', 'determine', 'infer', 'deduce', 'conclude'
         }
     
     def _compile_entity_patterns(self) -> Dict[str, re.Pattern]:

@@ -129,6 +129,7 @@ export interface CatalogValues {
   catalog_types: string[];
   catalog_subtypes: string[];
   catalog_names: string[];
+  template_types: string[];
 }
 
 // Workflow generation request/response
@@ -404,7 +405,8 @@ const api = {
       return {
         catalog_types: [],
         catalog_subtypes: [],
-        catalog_names: []
+        catalog_names: [],
+        template_types: []
       };
     }
   },
@@ -927,6 +929,14 @@ const api = {
     analysis_metadata: Record<string, any>;
   }> {
     try {
+      console.log('🌐 Making API request to analyze-natural-language...')
+      console.log('Request data:', {
+        recipe_text: request.recipe_text?.substring(0, 100) + '...',
+        recipe_name: request.recipe_name,
+        similarity_threshold: request.similarity_threshold || 0.6,
+        max_matches_per_step: request.max_matches_per_step || 5,
+      })
+      
       const response = await fetch(`${API_BASE}/v1/recipes/analyze-natural-language`, {
         method: 'POST',
         headers: {
@@ -943,14 +953,24 @@ const api = {
         }),
       });
       
+      console.log('📡 API response status:', response.status)
+      
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        console.error('❌ API error response:', errorData)
         throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
       }
       
-      return await response.json();
+      const result = await response.json();
+      console.log('✅ API response received:', {
+        recipe_name: result.recipe_name,
+        steps_count: result.steps?.length || 0,
+        recipe_type: result.recipe_type
+      })
+      
+      return result;
     } catch (error) {
-      console.error('Error analyzing recipe text:', error);
+      console.error('💥 Error analyzing recipe text:', error);
       throw error;
     }
   },

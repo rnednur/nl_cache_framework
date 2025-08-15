@@ -41,6 +41,7 @@ try:
     from thinkforge.recipe_step_analyzer import RecipeStepAnalyzer, ParsedStep
     from thinkforge.recipe_tool_mapper import RecipeToolMapper, StepMapping, ToolMatch
     from thinkforge.confidence_engine import ConfidenceEngine
+    from thinkforge.llm_step_processor import LLMStepProcessor, LLMStepResult, create_sample_llm_step_template
 except ImportError as e:
     print(f"Error importing thinkforge: {e}")
     print("Make sure the framework is installed with: pip install -e .")
@@ -196,6 +197,46 @@ class StepRewriteResponse(BaseModel):
     original_step: ParsedRecipeStep = Field(..., description="Original step before rewrite")
     rewritten_step: ParsedRecipeStep = Field(..., description="Rewritten and reanalyzed step")
     analysis_changes: Dict[str, Any] = Field(default_factory=dict, description="Summary of changes made")
+
+# LLM Step models
+class LLMStepCreateRequest(BaseModel):
+    nl_query: str = Field(..., description="Natural language description of the LLM step")
+    prompt_template: str = Field(..., description="LLM prompt template with {parameter} placeholders")
+    input_parameters: List[str] = Field(..., description="List of required input parameter names")
+    output_format: str = Field("json", description="Expected output format: json, text, or structured")
+    expected_output: Dict[str, Any] = Field(..., description="Schema defining expected output structure")
+    model: str = Field("google/gemini-pro", description="LLM model identifier")
+    temperature: float = Field(0.3, description="Model temperature (0.0 to 1.0)")
+    max_tokens: int = Field(500, description="Maximum tokens in response")
+    system_prompt: Optional[str] = Field(None, description="Optional system prompt for context")
+    validation_rules: Optional[Dict[str, Any]] = Field(None, description="Output validation configuration")
+    examples: Optional[List[Dict[str, Any]]] = Field(None, description="Example inputs and outputs")
+    catalog_type: Optional[str] = Field(None, description="Catalog type identifier")
+    catalog_subtype: Optional[str] = Field(None, description="Catalog subtype identifier")
+    catalog_name: Optional[str] = Field(None, description="Catalog name identifier")
+
+class LLMStepExecuteRequest(BaseModel):
+    input_values: Dict[str, Any] = Field(..., description="Input parameter values for the LLM step")
+
+class LLMStepExecuteResponse(BaseModel):
+    success: bool = Field(..., description="Whether execution was successful")
+    output: Any = Field(None, description="Formatted output from LLM step")
+    raw_response: str = Field("", description="Raw LLM response")
+    validation_passed: bool = Field(True, description="Whether output passed validation")
+    error_message: Optional[str] = Field(None, description="Error message if execution failed")
+    execution_metadata: Optional[Dict[str, Any]] = Field(None, description="Execution metadata")
+
+class LLMStepTestRequest(BaseModel):
+    test_inputs: Optional[Dict[str, Any]] = Field(None, description="Optional test input values")
+
+class LLMStepTestResponse(BaseModel):
+    success: bool = Field(..., description="Whether test was successful")
+    output: Any = Field(None, description="Test output")
+    raw_response: str = Field("", description="Raw LLM response from test")
+    validation_passed: bool = Field(True, description="Whether output passed validation")
+    error_message: Optional[str] = Field(None, description="Error message if test failed")
+    test_inputs: Optional[Dict[str, Any]] = Field(None, description="Input values used in test")
+    execution_metadata: Optional[Dict[str, Any]] = Field(None, description="Test execution metadata")
 
 # Initialize FastAPI application
 app = FastAPI(
@@ -2494,6 +2535,322 @@ async def download_workflow_notebook(
         error_msg = f"Notebook download failed: {str(e)}"
         logger.error(error_msg, exc_info=True)
         raise HTTPException(status_code=500, detail=error_msg)
+
+
+# ============================================================================
+# LLM Step Management Endpoints
+# ============================================================================
+
+@app.post("/v1/llm-steps/create", response_model=Dict[str, Any])
+async def create_llm_step(
+    request: LLMStepCreateRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Create a new LLM step template that can be used in recipes.
+    
+    Creates a cache entry with template_type='llm_step' containing the LLM step configuration.
+    """
+    try:
+        logger.info(f"Creating LLM step: {request.nl_query[:100]}...")
+        
+        # Build the LLM step template JSON
+        step_template = {
+            "step_config": {
+                "prompt_template": request.prompt_template,
+                "input_parameters": request.input_parameters,
+                "output_format": request.output_format,
+                "expected_output": request.expected_output,
+                "model": request.model,
+                "temperature": request.temperature,
+                "max_tokens": request.max_tokens,
+                "system_prompt": request.system_prompt
+            }
+        }
+        
+        # Add validation rules if provided
+        if request.validation_rules:
+            step_template["validation_rules"] = request.validation_rules
+        
+        # Add examples if provided
+        if request.examples:
+            step_template["examples"] = request.examples
+        
+        # Create the cache entry
+        cache_entry = Text2SQLCache(
+            nl_query=request.nl_query,
+            template=json.dumps(step_template),
+            template_type=TemplateType.LLM_STEP,
+            is_template=True,  # LLM steps are templates by nature
+            status="active",
+            catalog_type=request.catalog_type,
+            catalog_subtype=request.catalog_subtype,
+            catalog_name=request.catalog_name,
+            created_at=datetime.datetime.now(),
+            updated_at=datetime.datetime.now()
+        )
+        
+        db.add(cache_entry)
+        db.commit()
+        db.refresh(cache_entry)
+        
+        logger.info(f"Created LLM step with ID {cache_entry.id}")
+        
+        return {
+            "id": cache_entry.id,
+            "nl_query": cache_entry.nl_query,
+            "template": step_template,
+            "template_type": cache_entry.template_type,
+            "status": cache_entry.status,
+            "created_at": cache_entry.created_at,
+            "message": "LLM step created successfully"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error creating LLM step: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error creating LLM step: {str(e)}")
+
+
+@app.post("/v1/llm-steps/{step_id}/execute", response_model=LLMStepExecuteResponse)
+async def execute_llm_step(
+    step_id: int,
+    request: LLMStepExecuteRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Execute an LLM step with the provided input values.
+    
+    Retrieves the LLM step template and executes it with the given parameters.
+    """
+    try:
+        logger.info(f"Executing LLM step {step_id} with inputs: {list(request.input_values.keys())}")
+        
+        # Get the LLM step from the cache
+        cache_entry = db.query(Text2SQLCache).filter_by(id=step_id).first()
+        if not cache_entry:
+            raise HTTPException(status_code=404, detail="LLM step not found")
+        
+        if cache_entry.template_type != TemplateType.LLM_STEP:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Cache entry {step_id} is not an LLM step (type: {cache_entry.template_type})"
+            )
+        
+        # Parse the LLM step template
+        try:
+            step_template = json.loads(cache_entry.template)
+        except json.JSONDecodeError as e:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid LLM step template JSON: {str(e)}"
+            )
+        
+        # Initialize the LLM step processor
+        llm_service = LLMService()
+        processor = LLMStepProcessor(llm_service)
+        
+        # Execute the LLM step
+        result = processor.execute_llm_step(step_template, request.input_values)
+        
+        # Log the execution in usage logs
+        usage_log = UsageLog(
+            cache_entry_id=step_id,
+            timestamp=datetime.datetime.now(),
+            prompt=step_template.get("step_config", {}).get("prompt_template", ""),
+            success_status=result.success,
+            similarity_score=1.0,  # Direct execution, so 100% match
+            catalog_type=cache_entry.catalog_type,
+            catalog_subtype=cache_entry.catalog_subtype,
+            catalog_name=cache_entry.catalog_name,
+            llm_used=True,
+            error_message=result.error_message,
+            response=str(result.output) if result.output else None
+        )
+        db.add(usage_log)
+        db.commit()
+        
+        return LLMStepExecuteResponse(
+            success=result.success,
+            output=result.output,
+            raw_response=result.raw_response,
+            validation_passed=result.validation_passed,
+            error_message=result.error_message,
+            execution_metadata=result.execution_metadata
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error executing LLM step {step_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error executing LLM step: {str(e)}")
+
+
+@app.post("/v1/llm-steps/{step_id}/test", response_model=LLMStepTestResponse)
+async def test_llm_step(
+    step_id: int,
+    request: LLMStepTestRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Test an LLM step with example or provided input values.
+    
+    Useful for validating LLM step configuration before using it in recipes.
+    """
+    try:
+        logger.info(f"Testing LLM step {step_id}")
+        
+        # Get the LLM step from the cache
+        cache_entry = db.query(Text2SQLCache).filter_by(id=step_id).first()
+        if not cache_entry:
+            raise HTTPException(status_code=404, detail="LLM step not found")
+        
+        if cache_entry.template_type != TemplateType.LLM_STEP:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Cache entry {step_id} is not an LLM step (type: {cache_entry.template_type})"
+            )
+        
+        # Parse the LLM step template
+        try:
+            step_template = json.loads(cache_entry.template)
+        except json.JSONDecodeError as e:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid LLM step template JSON: {str(e)}"
+            )
+        
+        # Initialize the LLM step processor
+        llm_service = LLMService()
+        processor = LLMStepProcessor(llm_service)
+        
+        # Run the test
+        test_result = processor.test_llm_step(step_template, request.test_inputs)
+        
+        return LLMStepTestResponse(
+            success=test_result["success"],
+            output=test_result.get("output"),
+            raw_response=test_result.get("raw_response", ""),
+            validation_passed=test_result.get("validation_passed", True),
+            error_message=test_result.get("error_message"),
+            test_inputs=test_result.get("test_inputs"),
+            execution_metadata=test_result.get("execution_metadata")
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error testing LLM step {step_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error testing LLM step: {str(e)}")
+
+
+@app.get("/v1/llm-steps/templates")
+async def get_llm_step_templates():
+    """
+    Get pre-built LLM step templates for common use cases.
+    
+    Returns a collection of example LLM step templates that users can customize.
+    """
+    try:
+        # Get the sample template
+        sample_template = create_sample_llm_step_template()
+        
+        # Create additional templates for common use cases
+        templates = {
+            "support_ticket_classifier": {
+                "name": "Support Ticket Classifier",
+                "description": "Analyze support tickets and classify their urgency level",
+                "template": sample_template
+            },
+            "sentiment_analyzer": {
+                "name": "Sentiment Analyzer", 
+                "description": "Analyze text sentiment and provide confidence scores",
+                "template": {
+                    "step_config": {
+                        "prompt_template": "Analyze the sentiment of this text: {text}\n\nClassify as: positive, negative, or neutral\n\nProvide your response in JSON format with fields: sentiment, confidence, and reasoning.",
+                        "input_parameters": ["text"],
+                        "output_format": "json",
+                        "expected_output": {
+                            "sentiment": "string",
+                            "confidence": "float",
+                            "reasoning": "string"
+                        },
+                        "model": "google/gemini-pro",
+                        "temperature": 0.1,
+                        "max_tokens": 200,
+                        "system_prompt": "You are a sentiment analysis expert. Analyze text sentiment accurately and provide confidence scores."
+                    },
+                    "validation_rules": {
+                        "required_fields": ["sentiment", "confidence"],
+                        "validation_schema": {
+                            "type": "object",
+                            "properties": {
+                                "sentiment": {
+                                    "type": "string",
+                                    "enum": ["positive", "negative", "neutral"]
+                                },
+                                "confidence": {
+                                    "type": "number",
+                                    "minimum": 0.0,
+                                    "maximum": 1.0
+                                },
+                                "reasoning": {"type": "string"}
+                            },
+                            "required": ["sentiment", "confidence"]
+                        }
+                    }
+                }
+            },
+            "content_summarizer": {
+                "name": "Content Summarizer",
+                "description": "Generate concise summaries of long text content",
+                "template": {
+                    "step_config": {
+                        "prompt_template": "Summarize the following content in {max_sentences} sentences or less: {content}\n\nFocus on the key points and main ideas.",
+                        "input_parameters": ["content", "max_sentences"],
+                        "output_format": "text",
+                        "expected_output": {
+                            "summary": "string"
+                        },
+                        "model": "google/gemini-pro",
+                        "temperature": 0.3,
+                        "max_tokens": 400,
+                        "system_prompt": "You are a content summarization expert. Create concise, informative summaries that capture key information."
+                    }
+                }
+            },
+            "entity_extractor": {
+                "name": "Entity Extractor",
+                "description": "Extract named entities from text (people, places, organizations, etc.)",
+                "template": {
+                    "step_config": {
+                        "prompt_template": "Extract named entities from this text: {text}\n\nIdentify people, places, organizations, dates, and other important entities.\n\nProvide your response in JSON format with fields: people, places, organizations, dates, other.",
+                        "input_parameters": ["text"],
+                        "output_format": "json",
+                        "expected_output": {
+                            "people": "array",
+                            "places": "array", 
+                            "organizations": "array",
+                            "dates": "array",
+                            "other": "array"
+                        },
+                        "model": "google/gemini-pro",
+                        "temperature": 0.1,
+                        "max_tokens": 300,
+                        "system_prompt": "You are a named entity recognition expert. Extract entities accurately and categorize them properly."
+                    }
+                }
+            }
+        }
+        
+        return {
+            "templates": templates,
+            "count": len(templates),
+            "categories": ["classification", "analysis", "extraction", "summarization"]
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting LLM step templates: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error getting templates: {str(e)}")
 
 
 if __name__ == "__main__":

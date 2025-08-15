@@ -280,6 +280,42 @@ class TemplateType(str, Enum):
         ]
     }
     This enables parameterized recipe creation for common automation patterns."""
+    
+    LLM_STEP = "llm_step"
+    """Custom LLM-powered step for recipes that enables natural language processing tasks.
+    LLM step templates define configurable AI-powered processing steps for recipes.
+    Expected JSON format in the 'template' field:
+    {
+        'step_config': {
+            'prompt_template': str,  # Prompt with {parameter} placeholders
+            'input_parameters': [str],  # List of required input parameter names
+            'output_format': 'json' | 'text' | 'structured',
+            'expected_output': dict,  # Schema defining expected output structure
+            'model': str,  # LLM model identifier (e.g., 'google/gemini-pro')
+            'temperature': float,  # Model temperature (0.0 to 1.0)
+            'max_tokens': int,  # Maximum tokens in response
+            'system_prompt': str  # Optional system prompt for context
+        },
+        'validation_rules': {
+            'required_fields': [str],  # Required fields in output
+            'validation_schema': dict,  # JSON schema for output validation
+            'fallback_handling': {
+                'on_validation_error': 'retry' | 'fallback' | 'fail',
+                'max_retries': int,
+                'fallback_response': dict
+            }
+        },
+        'examples': [
+            {
+                'name': str,
+                'description': str,
+                'input_values': dict,
+                'expected_output': dict
+            }
+        ]
+    }
+    Example use cases: text classification, sentiment analysis, entity extraction, 
+    issue categorization, content summarization, decision making, etc."""
 
 
 class Status(str, Enum):

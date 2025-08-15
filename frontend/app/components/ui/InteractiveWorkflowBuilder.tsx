@@ -27,6 +27,8 @@ interface InteractiveWorkflowBuilderProps {
   onWorkflowChange?: (nodes: Node[], edges: Edge[]) => void
   onMaximizeChange?: (isMaximized: boolean) => void
   isMaximized?: boolean
+  clearOnMount?: boolean  // New prop to force clear on mount
+  workflowId?: string | number  // Unique identifier for this workflow session
 }
 
 // Icon mapping for different template types
@@ -74,6 +76,8 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
   onWorkflowChange,
   onMaximizeChange,
   isMaximized: isMaximizedProp,
+  clearOnMount = false,
+  workflowId,
 }) => {
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const { screenToFlowPosition, fitView, getViewport, zoomTo, setCenter } = useReactFlow()
@@ -162,7 +166,9 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
   const [availableTemplateTypes, setAvailableTemplateTypes] = useState<string[]>([])
 
   // Generate a stable key for this workflow session (excluding volatile catalogName)
-  const workflowKey = `workflow_${catalogType || 'default'}_${catalogSubtype || 'default'}`
+  const workflowKey = workflowId 
+    ? `workflow_${workflowId}` 
+    : `workflow_${catalogType || 'default'}_${catalogSubtype || 'default'}`
 
   // Store previous initial props to detect actual changes
   const prevInitialNodesRef = useRef<Node[] | undefined>(undefined)
@@ -191,6 +197,21 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
 
   // Load saved workflow state on mount and when workflow key changes
   useEffect(() => {
+    // If clearOnMount is true, clear localStorage and reset to defaults
+    if (clearOnMount) {
+      try {
+        localStorage.removeItem(workflowKey)
+        console.log('Cleared workflow from localStorage due to clearOnMount prop')
+      } catch (error) {
+        console.warn('Failed to clear workflow from localStorage:', error)
+      }
+      
+      // Reset to default state
+      setNodes(defaultNodes)
+      setEdges([])
+      return
+    }
+
     try {
       const savedWorkflow = localStorage.getItem(workflowKey)
       if (savedWorkflow) {
@@ -242,7 +263,7 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
     } catch (error) {
       console.warn('Failed to restore workflow state:', error)
     }
-  }, [workflowKey]) // Removed setNodes, setEdges to prevent infinite loops
+  }, [workflowKey, clearOnMount]) // Added clearOnMount to dependencies
 
   // Save workflow state whenever nodes, edges, or sidebar state changes (debounced)
   useEffect(() => {

@@ -149,6 +149,7 @@ export interface CatalogValues {
   catalog_types: string[];
   catalog_subtypes: string[];
   catalog_names: string[];
+  template_types: string[];
 }
 
 // Workflow generation request/response
