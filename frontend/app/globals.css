@@ -123,4 +123,35 @@
 
 .react-flow__controls button:hover {
   background-color: rgb(64, 64, 64) !important; /* neutral-700 */
+}
+
+/* Clickable Node Enhancement */
+.react-flow__node.clickable-workflow-node:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), inset 0 2px 0 rgba(255, 255, 255, 0.2) !important;
+  filter: brightness(1.1) !important;
+}
+
+/* Visual indicator for clickable nodes */
+.react-flow__node.clickable-workflow-node::after {
+  content: "👁️";
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  font-size: 12px;
+  background: rgba(0, 0, 0, 0.8);
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.7;
+  transition: opacity 0.2s ease-in-out;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.react-flow__node.clickable-workflow-node:hover::after {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.9);
 } 

@@ -549,6 +549,10 @@ const api = {
         params.append('catalog_name', request.catalog_name);
       }
       
+      if (request.template_type) {
+        params.append('template_type', request.template_type);
+      }
+      
       if (request.similarity_threshold) {
         params.append('similarity_threshold', request.similarity_threshold.toString());
       }

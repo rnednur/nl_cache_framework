@@ -592,7 +592,18 @@ export default function CompleteTestPage() {
                     </div>
                     
                     <div className="p-4 border border-neutral-700 rounded-md bg-neutral-800 whitespace-pre-wrap text-neutral-200 font-mono overflow-auto max-h-[300px]">
-                      {result.updated_template || result.cache_template || "No result returned"}
+                      {(() => {
+                        const template = result.updated_template || result.cache_template;
+                        if (!template) return "No result returned";
+                        
+                        // If it's an object (like workflow JSON), stringify it with formatting
+                        if (typeof template === 'object') {
+                          return JSON.stringify(template, null, 2);
+                        }
+                        
+                        // If it's already a string, return as is
+                        return template;
+                      })()}
                     </div>
                   </TabsContent>
                   

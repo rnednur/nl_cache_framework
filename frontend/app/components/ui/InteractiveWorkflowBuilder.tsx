@@ -17,6 +17,7 @@ import ReactFlow, {
 } from 'reactflow'
 import { Search, Plus, Trash2, Play, Database, Code, Globe, Zap, ChevronLeft, ChevronRight, Menu, Focus, MousePointer2, RotateCcw, Save, Maximize, Minimize, Filter, X } from 'lucide-react'
 import api, { CacheItem } from '@/app/services/api'
+import { NodeDetailModal } from '../../../components/ui/NodeDetailModal'
 
 interface InteractiveWorkflowBuilderProps {
   catalogType?: string
@@ -116,6 +117,8 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
   const [filteredEntries, setFilteredEntries] = useState<CacheItem[]>([])
   const [loading, setLoading] = useState(false)
   const [selectedEntry, setSelectedEntry] = useState<CacheItem | null>(null)
+  const [selectedNode, setSelectedNode] = useState<Node | null>(null)
+  const [isNodeDetailOpen, setIsNodeDetailOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [internalIsMaximized, setInternalIsMaximized] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
@@ -849,6 +852,15 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [sidebarCollapsed, showFilters, isMaximized])
 
+  // Handle node clicks to show details
+  const handleNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
+    // Only handle clicks on workflow nodes (not start node)
+    if (node.id !== 'start' && node.data?.cacheEntryId) {
+      setSelectedNode(node)
+      setIsNodeDetailOpen(true)
+    }
+  }, [])
+
   // Handle connections between nodes
   const onConnect = useCallback(
     (params: Connection) => {
@@ -886,6 +898,7 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
       id: generateNodeId(),
       type: 'default',
       position: nodePosition,
+      className: 'clickable-workflow-node',
       data: {
         label: `${getTemplateIcon(entry.template_type)} ${entry.nl_query}`,
         cacheEntryId: entry.id,
@@ -914,7 +927,12 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
         width: 220, // Slightly wider to accommodate more info
         textAlign: 'center',
         padding: '8px',
-        minHeight: '60px'
+        minHeight: '60px',
+        // Visual indicator for clickable nodes
+        cursor: 'pointer',
+        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
+        // Subtle animation hint
+        transition: 'all 0.2s ease-in-out',
       },
       selected: true, // Auto-select the new node for visual feedback
     }
@@ -1521,6 +1539,7 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
+            onNodeClick={handleNodeClick}
             onDrop={onDrop}
             onDragOver={onDragOver}
             fitView
@@ -1575,6 +1594,13 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
           </ReactFlow>
         </div>
       </div>
+
+      {/* Node Detail Modal */}
+      <NodeDetailModal
+        isOpen={isNodeDetailOpen}
+        onClose={() => setIsNodeDetailOpen(false)}
+        node={selectedNode}
+      />
     </div>
   )
 }

@@ -297,6 +297,219 @@ class Text2SQLEntitySubstitution:
 
         return substituted_template
 
+    def apply_workflow_substitution(
+        self, template: str, entities: Dict[str, Any], stored_entity_info: Dict[str, Dict]
+    ) -> str:
+        """Apply substitutions specifically for workflow templates.
+        
+        Workflows are JSON structures that can contain placeholders in:
+        - Step names and descriptions
+        - Step configuration
+        - Metadata fields
+        
+        Supports both explicit placeholders (:entity_name) and smart pattern matching.
+        
+        Args: (Same as apply_substitution)
+        
+        Returns:
+            The substituted workflow JSON string.
+        """
+        try:
+            # Parse the workflow template as JSON
+            workflow_data = json.loads(template) if isinstance(template, str) else template
+            
+            if not isinstance(workflow_data, dict):
+                raise ValueError("Workflow template must be a JSON object")
+            
+            # Deep copy to avoid modifying the original
+            substituted_data = json.loads(json.dumps(workflow_data))
+            
+            # Apply entity substitutions recursively through the workflow structure
+            substituted_data = self._substitute_workflow_recursive(
+                substituted_data, entities, stored_entity_info
+            )
+            
+            return json.dumps(substituted_data, indent=2)
+            
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON in workflow template: {e}")
+        except Exception as e:
+            raise ValueError(f"Workflow substitution error: {e}")
+
+    def apply_smart_workflow_substitution(
+        self, template: str, original_query: str, new_query: str
+    ) -> str:
+        """Apply smart pattern-based substitution for workflow templates.
+        
+        This method detects patterns in the original query and replaces them with
+        corresponding patterns from the new query, even without explicit placeholders.
+        
+        Args:
+            template: The workflow template JSON string
+            original_query: The original query used to create the template
+            new_query: The new query with different values
+            
+        Returns:
+            The substituted workflow JSON string with updated patterns
+        """
+        try:
+            # Parse the workflow template as JSON
+            workflow_data = json.loads(template) if isinstance(template, str) else template
+            
+            if not isinstance(workflow_data, dict):
+                raise ValueError("Workflow template must be a JSON object")
+            
+            # Extract patterns from queries
+            original_patterns = self._extract_query_patterns(original_query)
+            new_patterns = self._extract_query_patterns(new_query)
+            
+            logger.info(f"Original patterns: {original_patterns}")
+            logger.info(f"New patterns: {new_patterns}")
+            
+            # Create substitution mapping
+            substitution_map = self._create_substitution_mapping(original_patterns, new_patterns)
+            
+            if not substitution_map:
+                logger.info("No pattern substitutions found, returning original template")
+                return template
+            
+            logger.info(f"Substitution mapping: {substitution_map}")
+            
+            # Deep copy and apply substitutions
+            substituted_data = json.loads(json.dumps(workflow_data))
+            substituted_data = self._apply_smart_substitutions_recursive(
+                substituted_data, substitution_map
+            )
+            
+            return json.dumps(substituted_data, indent=2)
+            
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON in workflow template: {e}")
+        except Exception as e:
+            raise ValueError(f"Smart workflow substitution error: {e}")
+            
+    def _extract_query_patterns(self, query: str) -> Dict[str, Any]:
+        """Extract patterns from a query string that can be substituted."""
+        patterns = {}
+        
+        # Extract numbers with units (e.g., "5 rooms", "10 bedrooms", "3 bathrooms")
+        number_unit_pattern = re.compile(r'(\d+)\s+([a-zA-Z]+(?:s|es)?)', re.IGNORECASE)
+        matches = number_unit_pattern.findall(query.lower())
+        
+        for number, unit in matches:
+            # Normalize unit (remove plural)
+            normalized_unit = unit.rstrip('s').rstrip('e')  # "rooms" -> "room", "houses" -> "house"
+            patterns[f"number_{normalized_unit}"] = {
+                "number": int(number),
+                "unit": unit,
+                "original_text": f"{number} {unit}"
+            }
+        
+        # Extract standalone numbers
+        standalone_numbers = re.findall(r'\b(\d+)\b', query)
+        for i, number in enumerate(standalone_numbers):
+            patterns[f"standalone_number_{i}"] = {
+                "number": int(number),
+                "original_text": number
+            }
+            
+        return patterns
+        
+    def _create_substitution_mapping(
+        self, original_patterns: Dict[str, Any], new_patterns: Dict[str, Any]
+    ) -> Dict[str, str]:
+        """Create a mapping of what text should be replaced with what."""
+        substitutions = {}
+        
+        # Match patterns by type (prioritize number_unit patterns)
+        for key, original_pattern in original_patterns.items():
+            if key.startswith("number_") and key in new_patterns:
+                new_pattern = new_patterns[key]
+                old_text = original_pattern["original_text"]
+                new_text = new_pattern["original_text"]
+                substitutions[old_text] = new_text
+                
+                # Also try case variations
+                substitutions[old_text.title()] = new_text.title()
+                substitutions[old_text.upper()] = new_text.upper()
+        
+        return substitutions
+        
+    def _apply_smart_substitutions_recursive(
+        self, data: Any, substitution_map: Dict[str, str]
+    ) -> Any:
+        """Recursively apply smart substitutions through workflow data."""
+        if isinstance(data, dict):
+            return {
+                key: self._apply_smart_substitutions_recursive(value, substitution_map)
+                for key, value in data.items()
+            }
+        elif isinstance(data, list):
+            return [
+                self._apply_smart_substitutions_recursive(item, substitution_map)
+                for item in data
+            ]
+        elif isinstance(data, str):
+            # Apply all substitutions to the string
+            substituted_str = data
+            for old_text, new_text in substitution_map.items():
+                substituted_str = substituted_str.replace(old_text, new_text)
+            return substituted_str
+        else:
+            # Return primitive values as-is
+            return data
+
+    def _substitute_workflow_recursive(
+        self, data: Any, entities: Dict[str, Any], stored_entity_info: Dict[str, Dict]
+    ) -> Any:
+        """Recursively substitute entities in workflow data structures."""
+        if isinstance(data, dict):
+            return {
+                key: self._substitute_workflow_recursive(value, entities, stored_entity_info)
+                for key, value in data.items()
+            }
+        elif isinstance(data, list):
+            return [
+                self._substitute_workflow_recursive(item, entities, stored_entity_info)
+                for item in data
+            ]
+        elif isinstance(data, str):
+            # Apply substitutions to string values using the basic substitution logic
+            substituted_str = data
+            for entity_key, info in stored_entity_info.items():
+                placeholder = info.get("placeholder")
+                if not placeholder or entity_key not in entities:
+                    continue
+                    
+                value = entities[entity_key]
+                entity_type = info.get("type", "string")
+                
+                try:
+                    if entity_type == "integer":
+                        formatted_value = str(int(value))
+                    elif entity_type == "number" or entity_type == "float":
+                        formatted_value = str(float(value))
+                    elif entity_type == "boolean":
+                        formatted_value = str(bool(value))
+                    elif entity_type == "date":
+                        if isinstance(value, datetime.date):
+                            formatted_value = value.strftime("%Y-%m-%d")
+                        else:
+                            formatted_value = str(value)
+                    else:
+                        formatted_value = str(value)
+                    
+                    # Replace placeholder in the string
+                    substituted_str = substituted_str.replace(placeholder, formatted_value)
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Failed to format entity '{entity_key}' with value '{value}' as type '{entity_type}': {e}")
+                    # Continue with original value
+                    
+            return substituted_str
+        else:
+            # Return primitive values as-is
+            return data
+
     def apply_dsl_substitution(
         self, template: str, entities: Dict[str, Any], stored_entity_info: Dict[str, Dict]
     ) -> str:
@@ -1062,7 +1275,11 @@ class Text2SQLEntitySubstitution:
             substituted_template = substitutor.apply_recipe_template_substitution(
                 template, entities_to_use, entity_replacements
             )
-        else: # Default or WORKFLOW etc.
+        elif template_type == TemplateType.WORKFLOW:
+            substituted_template = substitutor.apply_workflow_substitution(
+                template, entities_to_use, entity_replacements
+            )
+        else: # Default fallback
             substituted_template = substitutor.apply_substitution(
                 template, entities_to_use, entity_replacements
             )

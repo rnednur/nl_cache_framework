@@ -58,7 +58,8 @@ class LLMService:
         self, 
         query: str, 
         context_entries: List[Dict[str, Any]], 
-        similarity_threshold: float
+        similarity_threshold: float,
+        additional_context: Optional[str] = None
     ) -> Dict[str, Any]:
         """Check if the given query can be fully answered with the provided context entries.
         
@@ -66,6 +67,7 @@ class LLMService:
             query: The natural language query to check.
             context_entries: List of context entries from the cache with similarity scores.
             similarity_threshold: The similarity threshold used for the original search.
+            additional_context: Optional additional context to help with template-specific analysis.
             
         Returns:
             Dictionary containing:
@@ -93,11 +95,17 @@ class LLMService:
             context_text += f"ID: {entry.get('id')}\n\n"
         
         # Prepare prompt for the LLM using the imported prompt template
-        prompt = QUERY_MATCHING_PROMPT.format(
+        base_prompt = QUERY_MATCHING_PROMPT.format(
             query=query,
             context_text=context_text,
             similarity_threshold=similarity_threshold
         )
+        
+        # Add additional context if provided
+        if additional_context:
+            prompt = f"{additional_context}\n\n{base_prompt}"
+        else:
+            prompt = base_prompt
 
         try:
             # Make the API call using the OpenAI client
@@ -321,4 +329,38 @@ class LLMService:
             "explanation": "This is a mock workflow generated because the LLM service is not properly configured."
         }
         
-        return mock_workflow 
+        return mock_workflow
+
+    def generate_response(self, prompt: str) -> Optional[str]:
+        """Generate a response to a given prompt using the LLM.
+        
+        Args:
+            prompt: The input prompt for the LLM
+            
+        Returns:
+            The LLM's response as a string, or None if the call fails
+        """
+        if not self.api_key:
+            logger.error("OpenRouter API key not set. Cannot make LLM call.")
+            return None
+            
+        try:
+            logger.info(f"Calling LLM with model: {self.model}")
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.1,
+                max_tokens=4000
+            )
+            
+            if response.choices and len(response.choices) > 0:
+                return response.choices[0].message.content
+            else:
+                logger.warning("No response choices returned from LLM")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error calling LLM: {e}")
+            return None 

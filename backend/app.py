@@ -615,10 +615,17 @@ async def get_catalog_values(
             )
         catalog_names = [t[0] for t in catalog_names_query.all() if t[0]]
         
+        # Get all distinct template types
+        template_types_query = db.query(Text2SQLCache.template_type).distinct().filter(
+            Text2SQLCache.template_type.is_not(None)
+        )
+        template_types = [t[0] for t in template_types_query.all() if t[0]]
+        
         return {
             "catalog_types": catalog_types,
             "catalog_subtypes": catalog_subtypes,
-            "catalog_names": catalog_names
+            "catalog_names": catalog_names,
+            "template_types": template_types
         }
     except Exception as e:
         logger.error(f"Error fetching catalog values: {str(e)}", exc_info=True)
@@ -631,6 +638,7 @@ async def complete(
     catalog_type: Optional[str] = Query(None),
     catalog_subtype: Optional[str] = Query(None),
     catalog_name: Optional[str] = Query(None),
+    template_type: Optional[str] = Query(None),
     similarity_threshold: Optional[float] = Query(None),
     limit: Optional[int] = Query(None),
     use_llm: Optional[bool] = Query(False),
@@ -670,7 +678,7 @@ async def complete(
     catalog_type = catalog_type if catalog_type is not None else request.catalog_type
     catalog_subtype = catalog_subtype if catalog_subtype is not None else request.catalog_subtype
     catalog_name = catalog_name if catalog_name is not None else request.catalog_name
-    template_type = request.template_type
+    template_type = template_type if template_type is not None else request.template_type
     similarity_threshold = similarity_threshold if similarity_threshold is not None else request.similarity_threshold
     limit = limit if limit is not None else request.limit
 

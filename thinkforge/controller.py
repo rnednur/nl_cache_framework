@@ -1542,7 +1542,9 @@ class Text2SQLController:
             template_id = best_match.get("id")
             template = best_match.get("template", "")
             is_template = best_match.get("is_template", False)
+            template_type = best_match.get("template_type", "")
 
+            # Handle entity substitution for templates with explicit placeholders
             if is_template:
                 try:
                     extraction_query = updated_query if updated_query else query
@@ -1561,6 +1563,40 @@ class Text2SQLController:
                     logger.error(f"Entity substitution failed: {e}", exc_info=True)
                     final_result = template
                     logger.warning(f"Falling back to raw template: {template[:50]}...")
+            
+            # Handle LLM-based workflow adaptation for workflow templates
+            elif template_type == "workflow" or self._is_workflow_template(template):
+                try:
+                    original_query = best_match.get("nl_query", "")
+                    current_query = updated_query if updated_query else query
+                    
+                    logger.info(f"Detected workflow template (type: {template_type})")
+                    logger.info(f"Attempting LLM-based workflow adaptation:")
+                    logger.info(f"  Original query: {original_query}")
+                    logger.info(f"  Current query: {current_query}")
+                    
+                    # Apply LLM-based workflow adaptation if queries are different
+                    # Handle case where current_query might be the original user query string
+                    current_query_str = current_query if isinstance(current_query, str) else query
+                    if original_query.lower() != current_query_str.lower() and self.llm_service:
+                        logger.info(f"Queries are different, adapting workflow with LLM")
+                        final_result = self._adapt_workflow_with_llm(
+                            template, original_query, current_query_str
+                        )
+                        logger.info(f"LLM workflow adaptation completed successfully")
+                    else:
+                        final_result = template
+                        if original_query.lower() == current_query_str.lower():
+                            logger.info(f"Queries are identical, no adaptation needed")
+                        else:
+                            logger.info(f"LLM not available, using original template")
+                    
+                    logger.debug(f"Result preview: {final_result[:200]}...")
+                    
+                except Exception as e:
+                    logger.error(f"LLM workflow adaptation failed: {e}", exc_info=True)
+                    final_result = template
+                    logger.warning(f"Falling back to original workflow template")
             else:
                 final_result = template
 
@@ -1604,10 +1640,18 @@ class Text2SQLController:
             # Get considered entries for logging
             considered_entry_ids = response_data.get("considered_entries", [])
 
+            # Ensure response is a string for database storage
+            response_for_log = updated_query if updated_query else final_result
+            if isinstance(response_for_log, dict):
+                import json
+                response_for_log = json.dumps(response_for_log)
+            elif not isinstance(response_for_log, str):
+                response_for_log = str(response_for_log)
+                
             usage_log = UsageLog(
                 cache_entry_id=template_id,
                 prompt=query,
-                response=updated_query if updated_query else final_result,
+                response=response_for_log,
                 timestamp=datetime.datetime.utcnow(),
                 success_status=cache_hit,
                 similarity_score=similarity_score if cache_hit else 0.0,
@@ -1909,3 +1953,156 @@ class Text2SQLController:
         When evaluating the cached entries, prioritize templates that best match 
         this template type and the user's specific use case.
         """
+
+    def _adapt_workflow_with_llm(
+        self, workflow_template: str, original_query: str, new_query: str
+    ) -> str:
+        """
+        Use LLM to adapt workflow step names and descriptions based on query changes.
+        
+        Args:
+            workflow_template: The original workflow JSON template
+            original_query: The original query the workflow was designed for
+            new_query: The new query that should be adapted to
+            
+        Returns:
+            Adapted workflow JSON string with updated step names and descriptions
+        """
+        if not self.llm_service:
+            logger.warning("LLM service not available for workflow adaptation")
+            return workflow_template
+            
+        try:
+            # Parse workflow to understand structure
+            import json
+            workflow_data = json.loads(workflow_template)
+            
+            # Create prompt for LLM to adapt the workflow
+            adaptation_prompt = f"""You are an expert at updating JSON-based workflow recipes for data analysis tasks. Your goal is to adapt an existing recipe flow to a new query variation while keeping the structure intact.
+
+Here is the original recipe flow JSON:
+{json.dumps(workflow_data, indent=2)}
+
+The original flow is for a query like: "{original_query}".
+
+Now, adapt it to a new query: "{new_query}". Focus on the key changes between the original and new queries. For example:
+- Update any phrasing in step names, flow name, or metadata to naturally reflect the new query (e.g., change conditions, counts, types, or descriptors to match while keeping the intent similar).
+- Update the flow's "name" field to reflect the new query (e.g., rephrase it to align closely with the new query wording).
+- Update step names (e.g., in the "steps" array) to incorporate the new query's elements, ensuring they remain concise and relevant.
+- Update the "nl_description" in "metadata" to reflect the new questions, keeping the format like "Fullflow 'Generated Workflow':\\n1) [Updated question 1]\\n2) [Updated question 2]\\n" (adjust numbering if steps change minimally).
+- Do not change unrelated fields like IDs, positions, cache_entry_ids, connections, or metadata counts unless they directly conflict with the update.
+- Ensure the output is valid JSON.
+- If the new query requires adding, removing, or rephrasing steps, only make minimal changes to align with the new query—do not invent entirely new steps or overcomplicate unless the query explicitly demands it. Prioritize keeping the workflow's core logic the same.
+
+Output only the updated JSON object, nothing else."""
+
+            # Call LLM for adaptation
+            logger.info(f"Calling LLM for workflow adaptation")
+            response = self.llm_service.generate_response(adaptation_prompt)
+            
+            if not response:
+                logger.warning("LLM returned empty response for workflow adaptation")
+                return workflow_template
+                
+            # Extract JSON from response (in case LLM adds extra text)
+            adapted_workflow = self._extract_json_from_response(response)
+            
+            if adapted_workflow:
+                logger.info("Successfully adapted workflow with LLM")
+                return json.dumps(adapted_workflow, indent=2)
+            else:
+                logger.warning("Could not extract valid JSON from LLM response")
+                return workflow_template
+                
+        except Exception as e:
+            logger.error(f"Error during LLM workflow adaptation: {e}", exc_info=True)
+            return workflow_template
+
+    def _extract_json_from_response(self, response: str) -> dict:
+        """
+        Extract JSON from LLM response, handling cases where LLM might add extra text.
+        
+        Args:
+            response: Raw LLM response that should contain JSON
+            
+        Returns:
+            Parsed JSON dictionary or None if extraction fails
+        """
+        import json
+        
+        try:
+            # First try parsing the entire response as JSON
+            return json.loads(response.strip())
+        except json.JSONDecodeError:
+            pass
+            
+        # Try to find JSON within the response
+        import re
+        
+        # Look for JSON object patterns
+        json_pattern = r'(\{.*\})'
+        matches = re.findall(json_pattern, response, re.DOTALL)
+        
+        for match in matches:
+            try:
+                return json.loads(match)
+            except json.JSONDecodeError:
+                continue
+                
+        # Look for JSON starting with specific workflow patterns
+        lines = response.split('\n')
+        json_started = False
+        json_lines = []
+        
+        for line in lines:
+            if not json_started and ('{' in line and ('flow' in line or 'steps' in line)):
+                json_started = True
+            
+            if json_started:
+                json_lines.append(line)
+                
+            # Stop if we find a closing brace at the start of a line (likely end of JSON)
+            if json_started and line.strip() == '}':
+                break
+                
+        if json_lines:
+            try:
+                return json.loads('\n'.join(json_lines))
+            except json.JSONDecodeError:
+                pass
+                
+        logger.warning("Could not extract valid JSON from LLM response")
+        return None
+
+    def _is_workflow_template(self, template: str) -> bool:
+        """
+        Check if a template appears to be a workflow based on its structure.
+        
+        Args:
+            template: The template string to check
+            
+        Returns:
+            True if the template appears to be a workflow, False otherwise
+        """
+        try:
+            import json
+            data = json.loads(template)
+            
+            # Check for common workflow structure patterns
+            if isinstance(data, dict):
+                # Check for workflow indicators
+                has_flow = "flow" in data
+                has_steps = "steps" in data or (has_flow and "steps" in data.get("flow", {}))
+                has_connections = "connections" in data or (has_flow and "connections" in data.get("flow", {}))
+                has_metadata = "metadata" in data or (has_flow and "metadata" in data.get("flow", {}))
+                
+                # If it has steps and either connections or metadata, likely a workflow
+                if has_steps and (has_connections or has_metadata):
+                    logger.info(f"Template detected as workflow based on structure")
+                    return True
+                    
+            return False
+            
+        except (json.JSONDecodeError, Exception):
+            # If we can't parse as JSON or other error, not a workflow
+            return False

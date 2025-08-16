@@ -29,6 +29,7 @@ import { Button } from '../../app/components/ui/button';
 import { Wand2, Trash2, Upload, FileText } from 'lucide-react';
 import GenerateWorkflowDialog from './GenerateWorkflowDialog';
 import RecipeImportDialog from './RecipeImportDialog';
+import { NodeDetailModal } from './NodeDetailModal';
 
 // Default initial node if no workflow data is provided
 const defaultInitialNodes: Node[] = [
@@ -70,6 +71,8 @@ const WorkflowBuilderComponent: React.FC<WorkflowBuilderProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [isGenerateDialogOpen, setIsGenerateDialogOpen] = useState<boolean>(false);
   const [isRecipeImportDialogOpen, setIsRecipeImportDialogOpen] = useState<boolean>(false);
+  const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  const [isNodeDetailOpen, setIsNodeDetailOpen] = useState(false);
 
   // Refs to store the previous initial props to compare against
   const prevPropInitialNodesRef = useRef<Node[] | undefined>();
@@ -122,17 +125,30 @@ const WorkflowBuilderComponent: React.FC<WorkflowBuilderProps> = ({
           excludeIds
         );
         
-        // Map CacheItem objects to CompatibleStep objects
+        // Map CacheItem objects to CompatibleStep objects with enhanced metadata
         const steps: CompatibleStep[] = cacheEntries.map((entry: CacheItem) => ({
           id: entry.id.toString(),
           name: entry.nl_query || `${entry.template_type} Template`,
           type: entry.template_type,
           data: {
+            // Core cache entry data
+            cacheEntryId: entry.id,
             template: entry.template,
+            templateType: entry.template_type,
+            originalQuery: entry.nl_query,
+            // Catalog metadata
             catalogType: entry.catalog_type,
             catalogSubtype: entry.catalog_subtype,
             catalogName: entry.catalog_name,
-            // Include any other relevant data from the cache entry
+            // Additional metadata for better detail view
+            reasoningTrace: entry.reasoning_trace,
+            entityReplacements: entry.entity_replacements,
+            tags: entry.tags,
+            status: entry.status,
+            isTemplate: entry.is_template,
+            usageCount: entry.usage_count || 0,
+            createdAt: entry.created_at,
+            updatedAt: entry.updated_at
           }
         }));
         
@@ -184,6 +200,15 @@ const WorkflowBuilderComponent: React.FC<WorkflowBuilderProps> = ({
     [setEdges]
   );
 
+  // Handle node clicks to show details
+  const handleNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
+    // Only handle clicks on workflow nodes (not start node)
+    if (node.id !== 'start' && node.data?.cacheEntryId) {
+      setSelectedNode(node);
+      setIsNodeDetailOpen(true);
+    }
+  }, []);
+
   const onDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.dataTransfer.dropEffect = 'move';
@@ -222,16 +247,69 @@ const WorkflowBuilderComponent: React.FC<WorkflowBuilderProps> = ({
 
       const finalPosition = { x: clampedX, y: clampedY };
 
+      // Enhanced node creation with comprehensive metadata
+      const getTemplateIcon = (templateType: string) => {
+        const iconMap: Record<string, string> = {
+          sql: '🗄️', api: '🌐', workflow: '⚡', script: '📜', url: '🔗',
+          cli: '💻', prompt: '🤖', configuration: '⚙️', graphql: '📊', nosql: '🍃',
+        }
+        return iconMap[templateType] || '📋'
+      }
+
+      const getTemplateColor = (templateType: string) => {
+        const colorMap: Record<string, string> = {
+          sql: '#3b82f6', api: '#10b981', workflow: '#8b5cf6', script: '#f59e0b',
+          url: '#06b6d4', cli: '#6b7280', prompt: '#ec4899', configuration: '#84cc16',
+          graphql: '#f97316', nosql: '#14b8a6',
+        }
+        return colorMap[templateType] || '#6b7280'
+      }
+
       const newNode: Node = {
         id: getNextNodeId(),
-        type: 'default', // Or a custom type based on draggedStep.type
+        type: 'default',
         position: finalPosition,
+        className: 'clickable-workflow-node',
         data: { 
-            label: `${draggedStep.name} (Type: ${draggedStep.type})`,
-            originalStepId: draggedStep.id,
-            originalStepType: draggedStep.type,
-            ...draggedStep.data 
+          label: `${getTemplateIcon(draggedStep.type)} ${draggedStep.name}`,
+          // Preserve original step reference
+          originalStepId: draggedStep.id,
+          originalStepType: draggedStep.type,
+          // Enhanced metadata from cache entry
+          cacheEntryId: draggedStep.data?.cacheEntryId,
+          templateType: draggedStep.type,
+          template: draggedStep.data?.template,
+          originalQuery: draggedStep.data?.originalQuery || draggedStep.name,
+          catalogType: draggedStep.data?.catalogType,
+          catalogSubtype: draggedStep.data?.catalogSubtype,
+          catalogName: draggedStep.data?.catalogName,
+          reasoningTrace: draggedStep.data?.reasoningTrace,
+          entityReplacements: draggedStep.data?.entityReplacements,
+          tags: draggedStep.data?.tags,
+          status: draggedStep.data?.status,
+          isTemplate: draggedStep.data?.isTemplate,
+          usageCount: draggedStep.data?.usageCount || 0,
+          createdAt: draggedStep.data?.createdAt,
+          updatedAt: draggedStep.data?.updatedAt
         },
+        style: {
+          background: getTemplateColor(draggedStep.type),
+          color: 'white',
+          border: '2px solid #374151',
+          borderRadius: '8px',
+          fontSize: '12px',
+          fontWeight: 'bold',
+          width: 220,
+          textAlign: 'center',
+          padding: '8px',
+          minHeight: '60px',
+          // Visual indicator for clickable nodes
+          cursor: 'pointer',
+          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
+          // Subtle animation hint
+          transition: 'all 0.2s ease-in-out',
+        },
+        selected: true, // Auto-select the new node for visual feedback
       };
 
       setNodes((nds) => nds.concat(newNode));
@@ -283,6 +361,7 @@ const WorkflowBuilderComponent: React.FC<WorkflowBuilderProps> = ({
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          onNodeClick={handleNodeClick}
           onDrop={onDrop}
           onDragOver={onDragOver}
           fitView
@@ -358,6 +437,13 @@ const WorkflowBuilderComponent: React.FC<WorkflowBuilderProps> = ({
         open={isRecipeImportDialogOpen}
         onOpenChange={setIsRecipeImportDialogOpen}
         onRecipeImported={handleRecipeImport}
+      />
+      
+      {/* Node Detail Modal */}
+      <NodeDetailModal
+        isOpen={isNodeDetailOpen}
+        onClose={() => setIsNodeDetailOpen(false)}
+        node={selectedNode}
       />
     </div>
   );
