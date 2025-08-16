@@ -118,6 +118,7 @@ class CompleteRequest(BaseModel):
     catalog_type: Optional[str] = Field(None, description="Optional catalog type to filter cache entries")
     catalog_subtype: Optional[str] = Field(None, description="Optional catalog subtype to filter cache entries")
     catalog_name: Optional[str] = Field(None, description="Optional catalog name to filter cache entries")
+    template_type: Optional[str] = Field(None, description="Optional template type to filter cache entries")
     similarity_threshold: Optional[float] = Field(None, description="Similarity threshold for cache matching")
     limit: Optional[int] = Field(None, description="Limit for the number of top similarity results")
 
@@ -669,6 +670,7 @@ async def complete(
     catalog_type = catalog_type if catalog_type is not None else request.catalog_type
     catalog_subtype = catalog_subtype if catalog_subtype is not None else request.catalog_subtype
     catalog_name = catalog_name if catalog_name is not None else request.catalog_name
+    template_type = request.template_type
     similarity_threshold = similarity_threshold if similarity_threshold is not None else request.similarity_threshold
     limit = limit if limit is not None else request.limit
 
@@ -679,6 +681,7 @@ async def complete(
     logger.info(f"catalog_type: {catalog_type}")
     logger.info(f"catalog_subtype: {catalog_subtype}")
     logger.info(f"catalog_name: {catalog_name}")
+    logger.info(f"template_type: {template_type}")
     logger.info(f"similarity_threshold: {similarity_threshold}")
     logger.info(f"limit: {limit}")
 
@@ -697,6 +700,7 @@ async def complete(
             catalog_type=catalog_type,
             catalog_subtype=catalog_subtype,
             catalog_name=catalog_name,
+            template_type=template_type,
             limit=limit
         )
         logger.info(f"Response from controller: {list(response_data.keys())}")

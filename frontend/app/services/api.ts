@@ -78,6 +78,7 @@ export interface CompleteRequest {
   catalog_type?: string;
   catalog_subtype?: string;
   catalog_name?: string;
+  template_type?: string;
   similarity_threshold?: number;
   limit?: number;
 }

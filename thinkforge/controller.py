@@ -1389,6 +1389,7 @@ class Text2SQLController:
         catalog_type: Optional[str] = None,
         catalog_subtype: Optional[str] = None,
         catalog_name: Optional[str] = None,
+        template_type: Optional[str] = None,
         limit: Optional[int] = None
     ) -> Dict[str, Any]:
         """Process a completion request using the NL cache.
@@ -1400,6 +1401,7 @@ class Text2SQLController:
             catalog_type: Optional catalog type to filter cache entries.
             catalog_subtype: Optional catalog subtype to filter cache entries.
             catalog_name: Optional catalog name to filter cache entries.
+            template_type: Optional template type to filter cache entries and customize prompting.
             limit: Optional number of top similarity results to use, defaults to 5 if use_llm is True, 1 otherwise.
 
         Returns:
@@ -1410,6 +1412,7 @@ class Text2SQLController:
         logger.info(f"Query: {query[:100]}...")
         logger.info(f"use_llm parameter: {use_llm} (type: {type(use_llm)})")
         logger.info(f"similarity_threshold: {similarity_threshold}")
+        logger.info(f"template_type: {template_type}")
         logger.info(f"limit: {limit}")
         logger.info(f"LLMService available: {LLMService is not None}")
         if LLMService:
@@ -1432,6 +1435,7 @@ class Text2SQLController:
         search_limit = limit if limit is not None else (5 if use_llm else 1)
         cache_results = self.search_query(
             nl_query=query,
+            template_type=template_type,
             similarity_threshold=similarity_threshold,
             limit=search_limit,
             catalog_type=catalog_type,
@@ -1474,11 +1478,17 @@ class Text2SQLController:
                         logger.info(f"Using LLM enhancement for query: {query[:50]}...")
                         logger.info(f"Creating LLMService with model: {os.getenv('OPENROUTER_MODEL', 'google/gemini-pro')}")
                         llm_service = LLMService(model=os.getenv("OPENROUTER_MODEL", "google/gemini-pro"))
+                        
+                        # Create template-specific context for better LLM understanding
+                        template_context = self._get_template_specific_context(template_type, query)
+                        logger.info(f"Using template-specific context for type: {template_type}")
+                        
                         logger.info(f"Calling can_answer_with_context with {len(cache_results)} entries")
                         llm_result = llm_service.can_answer_with_context(
                             query=query,
                             context_entries=cache_results,
-                            similarity_threshold=similarity_threshold
+                            similarity_threshold=similarity_threshold,
+                            additional_context=template_context
                         )
                         logger.info(f"LLM result received: {llm_result}")
 
@@ -1805,3 +1815,97 @@ class Text2SQLController:
             "nodes": nodes,
             "edges": edges
         }
+    
+    def _get_template_specific_context(self, template_type: Optional[str], query: str) -> str:
+        """
+        Generate template-specific context to guide LLM analysis based on the template type.
+        
+        Args:
+            template_type: The type of template being searched for
+            query: The user's query
+            
+        Returns:
+            A context string to help the LLM better understand the domain
+        """
+        if not template_type:
+            return "Focus on finding the most relevant template for the given query."
+            
+        template_contexts = {
+            "sql": """
+            The user is looking for SQL query templates. Focus on:
+            - Database operations (SELECT, INSERT, UPDATE, DELETE)
+            - Data retrieval and manipulation
+            - Table joins, filtering, aggregation
+            - Consider database schema requirements and SQL syntax
+            """,
+            
+            "api": """
+            The user is looking for API endpoint templates. Focus on:
+            - REST API calls (GET, POST, PUT, DELETE)
+            - API documentation and specifications
+            - Request/response formats, headers, parameters
+            - HTTP endpoints and web service integrations
+            """,
+            
+            "workflow": """
+            The user is looking for workflow automation templates. Focus on:
+            - Multi-step processes and automation
+            - Task orchestration and sequencing
+            - Business process flows and integrations
+            - Step-by-step procedures and workflows
+            """,
+            
+            "url": """
+            The user is looking for URL/web resource templates. Focus on:
+            - Web URLs, links, and endpoints
+            - Web page resources and navigation
+            - URL patterns and web references
+            - Online resources and web services
+            """,
+            
+            "function": """
+            The user is looking for function/code templates. Focus on:
+            - Programming functions and code snippets
+            - Function definitions, parameters, and logic
+            - Code implementations and algorithms
+            - Programming utilities and methods
+            """,
+            
+            "script": """
+            The user is looking for script templates. Focus on:
+            - Executable scripts and automation
+            - Command-line scripts and tools
+            - Batch processing and scripted operations
+            - System administration and automation scripts
+            """,
+            
+            "mcp_tool": """
+            The user is looking for MCP (Model Context Protocol) tool templates. Focus on:
+            - MCP tool integrations and capabilities
+            - Tool-based operations and functionality
+            - External tool connections and interfaces
+            - MCP protocol implementations
+            """,
+            
+            "agent": """
+            The user is looking for AI agent templates. Focus on:
+            - AI agent configurations and behaviors
+            - Agent-based automation and intelligence
+            - Autonomous task execution and decision-making
+            - Agent workflows and interactions
+            """
+        }
+        
+        context = template_contexts.get(template_type.lower(), f"""
+            The user is looking for {template_type} templates. Focus on finding content 
+            that matches this specific template type and domain.
+        """)
+        
+        return f"""
+        TEMPLATE TYPE CONTEXT: {template_type.upper()}
+        
+        {context.strip()}
+        
+        When evaluating the cached entries, prioritize templates that best match 
+        this template type and the user's specific use case.
+        """

@@ -39,6 +39,7 @@ interface CompleteTestState {
   catalogType: string;
   catalogSubtype: string;
   catalogName: string;
+  templateType: string;
   useLlm: boolean;
   resultsHistory: ExtendedCompleteResponse[];
   currentHistoryIndex: number;
@@ -51,8 +52,9 @@ export default function CompleteTestPage() {
   const [catalogType, setCatalogType] = useState("")
   const [catalogSubtype, setCatalogSubtype] = useState("")
   const [catalogName, setCatalogName] = useState("")
+  const [templateType, setTemplateType] = useState("")
   const [useLlm, setUseLlm] = useState(false)
-  const [catalogValues, setCatalogValues] = useState<CatalogValues>({ catalog_types: [], catalog_subtypes: [], catalog_names: [] })
+  const [catalogValues, setCatalogValues] = useState<CatalogValues>({ catalog_types: [], catalog_subtypes: [], catalog_names: [], template_types: [] })
   const [loadingCatalogs, setLoadingCatalogs] = useState(false)
   
   const [result, setResult] = useState<ExtendedCompleteResponse | null>(null)
@@ -78,6 +80,7 @@ export default function CompleteTestPage() {
           setCatalogType(parsedState.catalogType);
           setCatalogSubtype(parsedState.catalogSubtype);
           setCatalogName(parsedState.catalogName);
+          setTemplateType(parsedState.templateType || "");
           setUseLlm(parsedState.useLlm);
           setResultsHistory(parsedState.resultsHistory);
           setCurrentHistoryIndex(parsedState.currentHistoryIndex);
@@ -109,6 +112,7 @@ export default function CompleteTestPage() {
         catalogType,
         catalogSubtype,
         catalogName,
+        templateType,
         useLlm,
         resultsHistory,
         currentHistoryIndex
@@ -118,7 +122,7 @@ export default function CompleteTestPage() {
       // If prompt is empty but we have saved state, remove it
       localStorage.removeItem('completeTestState');
     }
-  }, [prompt, threshold, limit, catalogType, catalogSubtype, catalogName, useLlm, resultsHistory, currentHistoryIndex]);
+  }, [prompt, threshold, limit, catalogType, catalogSubtype, catalogName, templateType, useLlm, resultsHistory, currentHistoryIndex]);
 
   useEffect(() => {
     const fetchCatalogValues = async () => {
@@ -155,6 +159,7 @@ export default function CompleteTestPage() {
       if (catalogType) request.catalog_type = catalogType
       if (catalogSubtype) request.catalog_subtype = catalogSubtype
       if (catalogName) request.catalog_name = catalogName
+      if (templateType) request.template_type = templateType
       
       // Add timeout handling
       const controller = new AbortController();
@@ -250,6 +255,7 @@ export default function CompleteTestPage() {
           catalogType,
           catalogSubtype,
           catalogName,
+          templateType,
           useLlm,
           resultsHistory,
           currentHistoryIndex
@@ -296,6 +302,7 @@ export default function CompleteTestPage() {
               setCatalogType("");
               setCatalogSubtype("");
               setCatalogName("");
+              setTemplateType("");
               setUseLlm(false);
               setResult(null);
               setError(null);
@@ -454,6 +461,24 @@ export default function CompleteTestPage() {
                       <SelectContent className="bg-neutral-800 border-neutral-700 text-neutral-300">
                         {catalogValues.catalog_names.map((name) => (
                           <SelectItem key={name} value={name} className="text-neutral-300">{name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+                
+                <div className="flex-1 min-w-[200px]">
+                  <Label htmlFor="template-type" className="text-neutral-300">Template Type (Optional)</Label>
+                  {loadingCatalogs ? (
+                    <div className="p-2 border border-neutral-700 rounded-md text-neutral-500 bg-neutral-800">Loading...</div>
+                  ) : (
+                    <Select value={templateType} onValueChange={setTemplateType}>
+                      <SelectTrigger id="template-type" className="bg-neutral-800 border-neutral-700 text-neutral-300">
+                        <SelectValue placeholder="Select template type" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-neutral-800 border-neutral-700 text-neutral-300">
+                        {catalogValues.template_types?.map((type) => (
+                          <SelectItem key={type} value={type} className="text-neutral-300">{type}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
