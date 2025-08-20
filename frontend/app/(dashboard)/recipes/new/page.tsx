@@ -861,13 +861,13 @@ export default function WorkflowBuilder() {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100">
+    <div className="min-h-screen bg-background text-foreground">
       {/* Header */}
-      <div className="bg-neutral-900 border-b border-neutral-800 px-6 py-4 flex items-center justify-between">
+      <div className="bg-card border-b border-border px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <button
             onClick={() => router.push('/recipes')}
-            className="p-2 text-neutral-400 hover:text-neutral-300 transition-colors rounded-md hover:bg-neutral-800"
+            className="p-2 text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-accent"
             title="Back to Workflows"
           >
             <ArrowLeft className="h-4 w-4" />
@@ -877,10 +877,10 @@ export default function WorkflowBuilder() {
               W
             </div>
             <div>
-              <h1 className="text-lg font-semibold text-neutral-100">
+              <h1 className="text-lg font-semibold text-foreground">
                 {isLoadingRecipe ? 'Loading Workflow...' : isEditMode ? 'Edit Workflow' : 'Create New Workflow'}
               </h1>
-              <p className="text-sm text-neutral-400">
+              <p className="text-sm text-muted-foreground">
                 {isEditMode ? 'Modify existing automation workflow' : 'Multi-step automation workflow'}
               </p>
             </div>
@@ -889,7 +889,7 @@ export default function WorkflowBuilder() {
         <div className="flex gap-3">
           <button
             onClick={handleClearAll}
-            className="px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-md text-neutral-300 hover:bg-neutral-700 transition-colors text-sm font-medium"
+            className="px-4 py-2 bg-input border border-border rounded-md text-foreground hover:bg-accent transition-colors text-sm font-medium"
           >
             Clear All
           </button>
@@ -907,9 +907,9 @@ export default function WorkflowBuilder() {
       {/* Loading overlay when loading recipe data */}
       {isLoadingRecipe && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
-          <div className="bg-neutral-800 rounded-lg p-6 flex items-center gap-3 border border-neutral-700">
+          <div className="bg-input rounded-lg p-6 flex items-center gap-3 border border-border">
             <Loader2 className="h-6 w-6 animate-spin text-green-400" />
-            <span className="text-neutral-100">Loading recipe data...</span>
+            <span className="text-foreground">Loading recipe data...</span>
           </div>
         </div>
       )}
@@ -917,13 +917,13 @@ export default function WorkflowBuilder() {
       {/* Main Content */}
       <div className={`${isWorkflowMaximized ? 'hidden' : 'grid grid-cols-[400px_1fr]'} h-[calc(100vh-81px)]`}>
         {/* Left Panel - Workflow Specification */}
-        <div className="bg-neutral-900 border-r border-neutral-800 flex flex-col min-w-0">
-          <div className="px-6 py-5 border-b border-neutral-800">
-            <div className="flex items-center gap-2 text-base font-semibold text-neutral-100 mb-2">
+        <div className="bg-card border-r border-border flex flex-col min-w-0">
+          <div className="px-6 py-5 border-b border-border">
+            <div className="flex items-center gap-2 text-base font-semibold text-foreground mb-2">
               <FileText className="h-5 w-5" />
               Workflow Specification
             </div>
-            <p className="text-sm text-neutral-400">
+            <p className="text-sm text-muted-foreground">
               Define your workflow using natural language or structured inputs
             </p>
           </div>
@@ -931,21 +931,21 @@ export default function WorkflowBuilder() {
           <div className="flex-1 px-6 py-6 overflow-y-auto space-y-8">
             {/* Basic Information */}
             <div>
-              <div className="flex items-center gap-2 text-sm font-semibold text-neutral-100 mb-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-foreground mb-3">
                 <span>📋</span>
                 Basic Information
               </div>
 
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-neutral-300 mb-2">
+                  <label className="block text-sm font-medium text-foreground mb-2">
                     Workflow Name *
                   </label>
                   <input
                     type="text"
                     value={workflowName}
                     onChange={(e) => setWorkflowName(e.target.value)}
-                    className="w-full px-3 py-2.5 bg-neutral-800 border border-neutral-700 rounded-md text-neutral-100 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    className="w-full px-3 py-2.5 bg-input border border-border rounded-md text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
                     placeholder="Post-Incident Review Automation"
                   />
                 </div>
@@ -983,20 +983,20 @@ export default function WorkflowBuilder() {
 
             {/* Natural Language Specification */}
             <div>
-              <div className="flex items-center gap-2 text-sm font-semibold text-neutral-100 mb-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-foreground mb-3">
                 <span>🗣️</span>
                 Natural Language Description
               </div>
 
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-neutral-300 mb-2">
+                  <label className="block text-sm font-medium text-foreground mb-2">
                     Describe your workflow
                   </label>
                   <textarea
                     value={nlDescription}
                     onChange={(e) => setNlDescription(e.target.value)}
-                    className="w-full h-48 px-4 py-3 bg-neutral-800 border border-neutral-700 rounded-lg text-neutral-100 font-mono text-sm resize-y focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 leading-relaxed"
+                    className="w-full h-48 px-4 py-3 bg-input border border-border rounded-lg text-foreground font-mono text-sm resize-y focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 leading-relaxed"
                     placeholder="Example: 'Fullflow for Post-Incident Review:&#10;1) Fetch Jira issues with query project=OPS AND status=Resolved&#10;2) Summarize issues using Claude LLM &#10;3) Update Confluence page with summary&#10;&#10;Wire: 1→2 (pass issues), 2→3 (pass summary)'"
                   />
                 </div>
@@ -1031,14 +1031,14 @@ export default function WorkflowBuilder() {
                   <button 
                     onClick={handleSaveWorkflow}
                     disabled={isSaving}
-                    className="px-5 py-2.5 bg-transparent border border-neutral-600 text-neutral-300 rounded-md hover:bg-neutral-700 transition-colors font-medium"
+                    className="px-5 py-2.5 bg-transparent border border-border text-foreground rounded-md hover:bg-accent transition-colors font-medium"
                   >
                     Save Draft
                   </button>
                   <button
                     onClick={handleTestRun}
                     disabled={!compilationResult?.success}
-                    className="px-5 py-2.5 bg-transparent border border-neutral-600 text-neutral-300 rounded-md hover:bg-neutral-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-5 py-2.5 bg-transparent border border-border text-foreground rounded-md hover:bg-accent transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                     title={!compilationResult?.success ? "Compile the workflow first before testing" : "Test the compiled workflow"}
                   >
                     Test Run
@@ -1090,7 +1090,7 @@ export default function WorkflowBuilder() {
                       {compilationResult.success ? <CheckCircle className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
                       {compilationResult.success ? 'Compilation Successful' : 'Compilation Failed'}
                     </div>
-                    <ul className="space-y-1 text-sm text-neutral-300">
+                    <ul className="space-y-1 text-sm text-foreground">
                       {compilationResult.success && (
                         <>
                           <li className="flex items-center gap-2">
@@ -1115,20 +1115,20 @@ export default function WorkflowBuilder() {
 
             {/* Advanced Settings */}
             <div>
-              <div className="flex items-center gap-2 text-sm font-semibold text-neutral-100 mb-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-foreground mb-3">
                 <Settings className="h-4 w-4" />
                 Execution Settings
               </div>
 
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-neutral-300 mb-2">
+                  <label className="block text-sm font-medium text-foreground mb-2">
                     Execution Mode
                   </label>
                   <select
                     value={executionMode}
                     onChange={(e) => setExecutionMode(e.target.value)}
-                    className="w-full px-3 py-2.5 bg-neutral-800 border border-neutral-700 rounded-md text-neutral-100 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    className="w-full px-3 py-2.5 bg-input border border-border rounded-md text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
                   >
                     {EXECUTION_MODES.map((mode) => (
                       <option key={mode.value} value={mode.value}>
@@ -1139,13 +1139,13 @@ export default function WorkflowBuilder() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-neutral-300 mb-2">
+                  <label className="block text-sm font-medium text-foreground mb-2">
                     Error Handling
                   </label>
                   <select
                     value={errorHandling}
                     onChange={(e) => setErrorHandling(e.target.value)}
-                    className="w-full px-3 py-2.5 bg-neutral-800 border border-neutral-700 rounded-md text-neutral-100 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    className="w-full px-3 py-2.5 bg-input border border-border rounded-md text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
                   >
                     {ERROR_HANDLING.map((handler) => (
                       <option key={handler.value} value={handler.value}>
@@ -1160,14 +1160,14 @@ export default function WorkflowBuilder() {
         </div>
 
         {/* Right Panel - Visual Preview */}
-        <div className="bg-neutral-950 flex flex-col min-w-0 overflow-hidden relative">
-          <div className="flex bg-neutral-900 border-b border-neutral-800">
+        <div className="bg-background flex flex-col min-w-0 overflow-hidden relative">
+          <div className="flex bg-card border-b border-border">
             <button
               onClick={() => setActiveTab('visual')}
               className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === 'visual'
                   ? 'text-green-400 border-green-400'
-                  : 'text-neutral-400 border-transparent hover:text-neutral-300'
+                  : 'text-muted-foreground border-transparent hover:text-foreground'
               }`}
             >
               <Eye className="h-4 w-4 inline mr-2" />
@@ -1178,7 +1178,7 @@ export default function WorkflowBuilder() {
               className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === 'dsl'
                   ? 'text-green-400 border-green-400'
-                  : 'text-neutral-400 border-transparent hover:text-neutral-300'
+                  : 'text-muted-foreground border-transparent hover:text-foreground'
               }`}
             >
               <Code className="h-4 w-4 inline mr-2" />
@@ -1189,7 +1189,7 @@ export default function WorkflowBuilder() {
               className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === 'validation'
                   ? 'text-green-400 border-green-400'
-                  : 'text-neutral-400 border-transparent hover:text-neutral-300'
+                  : 'text-muted-foreground border-transparent hover:text-foreground'
               }`}
             >
               <CheckSquare className="h-4 w-4 inline mr-2" />
@@ -1216,27 +1216,27 @@ export default function WorkflowBuilder() {
 
             {activeTab === 'dsl' && (
               <div className="p-6 h-full overflow-y-auto">
-                <div className="bg-neutral-800 border border-neutral-700 rounded-lg p-4 overflow-hidden">
+                <div className="bg-input border border-border rounded-lg p-4 overflow-hidden">
                 {compilationResult?.success && compilationResult.dsl ? (
                   <div className="space-y-4">
                     {/* Cache References Summary */}
                     {compilationResult.dsl.cache_references && compilationResult.dsl.cache_references.length > 0 && (
                       <div className="mb-4 p-3 bg-green-900/20 border border-green-700/50 rounded-lg">
                         <div className="text-sm font-medium text-green-400 mb-1">Cache References</div>
-                        <div className="text-xs text-neutral-300">
+                        <div className="text-xs text-foreground">
                           This workflow references {compilationResult.dsl.cache_references.length} cache entries:
                           <span className="ml-1 text-green-400">
                             {compilationResult.dsl.cache_references.filter(Boolean).join(', ')}
                           </span>
                         </div>
-                        <div className="text-xs text-neutral-400 mt-1">
+                        <div className="text-xs text-muted-foreground mt-1">
                           Template types: {compilationResult.dsl.template_types?.join(', ')}
                         </div>
                       </div>
                     )}
                     
                     {/* Actual DSL Content */}
-                    <div className="bg-neutral-900 border border-neutral-600 rounded-lg p-4 font-mono text-sm text-neutral-300 overflow-x-auto max-h-96">
+                    <div className="bg-input border border-border rounded-lg p-4 font-mono text-sm text-foreground overflow-x-auto max-h-96">
                       <pre className="whitespace-pre-wrap">
                         {JSON.stringify(
                           compilationResult.dsl.workflow_dsl || compilationResult.dsl, 
@@ -1250,7 +1250,7 @@ export default function WorkflowBuilder() {
                     {compilationResult.dsl.executable_workflow && (
                       <div className="mt-4">
                         <div className="text-sm font-medium text-blue-400 mb-2">Executable Workflow Format:</div>
-                        <div className="bg-neutral-900 border border-neutral-600 rounded-lg p-4 font-mono text-xs text-neutral-400 overflow-x-auto max-h-64">
+                        <div className="bg-input border border-border rounded-lg p-4 font-mono text-xs text-muted-foreground overflow-x-auto max-h-64">
                           <pre className="whitespace-pre-wrap">
                             {JSON.stringify(compilationResult.dsl.executable_workflow, null, 2)}
                           </pre>
@@ -1259,7 +1259,7 @@ export default function WorkflowBuilder() {
                     )}
                     
                     {/* Copy to Clipboard Button */}
-                    <div className="flex gap-2 pt-2 border-t border-neutral-700">
+                    <div className="flex gap-2 pt-2 border-t border-border">
                       <button
                         onClick={() => {
                           const dslContent = JSON.stringify(compilationResult.dsl.workflow_dsl || compilationResult.dsl, null, 2)
@@ -1285,7 +1285,7 @@ export default function WorkflowBuilder() {
                     </div>
                   </div>
                 ) : (
-                  <div className="text-center py-8 text-neutral-500">
+                  <div className="text-center py-8 text-muted-foreground">
                     <Code className="h-12 w-12 mx-auto mb-3 opacity-50" />
                     <p>No DSL generated yet</p>
                     <p className="text-sm">Compile your workflow to see the DSL with cache references</p>
@@ -1297,7 +1297,7 @@ export default function WorkflowBuilder() {
 
             {activeTab === 'validation' && (
               <div className="p-6 h-full overflow-y-auto">
-                <div className="bg-neutral-800 border border-neutral-700 rounded-lg p-4">
+                <div className="bg-input border border-border rounded-lg p-4">
                 {compilationResult?.validation_results && compilationResult.validation_results.length > 0 ? (
                   <div className="space-y-2">
                     {compilationResult.validation_results.map((item, index) => (
@@ -1320,7 +1320,7 @@ export default function WorkflowBuilder() {
                     ))}
                   </div>
                 ) : (
-                  <div className="text-center py-8 text-neutral-500">
+                  <div className="text-center py-8 text-muted-foreground">
                     <CheckSquare className="h-12 w-12 mx-auto mb-3 opacity-50" />
                     <p>No validation results yet</p>
                     <p className="text-sm">Compile your workflow to see validation results</p>
@@ -1335,24 +1335,24 @@ export default function WorkflowBuilder() {
 
       {/* Full-Screen Workflow Builder */}
       {isWorkflowMaximized && (
-        <div className="fixed inset-0 z-50 bg-neutral-950 flex flex-col transition-all duration-300">
+        <div className="fixed inset-0 z-50 bg-background flex flex-col transition-all duration-300">
           {/* Full-Screen Header */}
-          <div className="bg-neutral-900 border-b border-neutral-800 px-6 py-4 flex items-center justify-between">
+          <div className="bg-card border-b border-border px-6 py-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-green-600 rounded-lg flex items-center justify-center">
                 <Workflow className="h-6 w-6 text-white" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-neutral-100">
+                <h1 className="text-xl font-bold text-foreground">
                   {workflowName} - Full Screen Editor
                 </h1>
-                <p className="text-sm text-neutral-400">
+                <p className="text-sm text-muted-foreground">
                   {executionMode} mode
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <div className="text-xs text-neutral-400 mr-4">
+              <div className="text-xs text-muted-foreground mr-4">
                 <div className="flex items-center gap-4">
                   <span>Ctrl+Shift+M: Toggle full-screen</span>
                   <span>Esc: Exit full-screen</span>

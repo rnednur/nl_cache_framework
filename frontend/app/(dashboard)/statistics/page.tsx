@@ -13,6 +13,7 @@ import {
   ClipboardList
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/components/ui/card"
+import { PageHeader } from "@/app/components/ui/PageHeader"
 import { Button } from "@/app/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/app/components/ui/select"
 import { Label } from "@/app/components/ui/label"
@@ -119,163 +120,167 @@ export default function Statistics() {
   
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold tracking-tight text-neutral-200">Detailed Statistics</h2>
-        <Button 
-          variant="outline" 
-          asChild 
-          className="border-neutral-700 hover:bg-neutral-800 text-neutral-300"
-        >
-          <Link href="/usage-logs">
-            <ClipboardList className="h-4 w-4 mr-2" />
-            View All Usage Logs
-          </Link>
-        </Button>
-      </div>
+      <PageHeader
+        title="Detailed Statistics"
+        description="Comprehensive analytics and usage insights"
+        icon={BarChart2}
+        actions={
+          <Button 
+            variant="outline" 
+            asChild 
+            className="border-border hover:bg-accent text-muted-foreground"
+          >
+            <Link href="/usage-logs">
+              <ClipboardList className="h-4 w-4 mr-2" />
+              View All Usage Logs
+            </Link>
+          </Button>
+        }
+      />
       
       <div className="grid grid-cols-1 gap-6 md:grid-cols-4">
-        <Card className="bg-neutral-900 border-neutral-700 shadow-sm">
+        <Card className="workflow-card bg-card border-2 border-card-border">
           <CardHeader className="pb-2">
-            <CardTitle className="text-neutral-200 text-lg flex items-center gap-2">
+            <CardTitle className="text-foreground text-lg flex items-center gap-2">
               <BarChart2 className="h-5 w-5 text-[#3B4BF6]" />
               Total Entries
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-neutral-100">
+            <div className="text-3xl font-bold text-foreground">
               {loading ? "..." : stats?.total_entries || 0}
             </div>
-            <p className="text-xs text-neutral-400 mt-1">Total cached queries and templates</p>
+            <p className="text-xs text-muted-foreground mt-1">Total cached queries and templates</p>
           </CardContent>
         </Card>
         
-        <Card className="bg-neutral-900 border-neutral-700 shadow-sm">
+        <Card className="workflow-card bg-card border-2 border-card-border">
           <CardHeader className="pb-2">
-            <CardTitle className="text-neutral-200 text-lg flex items-center gap-2">
+            <CardTitle className="text-foreground text-lg flex items-center gap-2">
               <CheckCircle2 className="h-5 w-5 text-green-500" />
               Valid Entries
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-neutral-100">
+            <div className="text-3xl font-bold text-foreground">
               {loading ? "..." : stats?.valid_entries || 0}
             </div>
-            <p className="text-xs text-neutral-400 mt-1">Active and usable entries</p>
+            <p className="text-xs text-muted-foreground mt-1">Active and usable entries</p>
           </CardContent>
         </Card>
         
-        <Card className="bg-neutral-900 border-neutral-700 shadow-sm">
+        <Card className="workflow-card bg-card border-2 border-card-border">
           <CardHeader className="pb-2">
-            <CardTitle className="text-neutral-200 text-lg flex items-center gap-2">
+            <CardTitle className="text-foreground text-lg flex items-center gap-2">
               <Clock className="h-5 w-5 text-amber-500" />
               Last 30 Days Usage
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-neutral-100">
+            <div className="text-3xl font-bold text-foreground">
               {loading ? "..." : stats?.recent_usage.reduce((sum, day) => sum + day.count, 0) || 0}
             </div>
-            <p className="text-xs text-neutral-400 mt-1">Cache hits in the last month</p>
+            <p className="text-xs text-muted-foreground mt-1">Cache hits in the last month</p>
           </CardContent>
         </Card>
         
-        <Card className="bg-neutral-900 border-neutral-700 shadow-sm">
+        <Card className="workflow-card bg-card border-2 border-card-border">
           <CardHeader className="pb-2">
-            <CardTitle className="text-neutral-200 text-lg flex items-center gap-2">
+            <CardTitle className="text-foreground text-lg flex items-center gap-2">
               <Zap className="h-5 w-5 text-[#F97316]" />
               Template Entries
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-neutral-100">
+            <div className="text-3xl font-bold text-foreground">
               {loading ? "..." : stats?.template_entries || 0}
             </div>
-            <p className="text-xs text-neutral-400 mt-1">Reusable template entries</p>
+            <p className="text-xs text-muted-foreground mt-1">Reusable template entries</p>
           </CardContent>
         </Card>
       </div>
       
       {/* Filters */}
-      <Card className="bg-neutral-900 border-neutral-700 shadow-sm">
+      <Card className="workflow-card bg-card border-2 border-card-border">
         <CardHeader className="pb-3">
-          <CardTitle className="text-neutral-200 flex items-center gap-2">
+          <CardTitle className="text-foreground flex items-center gap-2">
             <Filter className="h-5 w-5" />
             Filter Statistics
           </CardTitle>
-          <CardDescription className="text-neutral-400">
+          <CardDescription className="text-muted-foreground">
             Filter statistics by template type and catalog
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             <div>
-              <Label htmlFor="template-type" className="mb-2 block text-sm font-medium text-neutral-300">Template Type</Label>
+              <Label htmlFor="template-type" className="mb-2 block text-sm font-medium text-foreground">Template Type</Label>
               <Select 
                 value={filters.templateType} 
                 onValueChange={(value) => handleFilterChange("templateType", value)}
               >
-                <SelectTrigger id="template-type" className="w-full bg-neutral-800 border-neutral-700 text-neutral-300">
+                <SelectTrigger id="template-type" className="w-full bg-input border-border text-foreground">
                   <SelectValue placeholder="Select template type" />
                 </SelectTrigger>
-                <SelectContent className="bg-neutral-800 border-neutral-700 text-neutral-300">
-                  <SelectItem value="all" className="text-neutral-300">All template types</SelectItem>
-                  <SelectItem value="sql" className="text-neutral-300">SQL</SelectItem>
-                  <SelectItem value="api" className="text-neutral-300">API</SelectItem>
-                  <SelectItem value="url" className="text-neutral-300">URL</SelectItem>
-                  <SelectItem value="workflow" className="text-neutral-300">Workflow</SelectItem>
+                <SelectContent className="bg-input border-border text-foreground">
+                  <SelectItem value="all" className="text-foreground">All template types</SelectItem>
+                  <SelectItem value="sql" className="text-foreground">SQL</SelectItem>
+                  <SelectItem value="api" className="text-foreground">API</SelectItem>
+                  <SelectItem value="url" className="text-foreground">URL</SelectItem>
+                  <SelectItem value="workflow" className="text-foreground">Workflow</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             
             <div>
-              <Label htmlFor="catalog-type" className="mb-2 block text-sm font-medium text-neutral-300">Catalog Type</Label>
+              <Label htmlFor="catalog-type" className="mb-2 block text-sm font-medium text-foreground">Catalog Type</Label>
               <Select 
                 value={filters.catalogType} 
                 onValueChange={(value) => handleFilterChange("catalogType", value)}
               >
-                <SelectTrigger id="catalog-type" className="w-full bg-neutral-800 border-neutral-700 text-neutral-300">
+                <SelectTrigger id="catalog-type" className="w-full bg-input border-border text-foreground">
                   <SelectValue placeholder="Select catalog type" />
                 </SelectTrigger>
-                <SelectContent className="bg-neutral-800 border-neutral-700 text-neutral-300">
-                  <SelectItem value="all" className="text-neutral-300">All catalog types</SelectItem>
+                <SelectContent className="bg-input border-border text-foreground">
+                  <SelectItem value="all" className="text-foreground">All catalog types</SelectItem>
                   {catalogValues.catalog_types.map((type) => (
-                    <SelectItem key={type} value={type} className="text-neutral-300">{type}</SelectItem>
+                    <SelectItem key={type} value={type} className="text-foreground">{type}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             
             <div>
-              <Label htmlFor="catalog-subtype" className="mb-2 block text-sm font-medium text-neutral-300">Catalog Subtype</Label>
+              <Label htmlFor="catalog-subtype" className="mb-2 block text-sm font-medium text-foreground">Catalog Subtype</Label>
               <Select 
                 value={filters.catalogSubtype} 
                 onValueChange={(value) => handleFilterChange("catalogSubtype", value)}
               >
-                <SelectTrigger id="catalog-subtype" className="w-full bg-neutral-800 border-neutral-700 text-neutral-300">
+                <SelectTrigger id="catalog-subtype" className="w-full bg-input border-border text-foreground">
                   <SelectValue placeholder="Select catalog subtype" />
                 </SelectTrigger>
-                <SelectContent className="bg-neutral-800 border-neutral-700 text-neutral-300">
-                  <SelectItem value="all" className="text-neutral-300">All catalog subtypes</SelectItem>
+                <SelectContent className="bg-input border-border text-foreground">
+                  <SelectItem value="all" className="text-foreground">All catalog subtypes</SelectItem>
                   {catalogValues.catalog_subtypes.map((subtype) => (
-                    <SelectItem key={subtype} value={subtype} className="text-neutral-300">{subtype}</SelectItem>
+                    <SelectItem key={subtype} value={subtype} className="text-foreground">{subtype}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             
             <div>
-              <Label htmlFor="catalog-name" className="mb-2 block text-sm font-medium text-neutral-300">Catalog Name</Label>
+              <Label htmlFor="catalog-name" className="mb-2 block text-sm font-medium text-foreground">Catalog Name</Label>
               <Select 
                 value={filters.catalogName} 
                 onValueChange={(value) => handleFilterChange("catalogName", value)}
               >
-                <SelectTrigger id="catalog-name" className="w-full bg-neutral-800 border-neutral-700 text-neutral-300">
+                <SelectTrigger id="catalog-name" className="w-full bg-input border-border text-foreground">
                   <SelectValue placeholder="Select catalog name" />
                 </SelectTrigger>
-                <SelectContent className="bg-neutral-800 border-neutral-700 text-neutral-300">
-                  <SelectItem value="all" className="text-neutral-300">All catalog names</SelectItem>
+                <SelectContent className="bg-input border-border text-foreground">
+                  <SelectItem value="all" className="text-foreground">All catalog names</SelectItem>
                   {catalogValues.catalog_names.map((name) => (
-                    <SelectItem key={name} value={name} className="text-neutral-300">{name}</SelectItem>
+                    <SelectItem key={name} value={name} className="text-foreground">{name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -285,18 +290,18 @@ export default function Statistics() {
       </Card>
       
       <Tabs defaultValue="usage" className="w-full">
-        <TabsList className="grid grid-cols-3 bg-neutral-800 border-neutral-700">
-          <TabsTrigger value="usage" className="data-[state=active]:bg-neutral-700">Usage Over Time</TabsTrigger>
-          <TabsTrigger value="entries" className="data-[state=active]:bg-neutral-700">Entry Types</TabsTrigger>
-          <TabsTrigger value="logs" className="data-[state=active]:bg-neutral-700">Usage Logs</TabsTrigger>
+        <TabsList className="grid grid-cols-3 bg-input border-border">
+          <TabsTrigger value="usage" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">Usage Over Time</TabsTrigger>
+          <TabsTrigger value="entries" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">Entry Types</TabsTrigger>
+          <TabsTrigger value="logs" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">Usage Logs</TabsTrigger>
         </TabsList>
         
         {/* Usage Over Time Tab */}
         <TabsContent value="usage">
-          <Card className="bg-neutral-900 border-neutral-700 shadow-sm">
+          <Card className="workflow-card bg-card border-2 border-card-border">
             <CardHeader>
-              <CardTitle className="text-neutral-200">Usage Trend (Last 30 Days)</CardTitle>
-              <CardDescription className="text-neutral-400">
+              <CardTitle className="text-foreground">Usage Trend (Last 30 Days)</CardTitle>
+              <CardDescription className="text-muted-foreground">
                 Daily cache usage over the past month
               </CardDescription>
             </CardHeader>
@@ -304,7 +309,7 @@ export default function Statistics() {
               <div className="h-80 w-full">
                 {loading ? (
                   <div className="flex items-center justify-center h-full">
-                    <p className="text-neutral-400">Loading usage data...</p>
+                    <p className="text-muted-foreground">Loading usage data...</p>
                   </div>
                 ) : stats?.recent_usage && stats.recent_usage.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
@@ -346,7 +351,7 @@ export default function Statistics() {
                   </ResponsiveContainer>
                 ) : (
                   <div className="flex items-center justify-center h-full">
-                    <p className="text-neutral-400">No usage data available</p>
+                    <p className="text-muted-foreground">No usage data available</p>
                   </div>
                 )}
               </div>
@@ -356,10 +361,10 @@ export default function Statistics() {
         
         {/* Entry Types Tab */}
         <TabsContent value="entries">
-          <Card className="bg-neutral-900 border-neutral-700 shadow-sm">
+          <Card className="workflow-card bg-card border-2 border-card-border">
             <CardHeader>
-              <CardTitle className="text-neutral-200">Cache Entry Types</CardTitle>
-              <CardDescription className="text-neutral-400">
+              <CardTitle className="text-foreground">Cache Entry Types</CardTitle>
+              <CardDescription className="text-muted-foreground">
                 Distribution of entries by template type
               </CardDescription>
             </CardHeader>
@@ -367,7 +372,7 @@ export default function Statistics() {
               <div className="h-80 w-full">
                 {loading ? (
                   <div className="flex items-center justify-center h-full">
-                    <p className="text-neutral-400">Loading template type data...</p>
+                    <p className="text-muted-foreground">Loading template type data...</p>
                   </div>
                 ) : templateTypeData.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
@@ -400,29 +405,29 @@ export default function Statistics() {
                   </ResponsiveContainer>
                 ) : (
                   <div className="flex items-center justify-center h-full">
-                    <p className="text-neutral-400">No template type data available</p>
+                    <p className="text-muted-foreground">No template type data available</p>
                   </div>
                 )}
               </div>
               
               {stats?.popular_entries && stats.popular_entries.length > 0 && (
                 <div className="mt-8">
-                  <h3 className="text-lg font-medium text-neutral-200 mb-4">Popular Cache Entries</h3>
+                  <h3 className="text-lg font-medium text-foreground mb-4">Popular Cache Entries</h3>
                   <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-neutral-700">
                       <thead>
                         <tr>
-                          <th className="px-4 py-3 bg-neutral-800 text-left text-xs font-medium text-neutral-400 uppercase tracking-wider">ID</th>
-                          <th className="px-4 py-3 bg-neutral-800 text-left text-xs font-medium text-neutral-400 uppercase tracking-wider">Natural Language Query</th>
-                          <th className="px-4 py-3 bg-neutral-800 text-left text-xs font-medium text-neutral-400 uppercase tracking-wider">Usage Count</th>
+                          <th className="px-4 py-3 bg-muted text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">ID</th>
+                          <th className="px-4 py-3 bg-muted text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Natural Language Query</th>
+                          <th className="px-4 py-3 bg-muted text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Usage Count</th>
                         </tr>
                       </thead>
-                      <tbody className="bg-neutral-900 divide-y divide-neutral-800">
+                      <tbody className="bg-background divide-y divide-border">
                         {stats.popular_entries.map((entry) => (
                           <tr key={entry.id}>
-                            <td className="px-4 py-3 text-sm text-neutral-300">{entry.id}</td>
-                            <td className="px-4 py-3 text-sm text-neutral-300">{entry.nl_query}</td>
-                            <td className="px-4 py-3 text-sm text-neutral-300">{entry.usage_count}</td>
+                            <td className="px-4 py-3 text-sm text-foreground">{entry.id}</td>
+                            <td className="px-4 py-3 text-sm text-foreground">{entry.nl_query}</td>
+                            <td className="px-4 py-3 text-sm text-foreground">{entry.usage_count}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -436,17 +441,17 @@ export default function Statistics() {
         
         {/* Logs Tab */}
         <TabsContent value="logs">
-          <Card className="bg-neutral-900 border-neutral-700 shadow-sm">
+          <Card className="workflow-card bg-card border-2 border-card-border">
             <CardHeader>
-              <CardTitle className="text-neutral-200">Detailed Usage Logs</CardTitle>
-              <CardDescription className="text-neutral-400">
+              <CardTitle className="text-foreground">Detailed Usage Logs</CardTitle>
+              <CardDescription className="text-muted-foreground">
                 Recent cache query logs with status and similarity scores
               </CardDescription>
             </CardHeader>
             <CardContent>
               {logsLoading ? (
                 <div className="flex items-center justify-center h-40">
-                  <p className="text-neutral-400">Loading usage logs...</p>
+                  <p className="text-muted-foreground">Loading usage logs...</p>
                 </div>
               ) : usageLogs.length > 0 ? (
                 <>
@@ -454,18 +459,18 @@ export default function Statistics() {
                     <table className="min-w-full divide-y divide-neutral-700">
                       <thead>
                         <tr>
-                          <th className="px-4 py-3 bg-neutral-800 text-left text-xs font-medium text-neutral-400 uppercase tracking-wider">Time</th>
-                          <th className="px-4 py-3 bg-neutral-800 text-left text-xs font-medium text-neutral-400 uppercase tracking-wider">Status</th>
-                          <th className="px-4 py-3 bg-neutral-800 text-left text-xs font-medium text-neutral-400 uppercase tracking-wider">Prompt</th>
-                          <th className="px-4 py-3 bg-neutral-800 text-left text-xs font-medium text-neutral-400 uppercase tracking-wider">Similarity</th>
-                          <th className="px-4 py-3 bg-neutral-800 text-left text-xs font-medium text-neutral-400 uppercase tracking-wider">Cache Entry ID</th>
-                          <th className="px-4 py-3 bg-neutral-800 text-left text-xs font-medium text-neutral-400 uppercase tracking-wider">LLM Used</th>
+                          <th className="px-4 py-3 bg-muted text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Time</th>
+                          <th className="px-4 py-3 bg-muted text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
+                          <th className="px-4 py-3 bg-muted text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Prompt</th>
+                          <th className="px-4 py-3 bg-muted text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Similarity</th>
+                          <th className="px-4 py-3 bg-muted text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Cache Entry ID</th>
+                          <th className="px-4 py-3 bg-muted text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">LLM Used</th>
                         </tr>
                       </thead>
-                      <tbody className="bg-neutral-900 divide-y divide-neutral-800">
+                      <tbody className="bg-background divide-y divide-border">
                         {usageLogs.map((log) => (
                           <tr key={log.id}>
-                            <td className="px-4 py-3 text-sm text-neutral-300">{formatDate(log.timestamp)}</td>
+                            <td className="px-4 py-3 text-sm text-foreground">{formatDate(log.timestamp)}</td>
                             <td className="px-4 py-3 text-sm">
                               {log.success_status ? (
                                 <span className="inline-flex items-center gap-1 text-green-400">
@@ -479,16 +484,16 @@ export default function Statistics() {
                                 </span>
                               )}
                             </td>
-                            <td className="px-4 py-3 text-sm text-neutral-300">{log.prompt ? (log.prompt.length > 50 ? `${log.prompt.substring(0, 50)}...` : log.prompt) : '-'}</td>
-                            <td className="px-4 py-3 text-sm text-neutral-300">{(log.similarity_score * 100).toFixed(2)}%</td>
-                            <td className="px-4 py-3 text-sm text-neutral-300">{log.cache_entry_id || '-'}</td>
-                            <td className="px-4 py-3 text-sm text-neutral-300">
+                            <td className="px-4 py-3 text-sm text-foreground">{log.prompt ? (log.prompt.length > 50 ? `${log.prompt.substring(0, 50)}...` : log.prompt) : '-'}</td>
+                            <td className="px-4 py-3 text-sm text-foreground">{(log.similarity_score * 100).toFixed(2)}%</td>
+                            <td className="px-4 py-3 text-sm text-foreground">{log.cache_entry_id || '-'}</td>
+                            <td className="px-4 py-3 text-sm text-foreground">
                               {log.llm_used ? (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-900 text-purple-300">
                                   Yes
                                 </span>
                               ) : (
-                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-neutral-700 text-neutral-300">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-neutral-700 text-foreground">
                                   No
                                 </span>
                               )}
@@ -502,7 +507,7 @@ export default function Statistics() {
                   {/* Pagination */}
                   {totalPages > 1 && (
                     <div className="flex items-center justify-between mt-4">
-                      <div className="text-sm text-neutral-400">
+                      <div className="text-sm text-muted-foreground">
                         Showing page {page} of {totalPages}
                       </div>
                       <div className="flex gap-2">
@@ -511,7 +516,7 @@ export default function Statistics() {
                           size="sm" 
                           onClick={() => setPage(prev => Math.max(prev - 1, 1))}
                           disabled={page === 1}
-                          className="border-neutral-700 hover:bg-neutral-800 text-neutral-300"
+                          className="border-border hover:bg-muted text-foreground"
                         >
                           Previous
                         </Button>
@@ -520,7 +525,7 @@ export default function Statistics() {
                           size="sm" 
                           onClick={() => setPage(prev => Math.min(prev + 1, totalPages))}
                           disabled={page === totalPages}
-                          className="border-neutral-700 hover:bg-neutral-800 text-neutral-300"
+                          className="border-border hover:bg-muted text-foreground"
                         >
                           Next
                         </Button>
@@ -531,7 +536,7 @@ export default function Statistics() {
               ) : (
                 <div className="flex flex-col items-center justify-center h-40">
                   <Info className="h-12 w-12 text-neutral-600 mb-2" />
-                  <p className="text-neutral-400">No usage logs available</p>
+                  <p className="text-muted-foreground">No usage logs available</p>
                 </div>
               )}
             </CardContent>

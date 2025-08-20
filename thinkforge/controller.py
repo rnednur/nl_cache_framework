@@ -1677,17 +1677,20 @@ class Text2SQLController:
     def design_workflow_with_llm(
         self,
         nl_query: str,
-        compatible_entries: List[Dict[str, Any]]
+        compatible_entries: List[Dict[str, Any]],
+        execution_context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Use LLM to design a workflow based on a natural language query and available cache entries.
+        Enhanced with execution context for better workflow planning.
         
         Args:
             nl_query: The natural language query to analyze
             compatible_entries: List of available cache entries to use as steps
+            execution_context: Optional execution context (database configs, API endpoints, etc.)
             
         Returns:
-            Dictionary containing workflow nodes, edges, and compiled template
+            Dictionary containing workflow nodes, edges, compiled template, and execution plan
         """
         import random
         from typing import List, Dict, Any
@@ -1695,13 +1698,21 @@ class Text2SQLController:
         try:
             logger.info(f"Designing workflow for query: {nl_query}")
             logger.info(f"Available cache entries: {len(compatible_entries)}")
+            logger.info(f"Execution context provided: {execution_context is not None}")
             
             # Initialize LLM service
             from backend.llm_service import LLMService
             llm_service = LLMService()
             
-            # Generate workflow using LLM service
-            workflow_design = llm_service.generate_workflow(nl_query, compatible_entries)
+            # Enhance workflow design with execution context
+            enhanced_compatible_entries = self._enhance_entries_with_execution_context(
+                compatible_entries, execution_context
+            )
+            
+            # Generate workflow using LLM service with execution context
+            workflow_design = llm_service.generate_workflow_with_execution_context(
+                nl_query, enhanced_compatible_entries, execution_context
+            )
             
             # Convert the workflow design to ReactFlow nodes and edges
             reactflow_design = self._convert_to_reactflow_format(workflow_design)
@@ -1710,12 +1721,18 @@ class Text2SQLController:
             from thinkforge.workflow_compiler import compile_workflow_template
             workflow_template = compile_workflow_template(reactflow_design["nodes"], reactflow_design["edges"])
             
+            # Generate execution plan with resource requirements
+            execution_plan = self._generate_execution_plan(workflow_template, execution_context)
+            
             # Build final response
             response = {
                 "nodes": reactflow_design["nodes"],
                 "edges": reactflow_design["edges"],
                 "workflow_template": workflow_template,
-                "explanation": workflow_design.get("explanation", "")
+                "execution_plan": execution_plan,
+                "explanation": workflow_design.get("explanation", ""),
+                "estimated_duration": execution_plan.get("estimated_duration"),
+                "resource_requirements": execution_plan.get("resource_requirements")
             }
             
             return response
@@ -1723,6 +1740,373 @@ class Text2SQLController:
         except Exception as e:
             logger.error(f"Error designing workflow with LLM: {str(e)}", exc_info=True)
             raise ValueError(f"Failed to design workflow: {str(e)}")
+    
+    def _enhance_entries_with_execution_context(
+        self,
+        compatible_entries: List[Dict[str, Any]],
+        execution_context: Optional[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """
+        Enhance cache entries with execution context information.
+        
+        Args:
+            compatible_entries: List of cache entries
+            execution_context: Execution context
+            
+        Returns:
+            Enhanced cache entries with execution metadata
+        """
+        if not execution_context:
+            return compatible_entries
+        
+        enhanced_entries = []
+        
+        for entry in compatible_entries:
+            enhanced_entry = entry.copy()
+            template_type = entry.get("template_type", "")
+            
+            # Add execution context based on template type
+            if template_type == "sql":
+                enhanced_entry["execution_capabilities"] = {
+                    "database_types": execution_context.get("available_databases", []),
+                    "estimated_performance": self._estimate_sql_performance(entry),
+                    "data_sources": execution_context.get("data_sources", [])
+                }
+            
+            elif template_type == "api":
+                enhanced_entry["execution_capabilities"] = {
+                    "api_availability": self._check_api_availability(entry, execution_context),
+                    "rate_limits": execution_context.get("api_rate_limits", {}),
+                    "authentication_methods": execution_context.get("auth_methods", [])
+                }
+            
+            elif template_type in ["function", "script"]:
+                enhanced_entry["execution_capabilities"] = {
+                    "runtime_environment": execution_context.get("runtime_environment", "python3"),
+                    "available_libraries": execution_context.get("available_libraries", []),
+                    "resource_limits": execution_context.get("resource_limits", {})
+                }
+            
+            # Add general execution metadata
+            enhanced_entry["execution_metadata"] = {
+                "estimated_duration": self._estimate_execution_duration(entry),
+                "complexity_score": self._calculate_complexity_score(entry),
+                "resource_requirements": self._estimate_resource_requirements(entry)
+            }
+            
+            enhanced_entries.append(enhanced_entry)
+        
+        return enhanced_entries
+    
+    def _estimate_sql_performance(self, entry: Dict[str, Any]) -> str:
+        """Estimate SQL query performance based on template analysis."""
+        template = entry.get("template", "").lower()
+        
+        # Simple heuristics for performance estimation
+        if "join" in template and template.count("join") > 2:
+            return "slow"
+        elif "select * from" in template:
+            return "medium"
+        elif any(keyword in template for keyword in ["aggregate", "group by", "order by"]):
+            return "medium"
+        else:
+            return "fast"
+    
+    def _check_api_availability(
+        self, 
+        entry: Dict[str, Any], 
+        execution_context: Dict[str, Any]
+    ) -> str:
+        """Check API availability based on execution context."""
+        execution_config = entry.get("execution_config", {})
+        base_url = execution_config.get("base_url", "")
+        
+        # Check if API is in the available APIs list
+        available_apis = execution_context.get("available_apis", [])
+        
+        for api in available_apis:
+            if api.get("base_url") == base_url:
+                return api.get("status", "unknown")
+        
+        return "unknown"
+    
+    def _estimate_execution_duration(self, entry: Dict[str, Any]) -> float:
+        """Estimate execution duration in seconds."""
+        template_type = entry.get("template_type", "")
+        
+        # Base estimates by template type
+        base_durations = {
+            "sql": 2.0,
+            "api": 1.5,
+            "function": 0.5,
+            "script": 3.0,
+            "workflow": 10.0,
+            "mcp_tool": 2.5
+        }
+        
+        base_duration = base_durations.get(template_type, 1.0)
+        
+        # Adjust based on template complexity
+        template = entry.get("template", "")
+        complexity_multiplier = 1.0
+        
+        if len(template) > 1000:
+            complexity_multiplier *= 1.5
+        if template_type == "sql" and "join" in template.lower():
+            complexity_multiplier *= 1.3
+        
+        return base_duration * complexity_multiplier
+    
+    def _calculate_complexity_score(self, entry: Dict[str, Any]) -> int:
+        """Calculate complexity score (1-10) for the entry."""
+        template = entry.get("template", "")
+        template_type = entry.get("template_type", "")
+        
+        score = 1
+        
+        # Base score by template type
+        type_scores = {
+            "function": 3,
+            "sql": 2,
+            "api": 2,
+            "script": 4,
+            "workflow": 6,
+            "mcp_tool": 3
+        }
+        
+        score = type_scores.get(template_type, 2)
+        
+        # Adjust based on template characteristics
+        if len(template) > 500:
+            score += 1
+        if len(template) > 1000:
+            score += 1
+        
+        # SQL specific complexity
+        if template_type == "sql":
+            template_lower = template.lower()
+            if template_lower.count("join") > 2:
+                score += 2
+            if any(keyword in template_lower for keyword in ["subquery", "with", "union"]):
+                score += 1
+        
+        # Function/script specific complexity
+        if template_type in ["function", "script"]:
+            if "for " in template or "while " in template:
+                score += 1
+            if "import " in template:
+                score += 1
+        
+        return min(score, 10)
+    
+    def _estimate_resource_requirements(self, entry: Dict[str, Any]) -> Dict[str, Any]:
+        """Estimate resource requirements for the entry."""
+        template_type = entry.get("template_type", "")
+        complexity_score = self._calculate_complexity_score(entry)
+        
+        # Base resource requirements
+        base_requirements = {
+            "memory_mb": 64,
+            "cpu_cores": 1,
+            "disk_mb": 10,
+            "network_bandwidth_mbps": 1
+        }
+        
+        # Adjust based on template type
+        type_multipliers = {
+            "sql": {"memory_mb": 2, "cpu_cores": 1.5},
+            "api": {"network_bandwidth_mbps": 5},
+            "function": {"memory_mb": 1.5, "cpu_cores": 2},
+            "script": {"memory_mb": 3, "cpu_cores": 2, "disk_mb": 5},
+            "workflow": {"memory_mb": 4, "cpu_cores": 3, "disk_mb": 3}
+        }
+        
+        multipliers = type_multipliers.get(template_type, {})
+        
+        # Apply multipliers
+        for resource, base_value in base_requirements.items():
+            multiplier = multipliers.get(resource, 1.0)
+            complexity_factor = 1 + (complexity_score - 1) * 0.2  # Scale with complexity
+            base_requirements[resource] = int(base_value * multiplier * complexity_factor)
+        
+        return base_requirements
+    
+    def _generate_execution_plan(
+        self,
+        workflow_template: Dict[str, Any],
+        execution_context: Optional[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        Generate an execution plan with resource requirements and timing estimates.
+        
+        Args:
+            workflow_template: Compiled workflow template
+            execution_context: Execution context
+            
+        Returns:
+            Execution plan with resource requirements and estimates
+        """
+        steps = workflow_template.get("steps", {})
+        execution_plan_groups = workflow_template.get("executionPlan", [])
+        
+        total_duration = 0.0
+        total_resources = {
+            "memory_mb": 0,
+            "cpu_cores": 0,
+            "disk_mb": 0,
+            "network_bandwidth_mbps": 0
+        }
+        
+        execution_strategy = []
+        
+        for group in execution_plan_groups:
+            mode = group.get("mode", "sequential")
+            step_ids = group.get("steps", [])
+            
+            group_duration = 0.0
+            group_resources = {
+                "memory_mb": 0,
+                "cpu_cores": 0,
+                "disk_mb": 0,
+                "network_bandwidth_mbps": 0
+            }
+            
+            for step_id in step_ids:
+                step_data = steps.get(step_id, {})
+                
+                # Get step metadata (would be populated during enhancement)
+                metadata = step_data.get("metadata", {})
+                execution_metadata = metadata.get("execution_metadata", {})
+                
+                step_duration = execution_metadata.get("estimated_duration", 1.0)
+                step_resources = execution_metadata.get("resource_requirements", {})
+                
+                if mode == "parallel":
+                    # For parallel execution, duration is the max of all steps
+                    group_duration = max(group_duration, step_duration)
+                    # Resources are additive for parallel execution
+                    for resource, value in step_resources.items():
+                        group_resources[resource] += value
+                else:
+                    # For sequential execution, duration is additive
+                    group_duration += step_duration
+                    # Resources are the max needed at any point
+                    for resource, value in step_resources.items():
+                        group_resources[resource] = max(group_resources[resource], value)
+            
+            total_duration += group_duration
+            
+            # Overall resources are the max needed across all groups
+            for resource, value in group_resources.items():
+                total_resources[resource] = max(total_resources[resource], value)
+            
+            execution_strategy.append({
+                "group_id": len(execution_strategy) + 1,
+                "mode": mode,
+                "steps": step_ids,
+                "estimated_duration": group_duration,
+                "resource_requirements": group_resources
+            })
+        
+        # Add execution context considerations
+        if execution_context:
+            # Adjust for available resources
+            available_resources = execution_context.get("available_resources", {})
+            if available_resources:
+                for resource, required in total_resources.items():
+                    available = available_resources.get(resource, float('inf'))
+                    if required > available:
+                        logger.warning(f"Required {resource} ({required}) exceeds available ({available})")
+        
+        return {
+            "estimated_duration": total_duration,
+            "resource_requirements": total_resources,
+            "execution_strategy": execution_strategy,
+            "optimization_suggestions": self._generate_optimization_suggestions(
+                workflow_template, execution_strategy
+            ),
+            "execution_readiness": self._assess_execution_readiness(
+                workflow_template, execution_context
+            )
+        }
+    
+    def _generate_optimization_suggestions(
+        self,
+        workflow_template: Dict[str, Any],
+        execution_strategy: List[Dict[str, Any]]
+    ) -> List[str]:
+        """Generate optimization suggestions for the workflow."""
+        suggestions = []
+        
+        # Check for parallelization opportunities
+        sequential_groups = [g for g in execution_strategy if g["mode"] == "sequential"]
+        if len(sequential_groups) > 1:
+            suggestions.append("Consider parallelizing independent sequential steps to reduce total execution time")
+        
+        # Check for resource efficiency
+        total_steps = sum(len(g["steps"]) for g in execution_strategy)
+        if total_steps > 10:
+            suggestions.append("Large workflow detected - consider breaking into smaller sub-workflows")
+        
+        # Check for long-running steps
+        long_steps = [
+            g for g in execution_strategy 
+            if g.get("estimated_duration", 0) > 30
+        ]
+        if long_steps:
+            suggestions.append("Long-running steps detected - consider adding progress monitoring and timeout handling")
+        
+        return suggestions
+    
+    def _assess_execution_readiness(
+        self,
+        workflow_template: Dict[str, Any],
+        execution_context: Optional[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """Assess whether the workflow is ready for execution."""
+        readiness = {
+            "ready": True,
+            "issues": [],
+            "warnings": []
+        }
+        
+        steps = workflow_template.get("steps", {})
+        
+        # Check each step for execution readiness
+        for step_id, step_data in steps.items():
+            template_type = step_data.get("templateType", "")
+            
+            # Check for required execution configuration
+            execution_config = step_data.get("execution_config", {})
+            
+            if template_type == "sql" and not execution_config.get("database"):
+                readiness["issues"].append(f"Step {step_id}: Missing database configuration")
+                readiness["ready"] = False
+            
+            elif template_type == "api" and not execution_config.get("base_url"):
+                readiness["issues"].append(f"Step {step_id}: Missing API base URL")
+                readiness["ready"] = False
+            
+            # Check for missing templates
+            if not step_data.get("template"):
+                readiness["issues"].append(f"Step {step_id}: Missing template content")
+                readiness["ready"] = False
+        
+        # Check execution context availability
+        if execution_context:
+            required_capabilities = set()
+            for step_data in steps.values():
+                template_type = step_data.get("templateType", "")
+                required_capabilities.add(template_type)
+            
+            available_capabilities = set(execution_context.get("available_capabilities", []))
+            missing_capabilities = required_capabilities - available_capabilities
+            
+            if missing_capabilities:
+                for capability in missing_capabilities:
+                    readiness["warnings"].append(f"Capability '{capability}' may not be available in execution environment")
+        
+        return readiness
     
     def _create_workflow_design_prompt(self, nl_query: str, cache_entries: List[Dict[str, Any]]) -> str:
         """

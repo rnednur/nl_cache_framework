@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from .models import Text2SQLCache, Status, TemplateType
 from .tool_invoker import ToolInvoker
+from .workflow_datastore import WorkflowDataStore, get_workflow_datastore
 
 logger = logging.getLogger(__name__)
 
@@ -68,20 +69,145 @@ class StepResult:
 
 @dataclass
 class ExecutionContext:
-    """Context for workflow execution"""
-    workflow_id: int
+    """Context for workflow execution with DuckDB-backed data persistence"""
+    workflow_id: Union[int, str]
     run_id: str
     status: ExecutionStatus
     current_step: Optional[str] = None
     step_results: Dict[str, StepResult] = field(default_factory=dict)
-    step_outputs: Dict[str, Any] = field(default_factory=dict)
     variables: Dict[str, Any] = field(default_factory=dict)
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     error_message: Optional[str] = None
     progress_callback: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None
+    _datastore: Optional[WorkflowDataStore] = field(default=None, init=False)
 
+    @property
+    def datastore(self) -> WorkflowDataStore:
+        """Get or create the workflow datastore."""
+        if self._datastore is None:
+            self._datastore = get_workflow_datastore(
+                workflow_id=str(self.workflow_id),
+                run_id=self.run_id
+            )
+        return self._datastore
+    
+    def store_step_output(
+        self,
+        step_id: str,
+        data: Any,
+        template_type: str = "unknown",
+        execution_time_ms: Optional[int] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """
+        Store step output in DuckDB datastore.
+        
+        Args:
+            step_id: Step identifier
+            data: Output data
+            template_type: Type of template that generated the data
+            execution_time_ms: Execution time in milliseconds
+            metadata: Additional metadata
+            
+        Returns:
+            Table name where data was stored
+        """
+        return self.datastore.store_step_output(
+            step_id=step_id,
+            data=data,
+            template_type=template_type,
+            execution_time_ms=execution_time_ms,
+            metadata=metadata
+        )
+    
+    def get_step_output(
+        self,
+        step_id: str,
+        as_dict: bool = False,
+        limit: Optional[int] = None
+    ) -> Any:
+        """
+        Get step output from DuckDB datastore.
+        
+        Args:
+            step_id: Step identifier
+            as_dict: Whether to return as dictionary
+            limit: Maximum number of rows
+            
+        Returns:
+            Step output data
+        """
+        try:
+            return self.datastore.get_step_output(
+                step_id=step_id,
+                as_dict=as_dict,
+                limit=limit
+            )
+        except ValueError:
+            # Step not found - return None for compatibility
+            return None
+    
+    @property
+    def step_outputs(self) -> Dict[str, Any]:
+        """
+        Compatibility property for accessing step outputs.
+        
+        Returns dictionary mapping step IDs to their most recent outputs.
+        This provides backward compatibility with the old in-memory approach.
+        """
+        outputs = {}
+        
+        try:
+            tables = self.datastore.get_available_tables()
+            for table_info in tables:
+                if table_info.step_id not in outputs:
+                    # Get the most recent output for this step
+                    try:
+                        step_data = self.datastore.get_step_output(
+                            table_info.step_id,
+                            as_dict=True,
+                            limit=1000  # Reasonable limit for in-memory compatibility
+                        )
+                        outputs[table_info.step_id] = step_data
+                    except Exception as e:
+                        logger.warning(f"Failed to get output for step {table_info.step_id}: {e}")
+                        outputs[table_info.step_id] = None
+        except Exception as e:
+            logger.warning(f"Failed to retrieve step outputs: {e}")
+        
+        return outputs
+    
+    def execute_sql(
+        self,
+        query: str,
+        parameters: Optional[Dict[str, Any]] = None,
+        as_dataframe: bool = True
+    ) -> Any:
+        """
+        Execute SQL query against workflow data.
+        
+        Args:
+            query: SQL query
+            parameters: Query parameters
+            as_dataframe: Whether to return as DataFrame
+            
+        Returns:
+            Query results
+        """
+        return self.datastore.execute_sql(
+            query=query,
+            parameters=parameters,
+            as_dataframe=as_dataframe
+        )
+    
+    def get_available_tables(self) -> List[Any]:
+        """Get information about available data tables."""
+        return self.datastore.get_available_tables()
+    
     def to_dict(self) -> Dict[str, Any]:
+        # Note: We don't include step_outputs in the dict anymore since
+        # they're persisted in DuckDB and can be large
         return {
             "workflow_id": self.workflow_id,
             "run_id": self.run_id,
@@ -92,8 +218,15 @@ class ExecutionContext:
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "error_message": self.error_message,
-            "progress": self.calculate_progress()
+            "progress": self.calculate_progress(),
+            "available_tables": len(self.get_available_tables()) if self._datastore else 0
         }
+    
+    def close_datastore(self) -> None:
+        """Close the datastore connection."""
+        if self._datastore:
+            self._datastore.close()
+            self._datastore = None
 
     def calculate_progress(self) -> Dict[str, Any]:
         """Calculate execution progress"""

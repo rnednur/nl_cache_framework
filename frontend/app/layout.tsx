@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google'
 import './globals.css'
 import { Toaster } from "./components/ui/toaster"
 import { Toaster as HotToaster } from "react-hot-toast"
+import { ThemeProvider } from "./contexts/ThemeContext"
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -22,31 +23,33 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
-        {children}
-        <Toaster />
-        <HotToaster 
-          position="top-right"
-          toastOptions={{
-            duration: 3000,
-            style: {
-              background: '#333',
-              color: '#fff',
-              border: '1px solid #444',
-            },
-            success: {
-              iconTheme: {
-                primary: '#10B981',
-                secondary: '#ffffff',
+        <ThemeProvider>
+          {children}
+          <Toaster />
+          <HotToaster 
+            position="top-right"
+            toastOptions={{
+              duration: 3000,
+              style: {
+                background: 'hsl(var(--card))',
+                color: 'hsl(var(--card-foreground))',
+                border: '1px solid hsl(var(--border))',
               },
-            },
-            error: {
-              iconTheme: {
-                primary: '#EF4444',
-                secondary: '#ffffff',
+              success: {
+                iconTheme: {
+                  primary: '#10B981',
+                  secondary: 'hsl(var(--card-foreground))',
+                },
               },
-            },
-          }}
-        />
+              error: {
+                iconTheme: {
+                  primary: '#EF4444',
+                  secondary: 'hsl(var(--card-foreground))',
+                },
+              },
+            }}
+          />
+        </ThemeProvider>
       </body>
     </html>
   )

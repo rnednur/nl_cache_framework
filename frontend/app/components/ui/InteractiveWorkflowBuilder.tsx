@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useCallback, useEffect, useRef } from 'react'
+import React, { useState, useCallback, useEffect, useRef, useMemo, useLayoutEffect } from 'react'
 import ReactFlow, {
   Controls,
   Background,
@@ -15,9 +15,10 @@ import ReactFlow, {
   useReactFlow,
   Panel,
 } from 'reactflow'
-import { Search, Plus, Trash2, Play, Database, Code, Globe, Zap, ChevronLeft, ChevronRight, Menu, Focus, MousePointer2, RotateCcw, Save, Maximize, Minimize, Filter, X } from 'lucide-react'
+import { Search, Plus, Trash2, Play, Database, Code, Globe, Zap, ChevronLeft, ChevronRight, Menu, Focus, RotateCcw, Save, Maximize, Minimize, Filter, X } from 'lucide-react'
 import api, { CacheItem } from '@/app/services/api'
 import { NodeDetailModal } from '../../../components/ui/NodeDetailModal'
+import { LLMStepEditor } from './LLMStepEditor'
 
 interface InteractiveWorkflowBuilderProps {
   catalogType?: string
@@ -61,12 +62,78 @@ const getTemplateColor = (templateType: string) => {
     configuration: '#84cc16',
     graphql: '#f97316',
     nosql: '#14b8a6',
+    llm_step: '#9333ea',
+    duckdb_sql: '#0891b2',
+    function: '#059669',
+    mcp_tool: '#dc2626',
+    agent: '#7c3aed',
+    reasoning_steps: '#be185d',
   }
   return colorMap[templateType] || '#6b7280'
 }
 
 let nodeIdCounter = 1
 const generateNodeId = () => `node_${nodeIdCounter++}`
+
+// Built-in step types that users can add directly to workflows
+const builtInStepTypes = [
+  {
+    id: 'llm_step',
+    name: 'LLM Step',
+    type: 'llm_step',
+    description: 'Process data using Large Language Models (AI/ChatGPT)',
+    template: {
+      prompt_template: 'Analyze the following data: {input_data}',
+      input_parameters: ['input_data'],
+      output_format: 'json',
+      expected_output: { analysis: 'string', recommendations: 'array' },
+      model: 'google/gemini-pro',
+      temperature: 0.3,
+      max_tokens: 1000,
+      system_prompt: 'You are a helpful data analyst.'
+    },
+    category: 'AI & Processing'
+  },
+  {
+    id: 'duckdb_sql',
+    name: 'DuckDB SQL',
+    type: 'duckdb_sql',
+    description: 'Transform data using SQL analytics with DuckDB',
+    template: {
+      query: 'SELECT * FROM {table:previous_step} WHERE condition = \'{filter_value}\'',
+      validation: {
+        row_count_min: 1,
+        required_columns: ['id', 'name']
+      }
+    },
+    category: 'Data & Queries'
+  },
+  {
+    id: 'function_step',
+    name: 'Custom Function',
+    type: 'function',
+    description: 'Execute custom Python code for data processing',
+    template: {
+      code: 'def process_data(input_data):\n    # Your custom logic here\n    return processed_data',
+      language: 'python',
+      timeout: 60
+    },
+    category: 'Code & Scripts'
+  },
+  {
+    id: 'api_call',
+    name: 'API Call',
+    type: 'api',
+    description: 'Make HTTP requests to external APIs',
+    template: {
+      url: 'https://api.example.com/endpoint',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: { data: '{input_data}' }
+    },
+    category: 'APIs & Services'
+  }
+]
 
 const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
   catalogType,
@@ -99,6 +166,17 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
     },
   ]
 
+  // Memoized stable values to prevent useEffect dependency issues
+  const stableInitialNodes = useMemo(
+    () => initialNodes || defaultNodes,
+    [initialNodes]
+  )
+
+  const stableInitialEdges = useMemo(
+    () => initialEdges || [],
+    [initialEdges]
+  )
+
   // ReactFlow state with start node guarantee
   const ensureStartNode = (nodeList: Node[]) => {
     const hasStartNode = nodeList.some(n => n.id === 'start')
@@ -108,8 +186,8 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
     return nodeList
   }
   
-  const [nodes, setNodes, onNodesChange] = useNodesState(ensureStartNode(initialNodes || defaultNodes))
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges || [])
+  const [nodes, setNodes, onNodesChange] = useNodesState(ensureStartNode(stableInitialNodes))
+  const [edges, setEdges, onEdgesChange] = useEdgesState(stableInitialEdges)
 
   // Search and cache state
   const [searchQuery, setSearchQuery] = useState('')
@@ -119,9 +197,11 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
   const [selectedEntry, setSelectedEntry] = useState<CacheItem | null>(null)
   const [selectedNode, setSelectedNode] = useState<Node | null>(null)
   const [isNodeDetailOpen, setIsNodeDetailOpen] = useState(false)
+  const [isLLMEditorOpen, setIsLLMEditorOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [internalIsMaximized, setInternalIsMaximized] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
+  const [activeTab, setActiveTab] = useState<'cache' | 'builtin'>('cache')
   
   // Enhanced search state
   const [searchStatus, setSearchStatus] = useState<'idle' | 'searching' | 'semantic' | 'llm' | 'fallback'>('idle')
@@ -177,26 +257,45 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
   const prevInitialNodesRef = useRef<Node[] | undefined>(undefined)
   const prevInitialEdgesRef = useRef<Edge[] | undefined>(undefined)
 
+  // Track node additions for layout effects
+  const lastAddedNodeRef = useRef<{ position?: { x: number; y: number }; timestamp: number } | null>(null)
+
   // Update nodes and edges when initial props actually change
   useEffect(() => {
-    if (initialNodes && initialNodes.length > 0) {
-      // Only update if the props actually changed (not just a re-render)
-      if (JSON.stringify(initialNodes) !== JSON.stringify(prevInitialNodesRef.current)) {
-        setNodes(initialNodes)
-        prevInitialNodesRef.current = initialNodes
-      }
+    const serialized = JSON.stringify(stableInitialNodes)
+    const prevSerialized = JSON.stringify(prevInitialNodesRef.current)
+
+    if (serialized !== prevSerialized) {
+      setNodes(stableInitialNodes)
+      prevInitialNodesRef.current = stableInitialNodes
     }
-  }, [initialNodes])
+  }, [stableInitialNodes])
 
   useEffect(() => {
-    if (initialEdges && initialEdges.length > 0) {
-      // Only update if the props actually changed (not just a re-render)  
-      if (JSON.stringify(initialEdges) !== JSON.stringify(prevInitialEdgesRef.current)) {
-        setEdges(initialEdges)
-        prevInitialEdgesRef.current = initialEdges
-      }
+    const serialized = JSON.stringify(stableInitialEdges)
+    const prevSerialized = JSON.stringify(prevInitialEdgesRef.current)
+
+    if (serialized !== prevSerialized) {
+      setEdges(stableInitialEdges)
+      prevInitialEdgesRef.current = stableInitialEdges
     }
-  }, [initialEdges])
+  }, [stableInitialEdges])
+
+  // Handle layout effects for newly added nodes
+  useLayoutEffect(() => {
+    const lastAdded = lastAddedNodeRef.current
+    if (lastAdded && Date.now() - lastAdded.timestamp < 1000) { // Only handle recent additions
+      if (!lastAdded.position) {
+        // If double-clicked (no explicit position), fit all nodes in view
+        fitView({ padding: 0.1, duration: 800 })
+      } else {
+        // If dragged to specific position, center the view on the new node
+        setCenter(lastAdded.position.x, lastAdded.position.y, { zoom: 1, duration: 600 })
+      }
+      // Clear the ref after handling
+      lastAddedNodeRef.current = null
+    }
+  }, [nodes.length, fitView, setCenter])
 
   // Load saved workflow state on mount and when workflow key changes
   useEffect(() => {
@@ -852,12 +951,19 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [sidebarCollapsed, showFilters, isMaximized])
 
-  // Handle node clicks to show details
+  // Handle node clicks to show details or open editors
   const handleNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
     // Only handle clicks on workflow nodes (not start node)
-    if (node.id !== 'start' && node.data?.cacheEntryId) {
+    if (node.id !== 'start') {
       setSelectedNode(node)
-      setIsNodeDetailOpen(true)
+      
+      // Check if this is specifically an LLM step that needs the special editor
+      if (node.data?.templateType === 'llm_step') {
+        setIsLLMEditorOpen(true)
+      } else if (node.data?.cacheEntryId || node.data?.isBuiltIn) {
+        // For all other nodes (cache entries, other built-in steps), use the regular detail modal
+        setIsNodeDetailOpen(true)
+      }
     }
   }, [])
 
@@ -931,24 +1037,95 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
         // Visual indicator for clickable nodes
         cursor: 'pointer',
         boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
-        // Subtle animation hint
-        transition: 'all 0.2s ease-in-out',
+        // Safe transitions that don't conflict with React Flow's transform updates
+        transition: 'background-color 150ms ease, box-shadow 150ms ease, border-color 150ms ease, color 150ms ease',
+        // Hint to browser for smoother panning/dragging without animating
+        willChange: 'transform',
       },
       selected: true, // Auto-select the new node for visual feedback
     }
     
     setNodes((nds) => [...nds.map(n => ({ ...n, selected: false })), newNode])
     
-    // Always ensure the new node is visible
-    setTimeout(() => {
-      if (!position) {
-        // If double-clicked (no explicit position), fit all nodes in view
-        fitView({ padding: 0.1, duration: 800 })
-      } else {
-        // If dragged to specific position, center the view on the new node
-        setCenter(nodePosition.x, nodePosition.y, { zoom: 1, duration: 600 })
+    // Track the added node for layout effect handling
+    lastAddedNodeRef.current = {
+      position: position,
+      timestamp: Date.now()
+    }
+  }
+
+  // Handle adding a built-in step as a node
+  const addBuiltInStepAsNode = (stepType: any, position?: { x: number; y: number }) => {
+    let nodePosition = position
+
+    // If no position specified, place node in the center of the visible viewport
+    if (!nodePosition) {
+      const viewport = getViewport()
+      const centerX = -viewport.x + (window.innerWidth - (sidebarCollapsed ? 0 : 384)) / 2 / viewport.zoom
+      const centerY = -viewport.y + window.innerHeight / 2 / viewport.zoom
+      
+      // Add some randomness to avoid overlapping nodes
+      const randomOffsetX = (Math.random() - 0.5) * 100
+      const randomOffsetY = (Math.random() - 0.5) * 100
+      
+      nodePosition = { 
+        x: centerX + randomOffsetX, 
+        y: centerY + randomOffsetY 
       }
-    }, 150)
+    }
+
+    const newNode: Node = {
+      id: generateNodeId(),
+      type: 'default',
+      position: nodePosition,
+      className: 'clickable-workflow-node',
+      data: {
+        label: `${getTemplateIcon(stepType.type)} ${stepType.name}`,
+        builtInStepId: stepType.id,
+        templateType: stepType.type,
+        template: JSON.stringify(stepType.template),
+        // Enhanced metadata for better DSL generation
+        catalogType: 'builtin',
+        catalogSubtype: stepType.category.toLowerCase().replace(/ & /g, '_').replace(/ /g, '_'),
+        catalogName: stepType.name,
+        reasoningTrace: stepType.description,
+        entityReplacements: {},
+        tags: { builtin: [stepType.type], category: [stepType.category] },
+        status: 'active',
+        // For DSL compilation
+        originalQuery: stepType.description,
+        isTemplate: true,
+        usageCount: 0,
+        isBuiltIn: true
+      },
+      style: {
+        background: getTemplateColor(stepType.type),
+        color: 'white',
+        border: '2px solid #374151',
+        borderRadius: '8px',
+        fontSize: '12px',
+        fontWeight: 'bold',
+        width: 220,
+        textAlign: 'center',
+        padding: '8px',
+        minHeight: '60px',
+        cursor: 'pointer',
+        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
+        // Safe transitions that don't conflict with React Flow's transform updates
+        transition: 'background-color 150ms ease, box-shadow 150ms ease, border-color 150ms ease, color 150ms ease',
+        // Hint to browser for smoother panning/dragging without animating
+        willChange: 'transform',
+      },
+      selected: false,
+    }
+    
+    setNodes((nds) => [...nds.map(n => ({ ...n, selected: false })), newNode])
+    
+    // Track the added node for layout effect handling
+    lastAddedNodeRef.current = {
+      position: position,
+      timestamp: Date.now()
+    }
   }
 
   // Handle drag and drop
@@ -963,12 +1140,6 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
 
       if (!reactFlowWrapper.current) return
 
-      const entryId = event.dataTransfer.getData('application/cache-entry')
-      if (!entryId) return
-
-      const entry = cacheEntries.find(e => e.id.toString() === entryId)
-      if (!entry) return
-
       // Get the exact drop position relative to the ReactFlow canvas
       const reactFlowBounds = reactFlowWrapper.current.getBoundingClientRect()
       const position = screenToFlowPosition({
@@ -982,9 +1153,27 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
         y: Math.max(0, Math.min(position.y, 2000))
       }
 
-      addCacheEntryAsNode(entry, clampedPosition)
+      // Check for cache entry
+      const entryId = event.dataTransfer.getData('application/cache-entry')
+      if (entryId) {
+        const entry = cacheEntries.find(e => e.id.toString() === entryId)
+        if (entry) {
+          addCacheEntryAsNode(entry, clampedPosition)
+          return
+        }
+      }
+
+      // Check for built-in step type
+      const builtInStepId = event.dataTransfer.getData('application/builtin-step')
+      if (builtInStepId) {
+        const stepType = builtInStepTypes.find(s => s.id === builtInStepId)
+        if (stepType) {
+          addBuiltInStepAsNode(stepType, clampedPosition)
+          return
+        }
+      }
     },
-    [screenToFlowPosition, cacheEntries, addCacheEntryAsNode]
+    [screenToFlowPosition, cacheEntries, addCacheEntryAsNode, addBuiltInStepAsNode]
   )
 
   // Handle drag start for cache entries
@@ -992,6 +1181,44 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
     event.dataTransfer.setData('application/cache-entry', entry.id.toString())
     event.dataTransfer.effectAllowed = 'move'
   }
+
+  // Handle drag start for built-in steps
+  const onBuiltInStepDragStart = (event: React.DragEvent, stepType: any) => {
+    event.dataTransfer.setData('application/builtin-step', stepType.id)
+    event.dataTransfer.effectAllowed = 'move'
+  }
+
+  // Handle saving updated node from LLM editor
+  const handleLLMStepSave = useCallback((updatedNode: Node) => {
+    setNodes((nds) => nds.map(node => 
+      node.id === updatedNode.id ? updatedNode : node
+    ))
+  }, [setNodes])
+
+  // Get available inputs for LLM step (previous step outputs)
+  const getAvailableInputs = useCallback((currentNodeId: string) => {
+    // Find all nodes that come before this one in the workflow
+    const currentNode = nodes.find(n => n.id === currentNodeId)
+    if (!currentNode) return []
+
+    // For now, we'll consider all nodes except the current one and start node as potential inputs
+    // In a more sophisticated implementation, you'd analyze the actual flow/connections
+    return nodes
+      .filter(node => node.id !== currentNodeId && node.id !== 'start')
+      .map(node => ({
+        stepId: node.id,
+        stepName: node.data.label || `Step ${node.id}`,
+        outputSchema: {
+          // Default output schema - in a real implementation, this would be 
+          // determined by the step type and configuration
+          output: 'any',
+          metadata: {
+            stepType: node.data.templateType,
+            timestamp: 'string'
+          }
+        }
+      }))
+  }, [nodes])
 
   // Delete selected nodes (but never delete start node)
   const deleteSelected = () => {
@@ -1032,23 +1259,23 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
   }
 
   return (
-    <div className={`flex bg-neutral-950 text-white relative transition-all duration-300 ${
+    <div className={`flex bg-background text-foreground relative transition-all duration-300 ${
       (isMaximized && !onMaximizeChange)
         ? 'fixed inset-0 z-50 h-screen w-screen' 
         : 'h-full w-full'
     }`}>
-      {/* Left Sidebar - Cache Entry Search */}
-      <div className={`${sidebarCollapsed ? 'w-0' : 'w-96'} bg-neutral-900 border-r border-neutral-800 flex flex-col transition-all duration-300 overflow-hidden`}>
+      {/* Left Sidebar - Workflow Steps */}
+      <div className={`${sidebarCollapsed ? 'w-0' : 'w-96'} bg-card border-r border-border flex flex-col transition-all duration-300 overflow-hidden`}>
         {!sidebarCollapsed && (
           <>
-            <div className="p-4 border-b border-neutral-800">
+            <div className="p-4 border-b border-border">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-semibold">Cache Entries</h3>
+                <h3 className="text-lg font-semibold">Workflow Steps</h3>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setShowFilters(prev => !prev)}
-                    className={`p-1 hover:bg-neutral-800 rounded transition-colors ${
-                      showFilters ? 'text-green-400' : 'text-neutral-400'
+                    className={`p-1 hover:bg-accent rounded transition-colors ${
+                      showFilters ? 'text-green-400' : 'text-muted-foreground'
                     }`}
                     title="Toggle filters (Ctrl+F)"
                   >
@@ -1056,14 +1283,14 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
                   </button>
                   <button
                     onClick={() => setIsMaximized(prev => !prev)}
-                    className="p-1 hover:bg-neutral-800 rounded transition-colors"
+                    className="p-1 hover:bg-accent rounded transition-colors"
                     title={`${isMaximized ? 'Minimize' : 'Maximize'} (F11 or Ctrl+M)`}
                   >
                     {isMaximized ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
                   </button>
                   <button
                     onClick={() => setSidebarCollapsed(true)}
-                    className="p-1 hover:bg-neutral-800 rounded transition-colors"
+                    className="p-1 hover:bg-accent rounded transition-colors"
                     title="Collapse sidebar (Ctrl+B)"
                   >
                     <ChevronLeft className="h-4 w-4" />
@@ -1071,9 +1298,38 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
                 </div>
               </div>
 
-              {/* Compact Search Info */}
-              <div className="mb-3 p-2 bg-neutral-800/30 rounded-md border border-neutral-700/30">
-                <div className="flex items-center justify-between text-xs text-neutral-400">
+              {/* Tab Navigation */}
+              <div className="flex mb-3 bg-input/50 rounded-lg p-1">
+                <button
+                  onClick={() => setActiveTab('builtin')}
+                  className={`flex-1 px-3 py-2 text-sm font-medium rounded-md transition-colors flex items-center justify-center gap-2 ${
+                    activeTab === 'builtin'
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                  }`}
+                >
+                  <Zap className="h-4 w-4" />
+                  Built-in Steps
+                </button>
+                <button
+                  onClick={() => setActiveTab('cache')}
+                  className={`flex-1 px-3 py-2 text-sm font-medium rounded-md transition-colors flex items-center justify-center gap-2 ${
+                    activeTab === 'cache'
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                  }`}
+                >
+                  <Database className="h-4 w-4" />
+                  Cache Entries
+                </button>
+              </div>
+
+              {/* Search and Filters - Only show for Cache Entries tab */}
+              {activeTab === 'cache' && (
+                <>
+                  {/* Compact Search Info */}
+              <div className="mb-3 p-2 bg-input/30 rounded-md border border-border/30">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span className="font-medium">Smart Search:</span>
                   <div className="flex items-center gap-3">
                     <div className="flex items-center gap-1">
@@ -1094,13 +1350,13 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
 
               {/* Search Bar */}
               <div className="relative mb-3">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-neutral-400" />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <input
                   type="text"
                   placeholder={`Search ${filterTemplateType !== 'all' ? filterTemplateType + ' ' : ''}entries... (try "fetch user data" or "send email")`}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-20 py-2 bg-neutral-800 border border-neutral-700 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                  className="w-full pl-10 pr-20 py-2 bg-input border border-border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
                   minLength={2}
                 />
                 {searchQuery.trim() && (
@@ -1115,7 +1371,7 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
                       // Reset to paginated view with current filters
                       fetchPaginatedEntries(1, filterTemplateType, filterCatalogType, filterCatalogSubtype)
                     }}
-                    className="absolute right-2 top-1/2 transform -translate-y-1/2 p-1 text-neutral-400 hover:text-neutral-300 transition-colors"
+                    className="absolute right-2 top-1/2 transform -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground transition-colors"
                     title="Clear search and return to paginated view"
                   >
                     <X className="h-4 w-4" />
@@ -1125,7 +1381,7 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
 
               {/* Search Status Indicator */}
               {searchQuery.trim() && (
-                <div className="mb-3 p-2 bg-neutral-800 rounded-md border border-neutral-700">
+                <div className="mb-3 p-2 bg-input rounded-md border border-border">
                   <div className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-2">
                       {searchStatus === 'searching' && (
@@ -1154,13 +1410,13 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
                       )}
                     </div>
                     {searchResultsCount > 0 && (
-                      <span className="text-neutral-400">
+                      <span className="text-muted-foreground">
                         {searchResultsCount} result{searchResultsCount !== 1 ? 's' : ''}
                       </span>
                     )}
                   </div>
                   {searchMethod !== 'none' && (
-                    <div className="mt-1 text-xs text-neutral-500">
+                    <div className="mt-1 text-xs text-muted-foreground">
                       {searchMethod === 'semantic' && 'Using vector similarity search (60% threshold)'}
                       {searchMethod === 'llm' && 'Using LLM-enhanced suggestions'}
                       {searchMethod === 'fallback' && 'Using basic text matching with filters'}
@@ -1176,9 +1432,9 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
 
               {/* Advanced Filters */}
               {showFilters && (
-                <div className="space-y-3 p-3 bg-neutral-800/50 rounded-lg border border-neutral-700">
+                <div className="space-y-3 p-3 bg-input/50 rounded-lg border border-border">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-neutral-300">Advanced Filters</span>
+                    <span className="text-xs font-semibold text-foreground">Advanced Filters</span>
                     <button
                       onClick={async () => {
                         setFilterCatalogType('all')
@@ -1187,14 +1443,14 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
                         // Refresh catalog values after clearing filters
                         await refreshCatalogValues()
                       }}
-                      className="text-xs text-neutral-400 hover:text-neutral-300"
+                      className="text-xs text-muted-foreground hover:text-foreground"
                     >
                       Clear All
                     </button>
                   </div>
 
                   <div>
-                    <label className="block text-xs text-neutral-400 mb-1">Catalog Type</label>
+                    <label className="block text-xs text-muted-foreground mb-1">Catalog Type</label>
                     <select
                       value={filterCatalogType}
                       onChange={async (e) => {
@@ -1212,7 +1468,7 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
                           await refreshCatalogValues()
                         }, 100)
                       }}
-                      className="w-full px-2 py-1 bg-neutral-700 border border-neutral-600 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
+                      className="w-full px-2 py-1 bg-muted border border-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
                     >
                       <option value="all">All Types</option>
                       {availableCatalogTypes.map(type => (
@@ -1222,7 +1478,7 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-xs text-neutral-400 mb-1">Catalog Subtype</label>
+                    <label className="block text-xs text-muted-foreground mb-1">Catalog Subtype</label>
                     <select
                       value={filterCatalogSubtype}
                       onChange={async (e) => {
@@ -1232,7 +1488,7 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
                         // Note: We don't need to refresh catalog values when subtype changes
                         // as subtypes are already filtered by the current catalog type
                       }}
-                      className="w-full px-2 py-1 bg-neutral-700 border border-neutral-600 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
+                      className="w-full px-2 py-1 bg-muted border border-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
                     >
                       <option value="all">All Subtypes</option>
                       {availableCatalogSubtypes.map(subtype => (
@@ -1242,11 +1498,11 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-xs text-neutral-400 mb-1">Template Type</label>
+                    <label className="block text-xs text-muted-foreground mb-1">Template Type</label>
                     <select
                       value={filterTemplateType}
                       onChange={(e) => setFilterTemplateType(e.target.value)}
-                      className="w-full px-2 py-1 bg-neutral-700 border border-neutral-600 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
+                      className="w-full px-2 py-1 bg-muted border border-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
                     >
                       <option value="all">All Templates</option>
                       {Object.entries(templateTypeCategories).map(([category, types]) => {
@@ -1274,7 +1530,7 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
                     </select>
                   </div>
 
-                  <div className="text-xs text-neutral-500 pt-2 border-t border-neutral-700">
+                  <div className="text-xs text-muted-foreground pt-2 border-t border-border">
                     {searchMethod === 'semantic' && (
                       <div className="space-y-1">
                         <div>Showing {filteredEntries.length} semantic search results</div>
@@ -1305,13 +1561,74 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
                   </div>
                 </div>
               )}
+                </>
+              )}
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+            {/* Tab Content */}
+            {activeTab === 'builtin' ? (
+              /* Built-in Steps Tab */
+              <div className="flex-1 overflow-y-auto p-4">
+                <div className="space-y-3">
+                  <div className="mb-4">
+                    <h4 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
+                      <Zap className="h-4 w-4 text-purple-400" />
+                      Built-in Step Types
+                    </h4>
+                    <p className="text-xs text-muted-foreground mb-3">
+                      Pre-configured workflow steps you can drag and drop or double-click to add
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3">
+                    {builtInStepTypes.map((stepType) => (
+                      <div
+                        key={stepType.id}
+                        draggable
+                        onDragStart={(e) => onBuiltInStepDragStart(e, stepType)}
+                        onDoubleClick={() => addBuiltInStepAsNode(stepType)}
+                        className="p-3 bg-input border border-border rounded-lg cursor-grab hover:bg-accent hover:border-border active:cursor-grabbing transition-all group"
+                        title={`${stepType.description} - Drag to canvas or double-click to add`}
+                      >
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-lg">{getTemplateIcon(stepType.type)}</span>
+                          <span className="text-xs px-2 py-1 rounded-full text-foreground font-medium" style={{ 
+                            backgroundColor: getTemplateColor(stepType.type)
+                          }}>
+                            {stepType.type}
+                          </span>
+                        </div>
+                        <div className="text-sm font-semibold text-foreground mb-1">
+                          {stepType.name}
+                        </div>
+                        <div className="text-xs text-muted-foreground leading-relaxed">
+                          {stepType.description}
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+                          <span className="px-1.5 py-0.5 bg-muted rounded text-foreground">
+                            {stepType.category}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* Cache Entries Tab */
+              <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                <div className="mb-3">
+                  <h4 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
+                    <Database className="h-4 w-4 text-blue-400" />
+                    Cache Entries
+                    {searchResultsCount > 0 && (
+                      <span className="text-xs text-muted-foreground">({searchResultsCount})</span>
+                    )}
+                  </h4>
+                </div>
               {loading ? (
-                <div className="text-center text-neutral-400 py-8">Loading cache entries...</div>
+                <div className="text-center text-muted-foreground py-8">Loading cache entries...</div>
               ) : filteredEntries.length === 0 ? (
-                <div className="text-center text-neutral-400 py-8">
+                <div className="text-center text-muted-foreground py-8">
                   {searchQuery ? (
                     <div className="space-y-3">
                       <div className="text-lg font-medium">No entries match your search</div>
@@ -1331,7 +1648,7 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
                             Basic text matching with current filters found no results.
                           </div>
                         )}
-                        <div className="text-neutral-500 pt-2">
+                        <div className="text-muted-foreground pt-2">
                           Try:
                           <ul className="list-disc list-inside mt-1 space-y-1">
                             <li>Using different keywords or synonyms</li>
@@ -1370,23 +1687,23 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
                     draggable
                     onDragStart={(e) => onDragStart(e, entry)}
                     onDoubleClick={() => addCacheEntryAsNode(entry)}
-                    className="p-2 bg-neutral-800 border border-neutral-700 rounded-md cursor-grab hover:bg-neutral-750 active:cursor-grabbing transition-colors group"
+                    className="p-2 bg-input border border-border rounded-md cursor-grab hover:bg-accent active:cursor-grabbing transition-colors group"
                     onClick={() => setSelectedEntry(entry)}
                     title="Drag to canvas or double-click to add at center"
                   >
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-sm">{getTemplateIcon(entry.template_type)}</span>
-                      <span className="text-xs px-1 py-0.5 rounded text-white" style={{ 
+                      <span className="text-xs px-1 py-0.5 rounded text-foreground" style={{ 
                         backgroundColor: getTemplateColor(entry.template_type)
                       }}>
                         {entry.template_type}
                       </span>
                     </div>
-                    <div className="text-sm font-medium text-white mb-1 line-clamp-2 leading-tight">
+                    <div className="text-sm font-medium text-foreground mb-1 line-clamp-2 leading-tight">
                       {entry.nl_query}
                     </div>
                     {entry.catalog_type && (
-                      <div className="text-xs text-neutral-500 mb-1">
+                      <div className="text-xs text-muted-foreground mb-1">
                         {entry.catalog_type}{entry.catalog_subtype ? ` • ${entry.catalog_subtype}` : ''}
                       </div>
                     )}
@@ -1398,22 +1715,21 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
                   </div>
                 ))
               )}
-            </div>
 
-            {/* Pagination and Load More Controls */}
-            {!loading && filteredEntries.length > 0 && (
-              <div className="p-4 border-t border-neutral-700 bg-neutral-800/50">
+              {/* Pagination and Load More Controls */}
+              {!loading && filteredEntries.length > 0 && (
+              <div className="p-4 border-t border-border bg-input/50">
                 {/* Search Method Specific Controls */}
                 {searchMethod === 'semantic' && (
                   <div className="space-y-3">
-                    <div className="text-center text-sm text-neutral-400">
+                    <div className="text-center text-sm text-muted-foreground">
                       Showing {filteredEntries.length} semantic search results
                     </div>
                     {hasMoreSemanticResults && (
                       <button
                         onClick={loadMoreSemanticResults}
                         disabled={isLoadingMore}
-                        className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 text-white text-sm rounded-md transition-colors flex items-center justify-center gap-2"
+                        className="w-full py-2 px-4 bg-primary hover:bg-primary/90 disabled:bg-primary/50 text-primary-foreground text-sm rounded-md transition-colors flex items-center justify-center gap-2"
                       >
                         {isLoadingMore ? (
                           <>
@@ -1433,14 +1749,14 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
 
                 {searchMethod === 'none' && (
                   <div className="space-y-3">
-                    <div className="text-center text-sm text-neutral-400">
+                    <div className="text-center text-sm text-muted-foreground">
                       Showing {filteredEntries.length} of {totalEntries} total entries
                     </div>
                     {hasMorePages && (
                       <button
                         onClick={loadMoreEntries}
                         disabled={isLoadingMore}
-                        className="w-full py-2 px-4 bg-green-600 hover:bg-green-700 disabled:bg-green-800 text-white text-sm rounded-md transition-colors flex items-center justify-center gap-2"
+                        className="w-full py-2 px-4 bg-green-600 hover:bg-green-700 disabled:bg-green-800 text-foreground text-sm rounded-md transition-colors flex items-center justify-center gap-2"
                       >
                         {isLoadingMore ? (
                           <>
@@ -1456,7 +1772,7 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
                       </button>
                     )}
                     {!hasMorePages && totalEntries > 0 && (
-                      <div className="text-center text-xs text-neutral-500">
+                      <div className="text-center text-xs text-muted-foreground">
                         All {totalEntries} entries loaded
                       </div>
                     )}
@@ -1465,35 +1781,16 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
 
                 {/* Other search methods don't need pagination */}
                 {(searchMethod === 'llm' || searchMethod === 'fallback') && (
-                  <div className="text-center text-sm text-neutral-400">
+                  <div className="text-center text-sm text-muted-foreground">
                     Showing {filteredEntries.length} {searchMethod === 'llm' ? 'LLM-suggested' : 'fallback'} results
                   </div>
                 )}
               </div>
             )}
+              </div>
+            )}
 
-            <div className="p-4 border-t border-neutral-800 text-xs text-neutral-400 space-y-1">
-              <div className="flex items-center gap-2">
-                <MousePointer2 className="h-3 w-3" />
-                <span>Drag entries to canvas or double-click to add at center</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Focus className="h-3 w-3" />
-                <span>Use "Fit View" button if nodes go out of sight</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Save className="h-3 w-3 text-green-400" />
-                <span>Workflow auto-saved locally - changes persist across sessions</span>
-              </div>
-              <div className="text-xs text-neutral-500 pt-2 border-t border-neutral-600">
-                <div className="grid grid-cols-2 gap-1">
-                  <span>Ctrl+B: Toggle sidebar</span>
-                  <span>Ctrl+F: Toggle filters</span>
-                  <span>Ctrl+M/F11: Maximize</span>
-                  <span>Esc: Close/minimize</span>
-                </div>
-              </div>
-            </div>
+
           </>
         )}
       </div>
@@ -1503,12 +1800,12 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
         <div className="absolute left-0 top-4 z-10">
           <button
             onClick={() => setSidebarCollapsed(false)}
-            className="p-3 bg-neutral-800 border border-neutral-700 rounded-r-lg hover:bg-neutral-700 transition-colors shadow-lg"
+            className="p-3 bg-input border border-border rounded-r-lg hover:bg-muted transition-colors shadow-lg"
             title="Expand sidebar (Ctrl+B)"
           >
             <div className="flex flex-col items-center gap-1">
               <Menu className="h-4 w-4" />
-              <span className="text-xs">Search</span>
+              <span className="text-xs">Steps</span>
             </div>
           </button>
         </div>
@@ -1519,7 +1816,7 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
         <div className="absolute left-0 top-20 z-10">
           <button
             onClick={() => setIsMaximized(prev => !prev)}
-            className="p-3 bg-neutral-800 border border-neutral-700 rounded-r-lg hover:bg-neutral-700 transition-colors shadow-lg"
+            className="p-3 bg-input border border-border rounded-r-lg hover:bg-muted transition-colors shadow-lg"
             title={`${isMaximized ? 'Minimize' : 'Maximize'} (F11 or Ctrl+M)`}
           >
             <div className="flex flex-col items-center gap-1">
@@ -1542,16 +1839,15 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
             onNodeClick={handleNodeClick}
             onDrop={onDrop}
             onDragOver={onDragOver}
-            fitView
-            className="bg-neutral-950 w-full h-full"
+            className="bg-background w-full h-full"
           >
-            <Controls className="bg-neutral-800 border-neutral-700 text-white" />
-            <Background variant={BackgroundVariant.Dots} gap={12} size={1} className="bg-neutral-950" />
+            <Controls className="bg-input border-border text-foreground" />
+            <Background variant={BackgroundVariant.Dots} gap={12} size={1} className="bg-background" />
             
             <Panel position="top-left">
-              <div className="flex items-center gap-2 bg-neutral-800/90 px-3 py-2 rounded-md text-xs">
+              <div className="flex items-center gap-2 bg-input/90 px-3 py-2 rounded-md text-xs">
                 <Save className="h-3 w-3 text-green-400" />
-                <span className="text-neutral-300">Auto-saved • {nodes.length - 1} nodes • {edges.length} connections</span>
+                <span className="text-foreground">Auto-saved • {nodes.length - 1} nodes • {edges.length} connections</span>
               </div>
             </Panel>
 
@@ -1559,15 +1855,15 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
               <div className="flex gap-2">
                 <button
                   onClick={() => setSidebarCollapsed(prev => !prev)}
-                  className="px-3 py-2 bg-neutral-700 text-white rounded-md hover:bg-neutral-600 flex items-center gap-1 text-sm"
-                  title={`${sidebarCollapsed ? 'Show' : 'Hide'} search sidebar (Ctrl+B)`}
+                  className="px-3 py-2 bg-muted text-foreground rounded-md hover:bg-neutral-600 flex items-center gap-1 text-sm"
+                  title={`${sidebarCollapsed ? 'Show' : 'Hide'} steps sidebar (Ctrl+B)`}
                 >
                   {sidebarCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-                  {sidebarCollapsed ? 'Show' : 'Hide'} Search
+                  {sidebarCollapsed ? 'Show' : 'Hide'} Steps
                 </button>
                 <button
                   onClick={() => fitView({ padding: 0.1, duration: 800 })}
-                  className="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-1 text-sm"
+                  className="px-3 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 flex items-center gap-1 text-sm"
                   title="Fit all nodes in view"
                 >
                   <Focus className="h-4 w-4" />
@@ -1575,7 +1871,7 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
                 </button>
                 <button
                   onClick={clearWorkflow}
-                  className="px-3 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 flex items-center gap-1 text-sm"
+                  className="px-3 py-2 bg-yellow-600 text-foreground rounded-md hover:bg-yellow-700 flex items-center gap-1 text-sm"
                   title="Clear entire workflow"
                 >
                   <RotateCcw className="h-4 w-4" />
@@ -1584,7 +1880,7 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
                 <button
                   onClick={deleteSelected}
                   disabled={!nodes.some(n => n.selected && n.id !== 'start') && !edges.some(e => e.selected)}
-                  className="px-3 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1 text-sm"
+                  className="px-3 py-2 bg-red-600 text-foreground rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1 text-sm"
                 >
                   <Trash2 className="h-4 w-4" />
                   Delete
@@ -1601,13 +1897,26 @@ const WorkflowBuilderComponent: React.FC<InteractiveWorkflowBuilderProps> = ({
         onClose={() => setIsNodeDetailOpen(false)}
         node={selectedNode}
       />
+
+      {/* LLM Step Editor Modal */}
+      <LLMStepEditor
+        isOpen={isLLMEditorOpen}
+        onClose={() => setIsLLMEditorOpen(false)}
+        node={selectedNode}
+        onSave={handleLLMStepSave}
+        availableInputs={selectedNode ? getAvailableInputs(selectedNode.id) : []}
+      />
     </div>
   )
 }
 
 const InteractiveWorkflowBuilder: React.FC<InteractiveWorkflowBuilderProps> = (props) => {
+  const key = props.workflowId 
+    ? `flow-${props.workflowId}`
+    : `flow-${props.catalogType}-${props.catalogSubtype}`
+
   return (
-    <ReactFlowProvider>
+    <ReactFlowProvider key={key}>
       <WorkflowBuilderComponent {...props} />
     </ReactFlowProvider>
   )

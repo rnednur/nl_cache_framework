@@ -215,7 +215,7 @@ export default function EditTool() {
             Back to Tools
           </Button>
         </div>
-        <Card className="bg-neutral-800 border-neutral-700">
+        <Card className="workflow-card bg-card border-2 border-card-border">
           <CardContent className="pt-6">
             <div className="text-center">
               <p className="text-red-400">Failed to load tool data</p>
@@ -269,7 +269,7 @@ export default function EditTool() {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Basic Information */}
-        <Card className="bg-neutral-800 border-neutral-700">
+        <Card className="workflow-card bg-card border-2 border-card-border">
           <CardHeader>
             <CardTitle>Basic Information</CardTitle>
             <CardDescription>
@@ -278,21 +278,21 @@ export default function EditTool() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-neutral-300 mb-2">
+              <label className="block text-sm font-medium text-foreground mb-2">
                 Tool Name *
               </label>
               <Input
                 value={formData.nl_query}
                 onChange={(e) => setFormData(prev => ({ ...prev, nl_query: e.target.value }))}
                 placeholder="Enter a descriptive name for your tool..."
-                className="!bg-neutral-900 border-neutral-700 text-white placeholder:text-neutral-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="bg-input border-border text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 required
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-neutral-300 mb-2">
+                <label className="block text-sm font-medium text-foreground mb-2">
                   Tool Type
                 </label>
                 <Select
@@ -319,7 +319,7 @@ export default function EditTool() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-neutral-300 mb-2">
+                <label className="block text-sm font-medium text-foreground mb-2">
                   Health Status
                 </label>
                 <Select
@@ -344,50 +344,50 @@ export default function EditTool() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-neutral-300 mb-2">
+              <label className="block text-sm font-medium text-foreground mb-2">
                 Reasoning Trace
               </label>
               <Textarea
                 value={formData.reasoning_trace}
                 onChange={(e) => setFormData(prev => ({ ...prev, reasoning_trace: e.target.value }))}
                 placeholder="Describe the purpose and functionality of this tool..."
-                className="min-h-[100px] !bg-neutral-900 border-neutral-700 text-white placeholder:text-neutral-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="min-h-[100px] bg-input border-border text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
 
             {/* Catalog Information */}
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium text-neutral-300 mb-2">
+                <label className="block text-sm font-medium text-foreground mb-2">
                   Catalog Type
                 </label>
                 <Input
                   value={formData.catalog_type}
                   onChange={(e) => setFormData(prev => ({ ...prev, catalog_type: e.target.value }))}
                   placeholder="e.g., api, function, agent"
-                  className="!bg-neutral-900 border-neutral-700 text-white placeholder:text-neutral-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="bg-input border-border text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-neutral-300 mb-2">
+                <label className="block text-sm font-medium text-foreground mb-2">
                   Catalog Subtype
                 </label>
                 <Input
                   value={formData.catalog_subtype}
                   onChange={(e) => setFormData(prev => ({ ...prev, catalog_subtype: e.target.value }))}
                   placeholder="e.g., rest, graphql, webhook"
-                  className="!bg-neutral-900 border-neutral-700 text-white placeholder:text-neutral-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="bg-input border-border text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-neutral-300 mb-2">
+                <label className="block text-sm font-medium text-foreground mb-2">
                   Catalog Name
                 </label>
                 <Input
                   value={formData.catalog_name}
                   onChange={(e) => setFormData(prev => ({ ...prev, catalog_name: e.target.value }))}
                   placeholder="Specific tool identifier"
-                  className="!bg-neutral-900 border-neutral-700 text-white placeholder:text-neutral-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="bg-input border-border text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
             </div>
@@ -395,7 +395,7 @@ export default function EditTool() {
         </Card>
 
         {/* Tool Capabilities */}
-        <Card className="bg-neutral-800 border-neutral-700">
+        <Card className="workflow-card bg-card border-2 border-card-border">
           <CardHeader>
             <CardTitle>Capabilities</CardTitle>
             <CardDescription>
@@ -408,7 +408,7 @@ export default function EditTool() {
                 value={newCapability}
                 onChange={(e) => setNewCapability(e.target.value)}
                 placeholder="Add a capability..."
-                className="flex-1 !bg-neutral-900 border-neutral-700 text-white placeholder:text-neutral-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="flex-1 bg-input border-border text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addCapability())}
               />
               <Button type="button" onClick={addCapability} size="sm">
@@ -438,7 +438,7 @@ export default function EditTool() {
         </Card>
 
         {/* Template Configuration */}
-        <Card className="bg-neutral-800 border-neutral-700">
+        <Card className="workflow-card bg-card border-2 border-card-border">
           <CardHeader>
             <CardTitle>Template Configuration</CardTitle>
             <CardDescription>
@@ -447,38 +447,38 @@ export default function EditTool() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-neutral-300 mb-2">
+              <label className="block text-sm font-medium text-foreground mb-2">
                 Template JSON
               </label>
               <Textarea
                 value={formData.template}
                 onChange={(e) => setFormData(prev => ({ ...prev, template: e.target.value }))}
                 placeholder="Enter JSON template..."
-                className="min-h-[200px] font-mono text-sm !bg-neutral-900 border-neutral-700 text-white placeholder:text-neutral-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="min-h-[200px] font-mono text-sm bg-input border-border text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-neutral-300 mb-2">
+              <label className="block text-sm font-medium text-foreground mb-2">
                 Execution Configuration
               </label>
               <Textarea
                 value={JSON.stringify(formData.execution_config, null, 2)}
                 onChange={(e) => handleExecutionConfigChange(e.target.value)}
                 placeholder="Enter execution configuration JSON..."
-                className="min-h-[120px] font-mono text-sm !bg-neutral-900 border-neutral-700 text-white placeholder:text-neutral-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="min-h-[120px] font-mono text-sm bg-input border-border text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-neutral-300 mb-2">
+              <label className="block text-sm font-medium text-foreground mb-2">
                 Tool Dependencies
               </label>
               <Textarea
                 value={JSON.stringify(formData.tool_dependencies, null, 2)}
                 onChange={(e) => handleToolDependenciesChange(e.target.value)}
                 placeholder="Enter tool dependencies JSON..."
-                className="min-h-[120px] font-mono text-sm !bg-neutral-900 border-neutral-700 text-white placeholder:text-neutral-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="min-h-[120px] font-mono text-sm bg-input border-border text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
           </CardContent>

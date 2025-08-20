@@ -1,8 +1,9 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Sparkles, Check, Info, AlertCircle, ArrowLeft, ArrowRight, ExternalLink } from "lucide-react"
+import { Sparkles, Check, Info, AlertCircle, ArrowLeft, ArrowRight, ExternalLink, Search } from "lucide-react"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/app/components/ui/card"
+import { PageHeader } from "@/app/components/ui/PageHeader"
 import { Button } from "@/app/components/ui/button"
 import { Textarea } from "@/app/components/ui/textarea"
 import { Input } from "@/app/components/ui/input"
@@ -13,7 +14,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/ta
 import api, { CompleteRequest, CompleteResponse as ApiCompleteResponse, CatalogValues } from "@/app/services/api"
 import Link from "next/link"
 import { CacheEntryModal } from "@/components/ui/CacheEntryModal"
-import { CacheBreadcrumbs } from "@/components/ui/CacheBreadcrumbs"
 import { CacheEntryTooltip } from "@/components/ui/CacheEntryTooltip"
 import { SimpleCacheTooltip } from "@/components/ui/SimpleCacheTooltip"
 import { CacheEntryList } from "@/components/ui/CacheEntryList"
@@ -278,17 +278,12 @@ export default function CompleteTestPage() {
 
   return (
     <div className="container mx-auto py-4 space-y-3">
-      <CacheBreadcrumbs 
-        items={[
-          { label: "Dashboard", href: "/dashboard" },
-          { label: "Complete Test" }
-        ]}
-        className="mb-2"
-      />
-      
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-neutral-200">Complete Test</h1>
-        <div className="flex items-center gap-2">
+      <PageHeader
+        title="Test Completion"
+        description="Test cache completion and similarity matching"
+        icon={Search}
+        actions={
+          <div className="flex items-center gap-2">
           <Button 
             variant="outline" 
             onClick={() => {
@@ -312,8 +307,7 @@ export default function CompleteTestPage() {
               // Show success message
               toast.success("Form has been reset");
             }}
-            size="sm"
-            className="border-neutral-700 hover:bg-neutral-800 hover:text-neutral-200 text-neutral-300"
+            className="border-border hover:bg-accent hover:text-accent-foreground text-muted-foreground"
           >
             Reset
           </Button>
@@ -331,35 +325,36 @@ export default function CompleteTestPage() {
                 toast.success("Results cleared");
               }}
               size="sm"
-              className="bg-red-900 hover:bg-red-800 text-white"
+              className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
             >
               Clear Results
             </Button>
           )}
-        </div>
-      </div>
+          </div>
+        }
+      />
       
       <div className="flex flex-col space-y-3">
-        <Card className="bg-neutral-900 border-neutral-700 shadow-sm">
+        <Card className="workflow-card bg-card border-2 border-card-border">
           <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-neutral-200">
+            <CardTitle className="flex items-center gap-2 text-foreground">
               <Sparkles className="h-5 w-5" />
               Complete Endpoint Testing
             </CardTitle>
-            <CardDescription className="text-neutral-400">
+            <CardDescription className="text-muted-foreground">
               Test the /complete endpoint with optional LLM enhancement
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
               <div>
-                <Label htmlFor="prompt" className="text-neutral-300">Natural Language Prompt</Label>
+                <Label htmlFor="prompt" className="text-foreground">Natural Language Prompt</Label>
                 <Textarea 
                   id="prompt"
                   placeholder="Enter your natural language query..."
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
-                  className="h-28 bg-neutral-800 border-neutral-700 text-neutral-200 placeholder:text-neutral-500 focus-visible:ring-[#3B4BF6]"
+                  className="h-28 bg-input border-border text-foreground placeholder:text-muted-foreground focus-visible:ring-ring"
                 />
               </div>
               
@@ -369,18 +364,18 @@ export default function CompleteTestPage() {
                     id="use-llm"
                     checked={useLlm}
                     onCheckedChange={setUseLlm}
-                    className="data-[state=checked]:bg-blue-600"
+                    className="data-[state=checked]:bg-primary"
                   />
-                  <Label htmlFor="use-llm" className="cursor-pointer text-neutral-200">
+                  <Label htmlFor="use-llm" className="cursor-pointer text-foreground">
                     Enable LLM Enhancement
                   </Label>
-                  <span className="text-xs text-neutral-400 ml-2">
+                  <span className="text-xs text-muted-foreground ml-2">
                     (Uses Gemini Flash 2.5 to analyze search results)
                   </span>
                 </div>
                 
                 <div className="flex items-center gap-2">
-                  <Label htmlFor="threshold" className="whitespace-nowrap text-neutral-300">Similarity Threshold:</Label>
+                  <Label htmlFor="threshold" className="whitespace-nowrap text-foreground">Similarity Threshold:</Label>
                   <Input 
                     id="threshold"
                     type="number"
@@ -389,13 +384,13 @@ export default function CompleteTestPage() {
                     step={0.01}
                     value={threshold}
                     onChange={(e) => setThreshold(parseFloat(e.target.value))}
-                    className="w-24 bg-neutral-800 border-neutral-700 text-neutral-200"
+                    className="w-24 bg-input border-border text-foreground"
                   />
-                  <span className="text-xs whitespace-nowrap text-neutral-500">(0.0 - 1.0)</span>
+                  <span className="text-xs whitespace-nowrap text-muted-foreground">(0.0 - 1.0)</span>
                 </div>
                 
                 <div className="flex items-center gap-2">
-                  <Label htmlFor="limit" className="whitespace-nowrap text-neutral-300">Result Limit:</Label>
+                  <Label htmlFor="limit" className="whitespace-nowrap text-foreground">Result Limit:</Label>
                   <Input 
                     id="limit"
                     type="number"
@@ -404,45 +399,45 @@ export default function CompleteTestPage() {
                     step={1}
                     value={limit}
                     onChange={(e) => setLimit(parseInt(e.target.value))}
-                    className="w-24 bg-neutral-800 border-neutral-700 text-neutral-200"
+                    className="w-24 bg-input border-border text-foreground"
                   />
-                  <span className="text-xs whitespace-nowrap text-neutral-500">(max results)</span>
+                  <span className="text-xs whitespace-nowrap text-muted-foreground">(max results)</span>
                 </div>
               </div>
               
               <div className="flex flex-wrap gap-3">
                 <div className="flex-1 min-w-[200px]">
-                  <Label htmlFor="catalog-type" className="text-neutral-300">Catalog Type (Optional)</Label>
+                  <Label htmlFor="catalog-type" className="text-foreground">Catalog Type (Optional)</Label>
                   {loadingCatalogs ? (
-                    <div className="p-2 border border-neutral-700 rounded-md text-neutral-500 bg-neutral-800">Loading...</div>
+                    <div className="p-2 border border-border rounded-md text-muted-foreground bg-input">Loading...</div>
                   ) : (
                     <Select value={catalogType} onValueChange={setCatalogType}>
-                      <SelectTrigger id="catalog-type" className="bg-neutral-800 border-neutral-700 text-neutral-300">
+                      <SelectTrigger id="catalog-type" className="bg-input border-border text-foreground">
                         <SelectValue placeholder="Select catalog type" />
                       </SelectTrigger>
-                      <SelectContent className="bg-neutral-800 border-neutral-700 text-neutral-300">
+                      <SelectContent className="bg-input border-border text-foreground">
                         {catalogValues.catalog_types.map((type) => (
-                          <SelectItem key={type} value={type} className="text-neutral-300">{type}</SelectItem>
+                          <SelectItem key={type} value={type} className="text-foreground">{type}</SelectItem>
                         ))}
-                        <SelectItem value="reasoning_steps" className="text-neutral-300">Reasoning Steps</SelectItem>
-                        <SelectItem value="dsl" className="text-neutral-300">DSL Components</SelectItem>
+                        <SelectItem value="reasoning_steps" className="text-foreground">Reasoning Steps</SelectItem>
+                        <SelectItem value="dsl" className="text-foreground">DSL Components</SelectItem>
                       </SelectContent>
                     </Select>
                   )}
                 </div>
                 
                 <div className="flex-1 min-w-[200px]">
-                  <Label htmlFor="catalog-subtype" className="text-neutral-300">Catalog Subtype (Optional)</Label>
+                  <Label htmlFor="catalog-subtype" className="text-foreground">Catalog Subtype (Optional)</Label>
                   {loadingCatalogs ? (
-                    <div className="p-2 border border-neutral-700 rounded-md text-neutral-500 bg-neutral-800">Loading...</div>
+                    <div className="p-2 border border-border rounded-md text-muted-foreground bg-input">Loading...</div>
                   ) : (
                     <Select value={catalogSubtype} onValueChange={setCatalogSubtype}>
-                      <SelectTrigger id="catalog-subtype" className="bg-neutral-800 border-neutral-700 text-neutral-300">
+                      <SelectTrigger id="catalog-subtype" className="bg-input border-border text-foreground">
                         <SelectValue placeholder="Select catalog subtype" />
                       </SelectTrigger>
-                      <SelectContent className="bg-neutral-800 border-neutral-700 text-neutral-300">
+                      <SelectContent className="bg-input border-border text-foreground">
                         {catalogValues.catalog_subtypes.map((subtype) => (
-                          <SelectItem key={subtype} value={subtype} className="text-neutral-300">{subtype}</SelectItem>
+                          <SelectItem key={subtype} value={subtype} className="text-foreground">{subtype}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -450,17 +445,17 @@ export default function CompleteTestPage() {
                 </div>
                 
                 <div className="flex-1 min-w-[200px]">
-                  <Label htmlFor="catalog-name" className="text-neutral-300">Catalog Name (Optional)</Label>
+                  <Label htmlFor="catalog-name" className="text-foreground">Catalog Name (Optional)</Label>
                   {loadingCatalogs ? (
-                    <div className="p-2 border border-neutral-700 rounded-md text-neutral-500 bg-neutral-800">Loading...</div>
+                    <div className="p-2 border border-border rounded-md text-muted-foreground bg-input">Loading...</div>
                   ) : (
                     <Select value={catalogName} onValueChange={setCatalogName}>
-                      <SelectTrigger id="catalog-name" className="bg-neutral-800 border-neutral-700 text-neutral-300">
+                      <SelectTrigger id="catalog-name" className="bg-input border-border text-foreground">
                         <SelectValue placeholder="Select catalog name" />
                       </SelectTrigger>
-                      <SelectContent className="bg-neutral-800 border-neutral-700 text-neutral-300">
+                      <SelectContent className="bg-input border-border text-foreground">
                         {catalogValues.catalog_names.map((name) => (
-                          <SelectItem key={name} value={name} className="text-neutral-300">{name}</SelectItem>
+                          <SelectItem key={name} value={name} className="text-foreground">{name}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -468,17 +463,17 @@ export default function CompleteTestPage() {
                 </div>
                 
                 <div className="flex-1 min-w-[200px]">
-                  <Label htmlFor="template-type" className="text-neutral-300">Template Type (Optional)</Label>
+                  <Label htmlFor="template-type" className="text-foreground">Template Type (Optional)</Label>
                   {loadingCatalogs ? (
-                    <div className="p-2 border border-neutral-700 rounded-md text-neutral-500 bg-neutral-800">Loading...</div>
+                    <div className="p-2 border border-border rounded-md text-muted-foreground bg-input">Loading...</div>
                   ) : (
                     <Select value={templateType} onValueChange={setTemplateType}>
-                      <SelectTrigger id="template-type" className="bg-neutral-800 border-neutral-700 text-neutral-300">
+                      <SelectTrigger id="template-type" className="bg-input border-border text-foreground">
                         <SelectValue placeholder="Select template type" />
                       </SelectTrigger>
-                      <SelectContent className="bg-neutral-800 border-neutral-700 text-neutral-300">
+                      <SelectContent className="bg-input border-border text-foreground">
                         {catalogValues.template_types?.map((type) => (
-                          <SelectItem key={type} value={type} className="text-neutral-300">{type}</SelectItem>
+                          <SelectItem key={type} value={type} className="text-foreground">{type}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -491,18 +486,18 @@ export default function CompleteTestPage() {
             <Button 
               onClick={handleSubmit} 
               disabled={loading || !prompt.trim()}
-              className="w-full bg-[#3B4BF6] hover:bg-[#2b3bdc] text-white"
+              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
             >
               {loading ? "Processing..." : "Submit"}
             </Button>
           </CardFooter>
         </Card>
         
-        <Card className="bg-neutral-900 border-neutral-700 shadow-sm">
+        <Card className="workflow-card bg-card border-2 border-card-border">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <div>
-              <CardTitle className="text-neutral-200">Result</CardTitle>
-              <CardDescription className="text-neutral-400">
+              <CardTitle className="text-foreground">Result</CardTitle>
+              <CardDescription className="text-muted-foreground">
                 Response from the /complete endpoint
               </CardDescription>
             </div>
@@ -513,11 +508,11 @@ export default function CompleteTestPage() {
                   size="icon" 
                   onClick={goToPreviousResult}
                   disabled={currentHistoryIndex <= 0}
-                  className="border-neutral-700 hover:bg-neutral-800 hover:text-neutral-200 text-neutral-300"
+                  className="border-border hover:bg-input hover:text-foreground text-foreground"
                 >
                   <ArrowLeft className="h-4 w-4" />
                 </Button>
-                <span className="text-xs text-neutral-400">
+                <span className="text-xs text-muted-foreground">
                   {currentHistoryIndex + 1} / {resultsHistory.length}
                 </span>
                 <Button 
@@ -525,7 +520,7 @@ export default function CompleteTestPage() {
                   size="icon" 
                   onClick={goToNextResult}
                   disabled={currentHistoryIndex >= resultsHistory.length - 1}
-                  className="border-neutral-700 hover:bg-neutral-800 hover:text-neutral-200 text-neutral-300"
+                  className="border-border hover:bg-input hover:text-foreground text-foreground"
                 >
                   <ArrowRight className="h-4 w-4" />
                 </Button>
@@ -534,14 +529,14 @@ export default function CompleteTestPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             {error && (
-              <div className="p-3 border border-red-700 bg-red-900/30 rounded-md text-red-300 flex gap-2">
+              <div className="p-3 border border-destructive/50 bg-destructive/10 rounded-md text-destructive flex gap-2">
                 <AlertCircle className="h-5 w-5 flex-shrink-0" />
                 <p>{error}</p>
               </div>
             )}
             
             {loading && (
-              <div className="flex flex-col items-center justify-center h-40 text-neutral-400">
+              <div className="flex flex-col items-center justify-center h-40 text-muted-foreground">
                 <p>Processing your request...</p>
               </div>
             )}
@@ -549,7 +544,7 @@ export default function CompleteTestPage() {
             {!loading && result && (
               <div className="space-y-4 overflow-auto max-h-[500px]">
                 {result.llm_used && result.is_confident === false && (
-                  <div className="p-3 border border-yellow-700 bg-yellow-900/30 rounded-md text-yellow-300 flex gap-2">
+                  <div className="p-3 border border-orange-500/50 bg-orange-500/10 rounded-md text-orange-600 dark:text-orange-400 flex gap-2">
                     <AlertCircle className="h-5 w-5 flex-shrink-0" />
                     <div>
                       <p className="font-semibold">Low Confidence Warning</p>
@@ -559,16 +554,16 @@ export default function CompleteTestPage() {
                 )}
                 
                 <Tabs defaultValue="result" className="w-full">
-                  <TabsList className="bg-neutral-800 border-neutral-700">
-                    <TabsTrigger value="result" className="data-[state=active]:bg-neutral-700 data-[state=active]:text-neutral-200">Template Result</TabsTrigger>
-                    <TabsTrigger value="prompt" className="data-[state=active]:bg-neutral-700 data-[state=active]:text-neutral-200">Processed Prompt</TabsTrigger>
-                    <TabsTrigger value="details" className="data-[state=active]:bg-neutral-700 data-[state=active]:text-neutral-200">Response Details</TabsTrigger>
-                    <TabsTrigger value="matches" className="data-[state=active]:bg-neutral-700 data-[state=active]:text-neutral-200">Score Details</TabsTrigger>
+                  <TabsList className="bg-input border-border">
+                    <TabsTrigger value="result" className="data-[state=active]:bg-muted data-[state=active]:text-foreground">Template Result</TabsTrigger>
+                    <TabsTrigger value="prompt" className="data-[state=active]:bg-muted data-[state=active]:text-foreground">Processed Prompt</TabsTrigger>
+                    <TabsTrigger value="details" className="data-[state=active]:bg-muted data-[state=active]:text-foreground">Response Details</TabsTrigger>
+                    <TabsTrigger value="matches" className="data-[state=active]:bg-muted data-[state=active]:text-foreground">Score Details</TabsTrigger>
                   </TabsList>
                   
                   <TabsContent value="result" className="space-y-4 pt-4">
                     <div className="space-y-1">
-                      <div className="flex items-center text-sm text-neutral-200">
+                      <div className="flex items-center text-sm text-foreground">
                         <h4 className="font-semibold mr-2">Status:</h4>
                         {result.cache_hit ? (
                           <span className="flex items-center text-green-500">
@@ -584,14 +579,14 @@ export default function CompleteTestPage() {
                       </div>
                       
                       {result.similarity_score !== undefined && (
-                        <div className="flex items-center text-sm text-neutral-200">
+                        <div className="flex items-center text-sm text-foreground">
                           <h4 className="font-semibold mr-2">Similarity Score:</h4>
                           <span>{(result.similarity_score * 100).toFixed(2)}%</span>
                         </div>
                       )}
                     </div>
                     
-                    <div className="p-4 border border-neutral-700 rounded-md bg-neutral-800 whitespace-pre-wrap text-neutral-200 font-mono overflow-auto max-h-[300px]">
+                    <div className="p-4 border border-border rounded-md bg-input whitespace-pre-wrap text-foreground font-mono overflow-auto max-h-[300px]">
                       {(() => {
                         const template = result.updated_template || result.cache_template;
                         if (!template) return "No result returned";
@@ -608,13 +603,13 @@ export default function CompleteTestPage() {
                   </TabsContent>
                   
                   <TabsContent value="prompt" className="space-y-4 pt-4">
-                    <div className="p-4 border border-neutral-700 rounded-md bg-neutral-800 whitespace-pre-wrap text-neutral-200 font-mono overflow-auto max-h-[300px]">
+                    <div className="p-4 border border-border rounded-md bg-input whitespace-pre-wrap text-foreground font-mono overflow-auto max-h-[300px]">
                       {result.user_query || prompt}
                     </div>
                   </TabsContent>
                   
                   <TabsContent value="details" className="space-y-4 pt-4">
-                    <div className="p-4 border border-neutral-700 rounded-md bg-neutral-800 text-neutral-200 overflow-auto max-h-[300px]">
+                    <div className="p-4 border border-border rounded-md bg-input text-foreground overflow-auto max-h-[300px]">
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <h4 className="font-semibold text-sm mb-1">Response Time</h4>
@@ -639,12 +634,12 @@ export default function CompleteTestPage() {
                               >
                                 View Entry
                               </Button>
-                              <span className="text-xs text-neutral-500">
+                              <span className="text-xs text-muted-foreground">
                                 ID: <SimpleCacheTooltip 
                                   content={
                                     <div className="text-sm">
-                                      <p className="text-neutral-300 mb-1">Cache Entry ID: {result.cache_entry_id}</p>
-                                      <p className="text-neutral-400 text-xs">Click "View Entry" to see details</p>
+                                      <p className="text-foreground mb-1">Cache Entry ID: {result.cache_entry_id}</p>
+                                      <p className="text-muted-foreground text-xs">Click "View Entry" to see details</p>
                                     </div>
                                   }
                                 >
@@ -666,8 +661,8 @@ export default function CompleteTestPage() {
                                 content={
                                   <div className="text-sm p-2">
                                     <div className="mb-2">
-                                      <p className="text-neutral-300">Cache Entry ID: {result.template_id}</p>
-                                      <p className="text-neutral-400 text-xs mt-1">
+                                      <p className="text-foreground">Cache Entry ID: {result.template_id}</p>
+                                      <p className="text-muted-foreground text-xs mt-1">
                                         This is the template that was matched and used for the response
                                       </p>
                                     </div>
@@ -725,7 +720,7 @@ export default function CompleteTestPage() {
                   </TabsContent>
                   
                   <TabsContent value="matches" className="space-y-4 pt-4">
-                    <div className="p-4 border border-neutral-700 rounded-md bg-neutral-800 text-neutral-200 overflow-auto max-h-[300px]">
+                    <div className="p-4 border border-border rounded-md bg-input text-foreground overflow-auto max-h-[300px]">
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <h4 className="font-semibold text-sm mb-1">User Query</h4>
@@ -777,7 +772,7 @@ export default function CompleteTestPage() {
             )}
             
             {!loading && !error && !result && (
-              <div className="flex items-center justify-center h-48 text-neutral-500">
+              <div className="flex items-center justify-center h-48 text-muted-foreground">
                 <p>Submit a request to see results</p>
               </div>
             )}

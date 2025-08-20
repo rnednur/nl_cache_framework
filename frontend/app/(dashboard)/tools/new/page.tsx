@@ -227,7 +227,7 @@ export default function NewTool() {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Basic Information */}
-        <Card className="bg-neutral-800 border-neutral-700">
+        <Card className="workflow-card bg-card border-2 border-card-border">
           <CardHeader>
             <CardTitle>Basic Information</CardTitle>
             <CardDescription>
@@ -236,21 +236,21 @@ export default function NewTool() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-neutral-300 mb-2">
+              <label className="block text-sm font-medium text-foreground mb-2">
                 Tool Name *
               </label>
               <Input
                 value={formData.nl_query}
                 onChange={(e) => setFormData(prev => ({ ...prev, nl_query: e.target.value }))}
                 placeholder="Enter a descriptive name for your tool..."
-                className="bg-neutral-900 border-neutral-700"
+                className="bg-input border-border"
                 required
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-neutral-300 mb-2">
+                <label className="block text-sm font-medium text-foreground mb-2">
                   Tool Type
                 </label>
                 <Select
@@ -260,7 +260,7 @@ export default function NewTool() {
                     template_type: value as keyof typeof TOOL_TYPES 
                   }))}
                 >
-                  <SelectTrigger className="bg-neutral-900 border-neutral-700">
+                  <SelectTrigger className="bg-input border-border">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -277,7 +277,7 @@ export default function NewTool() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-neutral-300 mb-2">
+                <label className="block text-sm font-medium text-foreground mb-2">
                   Health Status
                 </label>
                 <Select
@@ -287,7 +287,7 @@ export default function NewTool() {
                     health_status: value as typeof HEALTH_STATUS_OPTIONS[number]
                   }))}
                 >
-                  <SelectTrigger className="bg-neutral-900 border-neutral-700">
+                  <SelectTrigger className="bg-input border-border">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -312,7 +312,7 @@ export default function NewTool() {
         </Card>
 
         {/* Tool Capabilities */}
-        <Card className="bg-neutral-800 border-neutral-700">
+        <Card className="workflow-card bg-card border-2 border-card-border">
           <CardHeader>
             <CardTitle>Tool Capabilities</CardTitle>
             <CardDescription>
@@ -325,14 +325,14 @@ export default function NewTool() {
                 value={newCapability}
                 onChange={(e) => setNewCapability(e.target.value)}
                 placeholder="Enter a capability..."
-                className="bg-neutral-900 border-neutral-700"
+                className="bg-input border-border"
                 onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addCapability())}
               />
               <Button
                 type="button"
                 variant="outline"
                 onClick={addCapability}
-                className="gap-2 border-neutral-600 text-neutral-300 hover:bg-neutral-700"
+                className="gap-2 border-neutral-600 text-foreground hover:bg-neutral-700"
               >
                 <Plus className="h-4 w-4" />
                 Add
@@ -345,7 +345,7 @@ export default function NewTool() {
                   <Badge
                     key={index}
                     variant="secondary"
-                    className="bg-neutral-700 text-neutral-300 gap-2"
+                    className="bg-neutral-700 text-foreground gap-2"
                   >
                     {capability}
                     <button

@@ -25,9 +25,11 @@ import {
   Settings,
   Eye,
   AlertCircle,
-  GitBranch
+  GitBranch,
+  ChefHat
 } from 'lucide-react'
 import api, { type CacheItem } from '@/app/services/api'
+import { PageHeader } from '@/app/components/ui/PageHeader'
 
 interface Recipe extends CacheItem {
   recipe_steps?: Array<{
@@ -418,10 +420,10 @@ export default function WorkflowHub() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-neutral-950 flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex items-center gap-3">
           <Loader2 className="h-8 w-8 animate-spin text-green-500" />
-          <span className="text-neutral-400">Loading workflows...</span>
+          <span className="text-muted-foreground">Loading workflows...</span>
         </div>
       </div>
     )
@@ -429,7 +431,7 @@ export default function WorkflowHub() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-neutral-950 flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
           <p className="text-red-400 mb-4">{error}</p>
@@ -445,87 +447,82 @@ export default function WorkflowHub() {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100">
+    <div className="min-h-screen bg-background text-foreground">
       {/* Header */}
-      <div className="bg-neutral-900 border-b border-neutral-800 px-6 py-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-10 h-10 bg-green-600 rounded-lg flex items-center justify-center">
-                <Workflow className="h-6 w-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-neutral-100">Workflow Hub</h1>
-                <p className="text-neutral-400">
-                  Build, manage, and execute your automation workflows
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-6 text-sm text-neutral-400">
-              <div className="flex items-center gap-2">
-                <Activity className="h-4 w-4" />
-                <span>{workflows.length} total workflows</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Target className="h-4 w-4" />
-                <span>{filteredWorkflows.length} showing</span>
-              </div>
-              {selectedWorkflows.size > 0 && (
-                <div className="flex items-center gap-2">
-                  <CheckCircle className="h-4 w-4 text-green-400" />
-                  <span className="text-green-400">{selectedWorkflows.size} selected</span>
+      <div className="bg-card border-b-2 border-card-border px-6 py-6 shadow-sm">
+        <PageHeader
+          title="Recipes"
+          description="Build, manage, and execute your automation workflows"
+          icon={ChefHat}
+          iconColor="text-green-600"
+          actions={
+            <div className="flex items-center gap-3">
+              {showBulkActions && (
+                <div className="flex gap-2 mr-4">
+                  <button
+                    onClick={() => handleBulkAction('duplicate')}
+                    className="p-2 bg-input border border-border rounded-md text-foreground hover:bg-accent transition-colors"
+                    title="Duplicate Selected"
+                  >
+                    <Copy className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => handleBulkAction('export')}
+                    className="p-2 bg-input border border-border rounded-md text-foreground hover:bg-accent transition-colors"
+                    title="Export Selected"
+                  >
+                    <Download className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => handleBulkAction('delete')}
+                    className="p-2 bg-red-600/20 border border-red-600/30 rounded-md text-red-400 hover:bg-red-600/30 transition-colors"
+                    title="Delete Selected"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
                 </div>
               )}
+              <button 
+                onClick={() => router.push('/recipes/new')} 
+                className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground shadow hover:bg-primary/90 h-9 px-4 py-2 gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                Add Recipe
+              </button>
             </div>
+          }
+        />
+        
+        {/* Statistics */}
+        <div className="flex items-center gap-6 text-sm text-muted-foreground mt-4">
+          <div className="flex items-center gap-2">
+            <Activity className="h-4 w-4" />
+            <span>{workflows.length} total workflows</span>
           </div>
-          <div className="flex items-center gap-3">
-            {showBulkActions && (
-              <div className="flex gap-2 mr-4">
-                <button
-                  onClick={() => handleBulkAction('duplicate')}
-                  className="p-2 bg-neutral-800 border border-neutral-700 rounded-md text-neutral-300 hover:bg-neutral-700 transition-colors"
-                  title="Duplicate Selected"
-                >
-                  <Copy className="h-4 w-4" />
-                </button>
-                <button
-                  onClick={() => handleBulkAction('export')}
-                  className="p-2 bg-neutral-800 border border-neutral-700 rounded-md text-neutral-300 hover:bg-neutral-700 transition-colors"
-                  title="Export Selected"
-                >
-                  <Download className="h-4 w-4" />
-                </button>
-                <button
-                  onClick={() => handleBulkAction('delete')}
-                  className="p-2 bg-red-600/20 border border-red-600/30 rounded-md text-red-400 hover:bg-red-600/30 transition-colors"
-                  title="Delete Selected"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
-            )}
-            <button 
-              onClick={() => router.push('/recipes/new')} 
-              className="flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
-            >
-              <Plus className="h-5 w-5" />
-              Create Workflow
-            </button>
+          <div className="flex items-center gap-2">
+            <Target className="h-4 w-4" />
+            <span>{filteredWorkflows.length} showing</span>
           </div>
+          {selectedWorkflows.size > 0 && (
+            <div className="flex items-center gap-2">
+              <CheckCircle className="h-4 w-4 text-green-400" />
+              <span className="text-green-400">{selectedWorkflows.size} selected</span>
+            </div>
+          )}
         </div>
       </div>
 
       {/* Filters */}
-      <div className="bg-neutral-900 border-b border-neutral-800 px-6 py-4">
+      <div className="bg-card border-b-2 border-card-border px-6 py-4 shadow-sm">
         <div className="flex flex-col lg:flex-row gap-4 items-center">
           <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-neutral-400" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <input
               type="text"
               placeholder="Search workflows by name, type, steps, or tags..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-neutral-800 border border-neutral-700 rounded-lg text-neutral-100 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+              className="w-full pl-10 pr-4 py-2.5 bg-input border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
             />
           </div>
           
@@ -533,7 +530,7 @@ export default function WorkflowHub() {
             <select
               value={selectedType}
               onChange={(e) => setSelectedType(e.target.value)}
-              className="px-3 py-2.5 bg-neutral-800 border border-neutral-700 rounded-lg text-neutral-100 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+              className="px-3 py-2.5 bg-input border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
             >
               <option value="all">All Types</option>
               <option value="fullflow">Full Workflows</option>
@@ -544,7 +541,7 @@ export default function WorkflowHub() {
             <select
               value={selectedComplexity}
               onChange={(e) => setSelectedComplexity(e.target.value)}
-              className="px-3 py-2.5 bg-neutral-800 border border-neutral-700 rounded-lg text-neutral-100 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+              className="px-3 py-2.5 bg-input border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
             >
               <option value="all">All Complexity</option>
               <option value="easy">Easy</option>
@@ -555,7 +552,7 @@ export default function WorkflowHub() {
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as any)}
-              className="px-3 py-2.5 bg-neutral-800 border border-neutral-700 rounded-lg text-neutral-100 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+              className="px-3 py-2.5 bg-input border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
             >
               <option value="last_executed">Last Executed</option>
               <option value="name">Name</option>
@@ -565,7 +562,7 @@ export default function WorkflowHub() {
 
             <button
               onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-              className="px-3 py-2.5 bg-neutral-800 border border-neutral-700 rounded-lg text-neutral-400 hover:text-neutral-300 hover:bg-neutral-700 transition-colors text-sm"
+              className="px-3 py-2.5 bg-input border border-border rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors text-sm"
               title={`Sort ${sortOrder === 'asc' ? 'Descending' : 'Ascending'}`}
             >
               {sortOrder === 'asc' ? '↑' : '↓'}
@@ -575,12 +572,12 @@ export default function WorkflowHub() {
 
         {filteredWorkflows.length > 0 && (
           <div className="flex items-center justify-between mt-4">
-            <label className="flex items-center gap-2 text-sm text-neutral-400 cursor-pointer">
+            <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
               <input
                 type="checkbox"
                 checked={selectedWorkflows.size === filteredWorkflows.length && filteredWorkflows.length > 0}
                 onChange={(e) => handleSelectAll(e.target.checked)}
-                className="rounded border-neutral-600 text-green-500 focus:ring-green-500 focus:ring-offset-0"
+                className="rounded border-border text-green-500 focus:ring-green-500 focus:ring-offset-0"
               />
               Select all visible workflows
             </label>
@@ -592,14 +589,14 @@ export default function WorkflowHub() {
       <div className="p-6">
         {filteredWorkflows.length === 0 ? (
           <div className="text-center py-16">
-            <Workflow className="h-16 w-16 mx-auto text-neutral-600 mb-4" />
-            <h3 className="text-lg font-semibold text-neutral-300 mb-2">
+            <Workflow className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold text-foreground mb-2">
               {workflows.length === 0 
                 ? "No workflows found" 
                 : "No workflows match your filters"
               }
             </h3>
-            <p className="text-neutral-400 mb-6">
+            <p className="text-muted-foreground mb-6">
               {workflows.length === 0 
                 ? "Create your first workflow to get started with automation"
                 : "Try adjusting your search or filters to find workflows"
@@ -620,8 +617,10 @@ export default function WorkflowHub() {
             {filteredWorkflows.map((workflow) => (
               <div
                 key={workflow.id}
-                className={`group relative bg-neutral-900 border border-neutral-800 rounded-xl p-6 cursor-pointer hover:border-neutral-700 hover:shadow-lg transition-all ${
-                  selectedWorkflows.has(workflow.id) ? 'ring-2 ring-green-500 border-green-500' : ''
+                className={`workflow-card group relative bg-card border-2 rounded-xl p-6 cursor-pointer ${
+                  selectedWorkflows.has(workflow.id) 
+                    ? 'selected ring-2 ring-green-500 border-green-500' 
+                    : 'border-card-border'
                 }`}
                 onClick={(e) => {
                   if ((e.target as HTMLElement).closest('.workflow-actions')) {
@@ -636,7 +635,7 @@ export default function WorkflowHub() {
                     type="checkbox"
                     checked={selectedWorkflows.has(workflow.id)}
                     onChange={(e) => handleSelectWorkflow(workflow.id, e.target.checked)}
-                    className="rounded border-neutral-600 text-green-500 focus:ring-green-500 focus:ring-offset-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="rounded border-border text-green-500 focus:ring-green-500 focus:ring-offset-0 opacity-0 group-hover:opacity-100 transition-opacity"
                   />
                 </div>
 
@@ -648,10 +647,10 @@ export default function WorkflowHub() {
                     {getWorkflowIcon(workflow.catalog_type)}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-white mb-1 line-clamp-2">
+                    <h3 className="font-semibold text-foreground mb-1 line-clamp-2">
                       {workflow.nl_query}
                     </h3>
-                    <p className="text-sm text-neutral-400 capitalize">
+                    <p className="text-sm text-muted-foreground capitalize">
                       {workflow.catalog_type?.replace('_', ' ') || 'workflow'}
                     </p>
                     {workflow.complexity_level && (
@@ -660,7 +659,7 @@ export default function WorkflowHub() {
                           className={`w-2 h-2 rounded-full ${getComplexityColor(workflow.complexity_level)}`}
                           title={`Complexity: ${workflow.complexity_level}`}
                         />
-                        <span className="text-xs text-neutral-500 capitalize">
+                        <span className="text-xs text-muted-foreground capitalize">
                           {workflow.complexity_level}
                         </span>
                       </div>
@@ -671,28 +670,28 @@ export default function WorkflowHub() {
                 {/* Workflow Stats */}
                 <div className="grid grid-cols-3 gap-3 mb-4 text-center">
                   <div>
-                    <div className="text-lg font-semibold text-white">
+                    <div className="text-lg font-semibold text-foreground">
                       {workflow.recipe_steps?.length || 0}
                     </div>
-                    <div className="text-xs text-neutral-400">Steps</div>
+                    <div className="text-xs text-muted-foreground">Steps</div>
                   </div>
                   <div>
-                    <div className="text-lg font-semibold text-white">
+                    <div className="text-lg font-semibold text-foreground">
                       {workflow.required_tools?.length || 0}
                     </div>
-                    <div className="text-xs text-neutral-400">Tools</div>
+                    <div className="text-xs text-muted-foreground">Tools</div>
                   </div>
                   <div>
-                    <div className="text-lg font-semibold text-white">
+                    <div className="text-lg font-semibold text-foreground">
                       {workflow.execution_count || 0}
                     </div>
-                    <div className="text-xs text-neutral-400">Runs</div>
+                    <div className="text-xs text-muted-foreground">Runs</div>
                   </div>
                 </div>
 
                 {/* Performance Indicators */}
                 <div className="space-y-2 mb-4">
-                  <div className="flex items-center justify-between text-xs text-neutral-400">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
                     {workflow.success_rate !== undefined && (
                       <div className="flex items-center gap-1">
                         <TrendingUp className={`h-3 w-3 ${
@@ -707,7 +706,7 @@ export default function WorkflowHub() {
                     )}
                   </div>
                   
-                  <div className="flex items-center justify-between text-xs text-neutral-500">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <div className="flex items-center gap-1">
                       <Calendar className="h-3 w-3" />
                       <span>{formatLastExecuted(workflow.last_executed)}</span>
@@ -737,7 +736,7 @@ export default function WorkflowHub() {
                       e.stopPropagation()
                       router.push(`/recipes/${workflow.id}`)
                     }}
-                    className="flex items-center justify-center gap-2 py-2 px-3 bg-neutral-800 border border-neutral-700 rounded-lg text-neutral-300 hover:bg-neutral-700 transition-colors text-sm"
+                    className="flex items-center justify-center gap-2 py-2 px-3 bg-input border border-border rounded-lg text-foreground hover:bg-accent transition-colors text-sm"
                   >
                     <Eye className="h-3 w-3" />
                   </button>
@@ -748,7 +747,7 @@ export default function WorkflowHub() {
                       setSelectedWorkflows(new Set([workflow.id]))
                       // Open context menu or more actions
                     }}
-                    className="flex items-center justify-center gap-2 py-2 px-3 bg-neutral-800 border border-neutral-700 rounded-lg text-neutral-300 hover:bg-neutral-700 transition-colors text-sm"
+                    className="flex items-center justify-center gap-2 py-2 px-3 bg-input border border-border rounded-lg text-foreground hover:bg-accent transition-colors text-sm"
                   >
                     <MoreVertical className="h-3 w-3" />
                   </button>

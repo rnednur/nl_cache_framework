@@ -316,6 +316,34 @@ class TemplateType(str, Enum):
     }
     Example use cases: text classification, sentiment analysis, entity extraction, 
     issue categorization, content summarization, decision making, etc."""
+    
+    DUCKDB_SQL = "duckdb_sql"
+    """SQL data transformation steps using embedded DuckDB for analytics.
+    DuckDB SQL steps enable complex data transformations between workflow steps.
+    Expected JSON format in the 'template' field:
+    {
+        'query': str,  # SQL query with parameter placeholders
+        'output_table': str,  # Optional name for output table
+        'validation': {
+            'row_count_min': int,  # Minimum expected rows
+            'row_count_max': int,  # Maximum expected rows
+            'required_columns': [str],  # Required output columns
+            'data_quality_checks': [str]  # SQL expressions for quality validation
+        },
+        'examples': [
+            {
+                'name': str,
+                'description': str,
+                'sample_query': str,
+                'expected_result': dict
+            }
+        ]
+    }
+    Parameter substitution supports:
+    - {variable_name} for entity values
+    - {table:step_id} for table references
+    - {step_id.column} for specific column values
+    This enables powerful data analytics and transformations within workflows."""
 
 
 class Status(str, Enum):

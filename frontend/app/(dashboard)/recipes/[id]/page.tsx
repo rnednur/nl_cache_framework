@@ -370,10 +370,10 @@ ${tools.map(tool => `    <tool id="${tool.id}">
   return (
     <div className="space-y-6">
       {/* Breadcrumb Navigation */}
-      <div className="flex items-center gap-2 text-sm text-neutral-400">
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <button
           onClick={() => router.push('/')}
-          className="flex items-center gap-1 hover:text-neutral-300 transition-colors"
+          className="flex items-center gap-1 hover:text-foreground transition-colors"
         >
           <Home className="h-4 w-4" />
           Home
@@ -381,18 +381,18 @@ ${tools.map(tool => `    <tool id="${tool.id}">
         <ChevronRight className="h-4 w-4" />
         <button
           onClick={() => router.push('/recipes')}
-          className="hover:text-neutral-300 transition-colors"
+          className="hover:text-foreground transition-colors"
         >
           Workflows
         </button>
         <ChevronRight className="h-4 w-4" />
-        <span className="text-neutral-300 truncate max-w-[200px]" title={recipe.nl_query}>
+        <span className="text-foreground truncate max-w-[200px]" title={recipe.nl_query}>
           {recipe.nl_query}
         </span>
       </div>
 
       {/* Header */}
-      <div className="bg-neutral-900 rounded-lg border border-neutral-800 p-6">
+      <div className="bg-card rounded-lg border border-border p-6">
         <div className="flex items-start justify-between">
           <div className="flex items-start gap-4">
             <div className={`p-3 rounded-lg ${getRecipeTypeColor(recipe.template_type)} flex-shrink-0`}>
@@ -404,7 +404,7 @@ ${tools.map(tool => `    <tool id="${tool.id}">
                   <Input
                     value={editedName}
                     onChange={(e) => setEditedName(e.target.value)}
-                    className="text-xl font-semibold bg-neutral-800 border-neutral-700"
+                    className="text-xl font-semibold bg-input border-border"
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') handleSaveInlineEdit('name')
                       if (e.key === 'Escape') handleCancelInlineEdit('name')
@@ -430,7 +430,7 @@ ${tools.map(tool => `    <tool id="${tool.id}">
                 </div>
               ) : (
                 <div className="flex items-center gap-2 group mb-2">
-                  <h1 className="text-2xl font-semibold text-white truncate">{recipe.nl_query}</h1>
+                  <h1 className="text-2xl font-semibold text-foreground truncate">{recipe.nl_query}</h1>
                   <Button
                     size="sm"
                     variant="ghost"
@@ -442,7 +442,7 @@ ${tools.map(tool => `    <tool id="${tool.id}">
                 </div>
               )}
               <div className="flex items-center gap-3 text-sm">
-                <span className="text-neutral-400 capitalize">
+                <span className="text-muted-foreground capitalize">
                   {RECIPE_TYPES[recipe.template_type as keyof typeof RECIPE_TYPES]?.label || recipe.template_type}
                 </span>
                 <Badge 
@@ -471,7 +471,7 @@ ${tools.map(tool => `    <tool id="${tool.id}">
                 navigator.clipboard.writeText(recipe.id.toString())
                 toast.success('Recipe ID copied to clipboard')
               }}
-              className="gap-2 border-neutral-600 text-neutral-400 hover:bg-neutral-800"
+              className="gap-2 border-neutral-600 text-muted-foreground hover:bg-accent"
             >
               <Copy className="h-3 w-3" />
             </Button>
@@ -483,14 +483,14 @@ ${tools.map(tool => `    <tool id="${tool.id}">
                 navigator.clipboard.writeText(url)
                 toast.success('Recipe URL copied to clipboard')
               }}
-              className="gap-2 border-neutral-600 text-neutral-400 hover:bg-neutral-800"
+              className="gap-2 border-neutral-600 text-muted-foreground hover:bg-accent"
             >
               <Share className="h-3 w-3" />
             </Button>
             <Button
               variant="outline"
               onClick={() => router.push(`/recipes/new?edit=${recipe.id}`)}
-              className="gap-2 border-neutral-600 text-neutral-300 hover:bg-neutral-700"
+              className="gap-2 border-neutral-600 text-foreground hover:bg-neutral-700"
             >
               <Edit className="h-4 w-4" />
               Edit
@@ -510,14 +510,14 @@ ${tools.map(tool => `    <tool id="${tool.id}">
 
       {/* Recipe Overview Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card className="bg-neutral-800 border-neutral-700 hover:bg-neutral-750 transition-colors cursor-pointer">
+        <Card className="bg-input border-border hover:bg-neutral-750 transition-colors cursor-pointer">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <div className="text-2xl font-bold text-white mb-1">
+                <div className="text-2xl font-bold text-foreground mb-1">
                   {recipe.recipe_steps?.length || 0}
                 </div>
-                <div className="text-sm text-neutral-400">Steps</div>
+                <div className="text-sm text-muted-foreground">Steps</div>
               </div>
               <div className="p-3 bg-blue-500/10 rounded-full">
                 <Layers className="h-6 w-6 text-blue-400" />
@@ -526,14 +526,14 @@ ${tools.map(tool => `    <tool id="${tool.id}">
           </CardContent>
         </Card>
         
-        <Card className="bg-neutral-800 border-neutral-700 hover:bg-neutral-750 transition-colors cursor-pointer">
+        <Card className="bg-input border-border hover:bg-neutral-750 transition-colors cursor-pointer">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <div className="text-2xl font-bold text-white mb-1">
+                <div className="text-2xl font-bold text-foreground mb-1">
                   {recipe.usage_count || 0}
                 </div>
-                <div className="text-sm text-neutral-400">Usage Count</div>
+                <div className="text-sm text-muted-foreground">Usage Count</div>
                 {recipe.usage_count && recipe.usage_count > 0 && (
                   <div className="flex items-center gap-1 text-xs text-green-400 mt-1">
                     <TrendingUp className="h-3 w-3" />
@@ -548,14 +548,14 @@ ${tools.map(tool => `    <tool id="${tool.id}">
           </CardContent>
         </Card>
         
-        <Card className="bg-neutral-800 border-neutral-700 hover:bg-neutral-750 transition-colors cursor-pointer">
+        <Card className="bg-input border-border hover:bg-neutral-750 transition-colors cursor-pointer">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <div className="text-2xl font-bold text-white mb-1">
+                <div className="text-2xl font-bold text-foreground mb-1">
                   {tools.length || 0}
                 </div>
-                <div className="text-sm text-neutral-400">Required Tools</div>
+                <div className="text-sm text-muted-foreground">Required Tools</div>
                 {tools.length > 0 && (
                   <div className="text-xs text-neutral-500 mt-1">
                     {tools.filter(t => t.health_status === 'healthy').length} healthy
@@ -569,14 +569,14 @@ ${tools.map(tool => `    <tool id="${tool.id}">
           </CardContent>
         </Card>
         
-        <Card className="bg-neutral-800 border-neutral-700 hover:bg-neutral-750 transition-colors cursor-pointer">
+        <Card className="bg-input border-border hover:bg-neutral-750 transition-colors cursor-pointer">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <div className="text-lg font-bold text-white mb-1">
+                <div className="text-lg font-bold text-foreground mb-1">
                   {new Date(recipe.created_at).toLocaleDateString()}
                 </div>
-                <div className="text-sm text-neutral-400">Created</div>
+                <div className="text-sm text-muted-foreground">Created</div>
                 <div className="text-xs text-neutral-500 mt-1">
                   {Math.floor((Date.now() - new Date(recipe.created_at).getTime()) / (1000 * 60 * 60 * 24))} days ago
                 </div>
@@ -593,7 +593,7 @@ ${tools.map(tool => `    <tool id="${tool.id}">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Recipe Steps */}
         <div className="lg:col-span-2">
-          <Card className="bg-neutral-800 border-neutral-700">
+          <Card className="bg-input border-border">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Layers className="h-5 w-5" />
@@ -605,12 +605,12 @@ ${tools.map(tool => `    <tool id="${tool.id}">
             </CardHeader>
             <CardContent>
               <Tabs value={stepsTab} onValueChange={(value) => setStepsTab(value as typeof stepsTab)}>
-                <TabsList className="grid w-full grid-cols-2 mb-6 bg-neutral-900 border border-neutral-700">
-                  <TabsTrigger value="visual" className="flex items-center gap-2 data-[state=active]:bg-neutral-800 data-[state=active]:text-green-400 text-neutral-400">
+                <TabsList className="grid w-full grid-cols-2 mb-6 bg-neutral-900 border border-border">
+                  <TabsTrigger value="visual" className="flex items-center gap-2 data-[state=active]:bg-input data-[state=active]:text-green-400 text-muted-foreground">
                     <Layers className="h-4 w-4" />
                     Visual Steps
                   </TabsTrigger>
-                  <TabsTrigger value="xml" className="flex items-center gap-2 data-[state=active]:bg-neutral-800 data-[state=active]:text-green-400 text-neutral-400">
+                  <TabsTrigger value="xml" className="flex items-center gap-2 data-[state=active]:bg-input data-[state=active]:text-green-400 text-muted-foreground">
                     <Code className="h-4 w-4" />
                     XML View
                   </TabsTrigger>
@@ -624,13 +624,13 @@ ${tools.map(tool => `    <tool id="${tool.id}">
                           key={step.id}
                           className="group relative"
                         >
-                          <div className="flex items-start gap-4 p-4 bg-neutral-900 rounded-lg border border-neutral-700 hover:border-neutral-600 transition-colors">
+                          <div className="flex items-start gap-4 p-4 bg-neutral-900 rounded-lg border border-border hover:border-neutral-600 transition-colors">
                             <div className="flex-shrink-0 w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-sm font-semibold">
                               {index + 1}
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-start gap-2 mb-2">
-                                <h4 className="font-medium text-white truncate">{step.name}</h4>
+                                <h4 className="font-medium text-foreground truncate">{step.name}</h4>
                                 <div className={`flex items-center gap-1 px-2 py-1 rounded text-xs text-white ${getStepTypeColor(step.type)}`}>
                                   {getStepTypeIcon(step.type)}
                                   <span className="capitalize">{step.type}</span>
@@ -642,7 +642,7 @@ ${tools.map(tool => `    <tool id="${tool.id}">
                                   <span className="text-xs text-neutral-500">Depends on:</span>
                                   <div className="flex gap-1">
                                     {step.depends_on.map((dep, i) => (
-                                      <Badge key={i} variant="outline" className="text-xs border-neutral-600 text-neutral-400">
+                                      <Badge key={i} variant="outline" className="text-xs border-neutral-600 text-muted-foreground">
                                         #{dep}
                                       </Badge>
                                     ))}
@@ -689,7 +689,7 @@ ${tools.map(tool => `    <tool id="${tool.id}">
                   ) : (
                     <div className="text-center py-12">
                       <Layers className="h-12 w-12 text-neutral-600 mx-auto mb-4" />
-                      <h3 className="text-lg font-medium text-neutral-400 mb-2">No steps defined</h3>
+                      <h3 className="text-lg font-medium text-muted-foreground mb-2">No steps defined</h3>
                       <p className="text-sm text-neutral-500 mb-4">This workflow doesn't have any steps yet.</p>
                       <Button
                         onClick={() => router.push(`/recipes/new?edit=${recipe.id}`)}
@@ -715,13 +715,13 @@ ${tools.map(tool => `    <tool id="${tool.id}">
                           navigator.clipboard.writeText(xmlContent)
                           toast.success('XML copied to clipboard!')
                         }}
-                        className="gap-2 text-xs bg-neutral-800 border-neutral-600 text-neutral-200 hover:bg-neutral-700 hover:text-white"
+                        className="gap-2 text-xs bg-input border-border text-foreground hover:bg-accent hover:text-accent-foreground"
                       >
                         <Copy className="h-3 w-3" />
                         Copy XML
                       </Button>
                     </div>
-                    <pre className="bg-neutral-900 border border-neutral-700 rounded-lg p-4 text-sm text-neutral-300 overflow-x-auto max-h-[600px] overflow-y-auto">
+                    <pre className="bg-neutral-900 border border-border rounded-lg p-4 text-sm text-foreground overflow-x-auto max-h-[600px] overflow-y-auto">
                       <code className="language-xml">
                         {generateRecipeXML(recipe)}
                       </code>
@@ -736,24 +736,24 @@ ${tools.map(tool => `    <tool id="${tool.id}">
         {/* Recipe Info & Settings */}
         <div className="space-y-6">
           {/* Recipe Information */}
-          <Card className="bg-neutral-800 border-neutral-700">
+          <Card className="bg-input border-border">
             <CardHeader>
-              <CardTitle className="text-neutral-100">Recipe Information</CardTitle>
+              <CardTitle className="text-foreground">Recipe Information</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-3">
                 {recipe.complexity_level && (
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-neutral-300">Complexity</span>
+                    <span className="text-sm text-foreground">Complexity</span>
                     <div className="flex items-center gap-2">
                       <div className={`w-3 h-3 rounded-full ${getComplexityColor(recipe.complexity_level)}`} />
-                      <span className="text-sm capitalize text-neutral-100">{recipe.complexity_level}</span>
+                      <span className="text-sm capitalize text-foreground">{recipe.complexity_level}</span>
                     </div>
                   </div>
                 )}
                 
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-neutral-300">Status</span>
+                  <span className="text-sm text-foreground">Status</span>
                   <Badge 
                     variant={recipe.status === 'active' ? 'default' : 'secondary'} 
                     className={`capitalize text-white font-medium ${
@@ -767,21 +767,21 @@ ${tools.map(tool => `    <tool id="${tool.id}">
                 </div>
                 
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-neutral-300">Usage Count</span>
+                  <span className="text-sm text-foreground">Usage Count</span>
                   <div className="text-right">
-                    <span className="text-sm text-neutral-100 font-medium">{recipe.usage_count || 0}</span>
-                    <div className="text-xs text-neutral-400">times executed</div>
+                    <span className="text-sm text-foreground font-medium">{recipe.usage_count || 0}</span>
+                    <div className="text-xs text-muted-foreground">times executed</div>
                   </div>
                 </div>
                 
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-neutral-300">Recipe ID</span>
+                  <span className="text-sm text-foreground">Recipe ID</span>
                   <div className="flex items-center gap-2">
-                    <span className="text-sm text-neutral-100 font-mono">#{recipe.id}</span>
+                    <span className="text-sm text-foreground font-mono">#{recipe.id}</span>
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="h-6 w-6 p-0 text-neutral-400 hover:text-neutral-200 hover:bg-neutral-700"
+                      className="h-6 w-6 p-0 text-muted-foreground hover:text-neutral-200 hover:bg-neutral-700"
                       onClick={() => {
                         navigator.clipboard.writeText(recipe.id.toString())
                         toast.success('ID copied!')
@@ -795,22 +795,22 @@ ${tools.map(tool => `    <tool id="${tool.id}">
               
               <div className="pt-4 border-t border-neutral-600 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-neutral-300">Updated</span>
+                  <span className="text-sm text-foreground">Updated</span>
                   <div className="text-right">
-                    <span className="text-sm text-neutral-100">{new Date(recipe.updated_at).toLocaleDateString()}</span>
-                    <div className="text-xs text-neutral-400">
+                    <span className="text-sm text-foreground">{new Date(recipe.updated_at).toLocaleDateString()}</span>
+                    <div className="text-xs text-muted-foreground">
                       {Math.floor((Date.now() - new Date(recipe.updated_at).getTime()) / (1000 * 60 * 60 * 24))} days ago
                     </div>
                   </div>
                 </div>
                 
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-neutral-300">Created</span>
+                  <span className="text-sm text-foreground">Created</span>
                   <div className="text-right">
-                    <span className="text-sm text-neutral-100">
+                    <span className="text-sm text-foreground">
                       {new Date(recipe.created_at).toLocaleDateString()}
                     </span>
-                    <div className="text-xs text-neutral-400">
+                    <div className="text-xs text-muted-foreground">
                       {Math.floor((Date.now() - new Date(recipe.created_at).getTime()) / (1000 * 60 * 60 * 24))} days ago
                     </div>
                   </div>
@@ -827,7 +827,7 @@ ${tools.map(tool => `    <tool id="${tool.id}">
                       // TODO: Implement duplicate functionality
                       toast.info('Duplicate recipe coming soon!')
                     }}
-                    className="gap-2 text-xs bg-neutral-700 border-neutral-600 text-neutral-200 hover:bg-neutral-600 hover:text-white"
+                    className="gap-2 text-xs bg-input border-border text-foreground hover:bg-accent hover:text-accent-foreground"
                   >
                     <Copy className="h-3 w-3" />
                     Duplicate
@@ -840,7 +840,7 @@ ${tools.map(tool => `    <tool id="${tool.id}">
                       navigator.clipboard.writeText(url)
                       toast.success('URL copied!')
                     }}
-                    className="gap-2 text-xs bg-neutral-700 border-neutral-600 text-neutral-200 hover:bg-neutral-600 hover:text-white"
+                    className="gap-2 text-xs bg-input border-border text-foreground hover:bg-accent hover:text-accent-foreground"
                   >
                     <Share className="h-3 w-3" />
                     Share
@@ -851,13 +851,13 @@ ${tools.map(tool => `    <tool id="${tool.id}">
           </Card>
 
           {/* Export Settings */}
-          <Card className="bg-neutral-800 border-neutral-700">
+          <Card className="bg-input border-border">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-neutral-100">
+              <CardTitle className="flex items-center gap-2 text-foreground">
                 <Download className="h-4 w-4" />
                 Export Recipe
               </CardTitle>
-              <CardDescription className="text-neutral-300">
+              <CardDescription className="text-foreground">
                 Export to different workflow formats
               </CardDescription>
             </CardHeader>
@@ -867,19 +867,19 @@ ${tools.map(tool => `    <tool id="${tool.id}">
                   Export Format
                 </label>
                 <Select value={selectedFormat} onValueChange={setSelectedFormat}>
-                  <SelectTrigger className="bg-neutral-900 border-neutral-600 text-neutral-100">
+                  <SelectTrigger className="bg-neutral-900 border-neutral-600 text-foreground">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-neutral-900 border-neutral-700">
+                  <SelectContent className="bg-neutral-900 border-border">
                     {SUPPORTED_FORMATS.map((format) => (
                       <SelectItem 
                         key={format.value} 
                         value={format.value}
-                        className="text-neutral-100 hover:bg-neutral-800 focus:bg-neutral-800"
+                        className="text-foreground hover:bg-accent focus:bg-input"
                       >
                         <div>
-                          <div className="font-medium text-neutral-100">{format.label}</div>
-                          <div className="text-xs text-neutral-400">{format.description}</div>
+                          <div className="font-medium text-foreground">{format.label}</div>
+                          <div className="text-xs text-muted-foreground">{format.description}</div>
                         </div>
                       </SelectItem>
                     ))}
@@ -890,7 +890,7 @@ ${tools.map(tool => `    <tool id="${tool.id}">
               <Button
                 onClick={handleExportRecipe}
                 disabled={isExporting}
-                className="w-full gap-2 bg-neutral-700 border-neutral-600 text-neutral-200 hover:bg-neutral-600 hover:text-white"
+                className="w-full gap-2 bg-input border-border text-foreground hover:bg-accent hover:text-accent-foreground"
                 variant="outline"
               >
                 {isExporting ? (
@@ -905,7 +905,7 @@ ${tools.map(tool => `    <tool id="${tool.id}">
 
           {/* Required Tools */}
           {tools.length > 0 && (
-            <Card className="bg-neutral-800 border-neutral-700">
+            <Card className="bg-input border-border">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Zap className="h-4 w-4" />
@@ -919,12 +919,12 @@ ${tools.map(tool => `    <tool id="${tool.id}">
                 {tools.map((tool) => (
                   <div
                     key={tool.id}
-                    className="flex items-center gap-3 p-3 bg-neutral-900 rounded-lg border border-neutral-700 cursor-pointer hover:border-neutral-600"
+                    className="flex items-center gap-3 p-3 bg-neutral-900 rounded-lg border border-border cursor-pointer hover:border-neutral-600"
                     onClick={() => router.push(`/tools/${tool.id}`)}
                   >
                     <div className="flex-1">
-                      <h4 className="font-medium text-white text-sm">{tool.nl_query}</h4>
-                      <p className="text-xs text-neutral-400 capitalize">{tool.template_type}</p>
+                      <h4 className="font-medium text-foreground text-sm">{tool.nl_query}</h4>
+                      <p className="text-xs text-muted-foreground capitalize">{tool.template_type}</p>
                     </div>
                     <div className="flex items-center gap-2">
                       {tool.health_status && (
@@ -937,7 +937,7 @@ ${tools.map(tool => `    <tool id="${tool.id}">
                           }`}
                         />
                       )}
-                      <ExternalLink className="h-3 w-3 text-neutral-400" />
+                      <ExternalLink className="h-3 w-3 text-muted-foreground" />
                     </div>
                   </div>
                 ))}

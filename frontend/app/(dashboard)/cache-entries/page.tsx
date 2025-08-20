@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
-import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight } from "lucide-react"
+import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, Database, Plus } from "lucide-react"
 import { Button } from "@/app/components/ui/button"
 import { Input } from "@/app/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/app/components/ui/select"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/components/ui/card"
+import { PageHeader } from "@/app/components/ui/PageHeader"
 import { Switch } from "@/app/components/ui/switch"
 import { Label } from "@/app/components/ui/label"
 import api, { CacheItem, CatalogValues } from "@/app/services/api"
@@ -197,20 +198,24 @@ export default function CacheEntries() {
   
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold tracking-tight text-neutral-200">Cache Entries</h1>
-        <Button asChild className="bg-[#3B4BF6] hover:bg-[#2b3bdc] text-white">
-          <Link href="/cache-entries/create">
-            <PlusCircle className="mr-2 h-4 w-4" />
-            Create Entry
-          </Link>
-        </Button>
-      </div>
+      <PageHeader
+        title="Cache Entries"
+        description="Manage your cached queries and templates"
+        icon={Database}
+        actions={
+          <Button asChild className="gap-2">
+            <Link href="/cache-entries/create">
+              <Plus className="h-4 w-4" />
+              Add Cache
+            </Link>
+          </Button>
+        }
+      />
       
-      <Card className="bg-neutral-900 border-neutral-700 shadow-sm">
+      <Card className="workflow-card bg-card border-2 border-card-border">
         <CardHeader className="pb-3">
-          <CardTitle className="text-neutral-200">Filters</CardTitle>
-          <CardDescription className="text-neutral-400">
+          <CardTitle className="text-foreground">Filters</CardTitle>
+          <CardDescription className="text-muted-foreground">
             Filter cache entries by template type or search for specific queries
           </CardDescription>
         </CardHeader>
@@ -225,43 +230,43 @@ export default function CacheEntries() {
                     setCurrentPage(1)
                   }}
                 >
-                  <SelectTrigger className="bg-neutral-800 border-neutral-700 text-neutral-300">
+                  <SelectTrigger className="bg-input border-border text-foreground">
                     <SelectValue placeholder="All template types" />
                   </SelectTrigger>
-                  <SelectContent className="bg-neutral-800 border-neutral-700 text-neutral-300">
-                    <SelectItem value="all" className="text-neutral-300">All template types</SelectItem>
-                    <SelectItem value="sql" className="text-neutral-300">SQL</SelectItem>
-                    <SelectItem value="url" className="text-neutral-300">URL</SelectItem>
-                    <SelectItem value="api" className="text-neutral-300">API</SelectItem>
-                    <SelectItem value="workflow" className="text-neutral-300">Workflow</SelectItem>
-                    <SelectItem value="graphql" className="text-neutral-300">GraphQL</SelectItem>
-                    <SelectItem value="regex" className="text-neutral-300">Regex</SelectItem>
-                    <SelectItem value="script" className="text-neutral-300">Script</SelectItem>
-                    <SelectItem value="nosql" className="text-neutral-300">NoSQL</SelectItem>
-                    <SelectItem value="cli" className="text-neutral-300">CLI</SelectItem>
-                    <SelectItem value="reasoning_steps" className="text-neutral-300">Reasoning Steps</SelectItem>
-                    <SelectItem value="dsl" className="text-neutral-300">DSL Components</SelectItem>
+                  <SelectContent className="bg-input border-border text-foreground">
+                    <SelectItem value="all" className="text-foreground">All template types</SelectItem>
+                    <SelectItem value="sql" className="text-foreground">SQL</SelectItem>
+                    <SelectItem value="url" className="text-foreground">URL</SelectItem>
+                    <SelectItem value="api" className="text-foreground">API</SelectItem>
+                    <SelectItem value="workflow" className="text-foreground">Workflow</SelectItem>
+                    <SelectItem value="graphql" className="text-foreground">GraphQL</SelectItem>
+                    <SelectItem value="regex" className="text-foreground">Regex</SelectItem>
+                    <SelectItem value="script" className="text-foreground">Script</SelectItem>
+                    <SelectItem value="nosql" className="text-foreground">NoSQL</SelectItem>
+                    <SelectItem value="cli" className="text-foreground">CLI</SelectItem>
+                    <SelectItem value="reasoning_steps" className="text-foreground">Reasoning Steps</SelectItem>
+                    <SelectItem value="dsl" className="text-foreground">DSL Components</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               
               <form onSubmit={handleSearch} className="flex w-full sm:w-2/3 gap-2">
                 <div className="relative flex-1">
-                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-neutral-400" />
+                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
                     placeholder="Search queries..."
-                    className="pl-8 bg-neutral-800 border-neutral-700 text-neutral-300 focus-visible:ring-[#3B4BF6] placeholder:text-neutral-500"
+                    className="pl-8 bg-input border-border text-foreground focus-visible:ring-ring placeholder:text-muted-foreground"
                     value={searchInputValue}
                     onChange={(e) => setSearchInputValue(e.target.value)}
                   />
                 </div>
-                <Button type="submit" className="bg-[#3B4BF6] hover:bg-[#2b3bdc] text-white">Search</Button>
+                <Button type="submit" className="bg-primary hover:bg-primary/90 text-primary-foreground">Search</Button>
               </form>
             </div>
             
             <div className="flex flex-col sm:flex-row gap-4">
               <div className="w-full sm:w-1/3">
-                <label className="text-xs text-neutral-400 block mb-1">Catalog Type</label>
+                <label className="text-xs text-muted-foreground block mb-1">Catalog Type</label>
                 <Select
                   value={catalogType}
                   onValueChange={(value) => {
@@ -271,20 +276,20 @@ export default function CacheEntries() {
                     setCurrentPage(1)
                   }}
                 >
-                  <SelectTrigger className="bg-neutral-800 border-neutral-700 text-neutral-300">
+                  <SelectTrigger className="bg-input border-border text-foreground">
                     <SelectValue placeholder="All catalog types" />
                   </SelectTrigger>
-                  <SelectContent className="bg-neutral-800 border-neutral-700 text-neutral-300">
-                    <SelectItem value="all" className="text-neutral-300">All catalog types</SelectItem>
+                  <SelectContent className="bg-input border-border text-foreground">
+                    <SelectItem value="all" className="text-foreground">All catalog types</SelectItem>
                     {catalogValues.catalog_types.map((type) => (
-                      <SelectItem key={type} value={type} className="text-neutral-300">{type}</SelectItem>
+                      <SelectItem key={type} value={type} className="text-foreground">{type}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
               
               <div className="w-full sm:w-1/3">
-                <label className="text-xs text-neutral-400 block mb-1">Catalog Subtype</label>
+                <label className="text-xs text-muted-foreground block mb-1">Catalog Subtype</label>
                 <Select
                   value={catalogSubtype}
                   onValueChange={(value) => {
@@ -293,22 +298,22 @@ export default function CacheEntries() {
                   }}
                   disabled={catalogType === "all"}
                 >
-                  <SelectTrigger className="bg-neutral-800 border-neutral-700 text-neutral-300">
+                  <SelectTrigger className="bg-input border-border text-foreground">
                     <SelectValue placeholder="All subtypes" />
                   </SelectTrigger>
-                  <SelectContent className="bg-neutral-800 border-neutral-700 text-neutral-300">
-                    <SelectItem value="all" className="text-neutral-300">All subtypes</SelectItem>
+                  <SelectContent className="bg-input border-border text-foreground">
+                    <SelectItem value="all" className="text-foreground">All subtypes</SelectItem>
                     {catalogValues.catalog_subtypes
                       .filter(subtype => catalogType !== "all" && subtype.startsWith(catalogType))
                       .map((subtype) => (
-                        <SelectItem key={subtype} value={subtype} className="text-neutral-300">{subtype}</SelectItem>
+                        <SelectItem key={subtype} value={subtype} className="text-foreground">{subtype}</SelectItem>
                       ))}
                   </SelectContent>
                 </Select>
               </div>
               
               <div className="w-full sm:w-1/3">
-                <label className="text-xs text-neutral-400 block mb-1">Catalog Name</label>
+                <label className="text-xs text-muted-foreground block mb-1">Catalog Name</label>
                 <Select
                   value={catalogName}
                   onValueChange={(value) => {
@@ -317,15 +322,15 @@ export default function CacheEntries() {
                   }}
                   disabled={catalogType === "all"}
                 >
-                  <SelectTrigger className="bg-neutral-800 border-neutral-700 text-neutral-300">
+                  <SelectTrigger className="bg-input border-border text-foreground">
                     <SelectValue placeholder="All names" />
                   </SelectTrigger>
-                  <SelectContent className="bg-neutral-800 border-neutral-700 text-neutral-300">
-                    <SelectItem value="all" className="text-neutral-300">All names</SelectItem>
+                  <SelectContent className="bg-input border-border text-foreground">
+                    <SelectItem value="all" className="text-foreground">All names</SelectItem>
                     {catalogValues.catalog_names
                       .filter(name => catalogType !== "all" && name.startsWith(catalogType))
                       .map((name) => (
-                        <SelectItem key={name} value={name} className="text-neutral-300">{name}</SelectItem>
+                        <SelectItem key={name} value={name} className="text-foreground">{name}</SelectItem>
                       ))}
                   </SelectContent>
                 </Select>
@@ -337,23 +342,22 @@ export default function CacheEntries() {
             </div>
           
             <div className="flex items-center space-x-2">
-              <div 
-                className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#121212] border border-neutral-800 cursor-pointer"
-                onClick={() => setUseSimilaritySearch(!useSimilaritySearch)}
-              >
-                <div className={`w-10 h-6 rounded-full relative ${useSimilaritySearch ? 'bg-[#3B4BF6]' : 'bg-neutral-700'}`}>
-                  <div 
-                    className={`absolute w-4 h-4 rounded-full bg-white top-1 transition-all duration-200 ${useSimilaritySearch ? 'left-5' : 'left-1'}`}
-                  ></div>
-                </div>
-                <span className="text-white text-sm font-medium">Use similarity search</span>
+              <div className="flex h-6 items-center">
+                <Switch
+                  id="similarity-search"
+                  checked={useSimilaritySearch}
+                  onCheckedChange={setUseSimilaritySearch}
+                />
               </div>
+              <Label htmlFor="similarity-search" className="text-sm font-medium text-foreground">
+                Use similarity search
+              </Label>
             </div>
           </div>
         </CardContent>
       </Card>
       
-      <div className="rounded-md overflow-hidden">
+      <Card className="workflow-card bg-card border-2 border-card-border overflow-hidden">
         <div className="relative w-full overflow-auto">
           <style jsx>{`
             th {
@@ -375,7 +379,7 @@ export default function CacheEntries() {
             }
           `}</style>
           <table className="w-full caption-bottom text-sm" ref={tableRef}>
-            <thead className="bg-[#151515] text-neutral-300">
+            <thead className="bg-muted text-foreground">
               <tr>
                 <th className="h-10 px-4 text-left font-medium" style={{ width: `${columnWidths[0]}%`, minWidth: '200px' }} ref={(el: HTMLTableCellElement | null) => { thRefs.current[0] = el; }}>Query</th>
                 <th className="h-10 px-4 text-left font-medium" style={{ width: `${columnWidths[1]}%`, minWidth: '100px' }} ref={(el: HTMLTableCellElement | null) => { thRefs.current[1] = el; }}>Template Type</th>
@@ -386,27 +390,27 @@ export default function CacheEntries() {
                 <th className="h-10 px-4 text-left font-medium" style={{ width: `${columnWidths[6]}%`, minWidth: '100px' }} ref={(el: HTMLTableCellElement | null) => { thRefs.current[6] = el; }}>Actions</th>
               </tr>
             </thead>
-            <tbody className="bg-[#1a1a1a] text-neutral-200">
+            <tbody className="bg-background text-foreground">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="h-24 text-center text-neutral-400">
+                  <td colSpan={7} className="h-24 text-center text-muted-foreground">
                     Loading cache entries...
                   </td>
                 </tr>
               ) : entries.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="h-24 text-center text-neutral-400">
+                  <td colSpan={7} className="h-24 text-center text-muted-foreground">
                     No cache entries found.
                   </td>
                 </tr>
               ) : (
                 entries.map((entry) => (
-                  <tr key={entry.id} className="transition-colors hover:bg-[#222222] border-b border-[#222222]">
+                  <tr key={entry.id} className="transition-colors hover:bg-accent/50 border-b border-border">
                     <td className="p-4 align-middle" style={{ width: `${columnWidths[0]}%`, minWidth: '200px' }}>
                       <div className="truncate font-medium">
                         <Link 
                           href={`/cache-entries/${entry.id}`}
-                          className="hover:underline text-neutral-200"
+                          className="hover:underline text-foreground"
                         >
                           {entry.nl_query}
                         </Link>
@@ -428,7 +432,7 @@ export default function CacheEntries() {
                           entry.tags.map((tag, index) => (
                             <span 
                               key={`tag-${index}-${tag}`} 
-                              className="inline-flex items-center rounded-full bg-neutral-700 px-2 py-1 text-xs text-neutral-300"
+                              className="inline-flex items-center rounded-full bg-muted/60 px-2 py-1 text-xs text-foreground"
                             >
                               {tag}
                             </span>
@@ -446,7 +450,7 @@ export default function CacheEntries() {
                     </td>
                     <td className="p-4 align-middle" style={{ width: `${columnWidths[6]}%`, minWidth: '100px' }}>
                       <div className="flex items-center gap-2">
-                        <Button variant="ghost" size="icon" asChild className="hover:bg-neutral-700 text-neutral-400">
+                        <Button variant="ghost" size="icon" asChild className="hover:bg-accent text-muted-foreground">
                           <Link href={`/cache-entries/${entry.id}/edit`}>
                             <Edit className="h-4 w-4" />
                             <span className="sr-only">Edit</span>
@@ -456,7 +460,7 @@ export default function CacheEntries() {
                           variant="ghost" 
                           size="icon"
                           onClick={() => handleDeleteEntry(entry.id)}
-                          className="hover:bg-neutral-700 text-neutral-400"
+                          className="hover:bg-accent text-muted-foreground"
                         >
                           <Trash2 className="h-4 w-4" />
                           <span className="sr-only">Delete</span>
@@ -470,10 +474,10 @@ export default function CacheEntries() {
           </table>
         </div>
         
-        <div className="flex items-center justify-between px-4 py-4 border-t border-[#222222] bg-[#151515]">
-          <div className="text-sm text-neutral-400">
-            Showing <span className="font-medium text-neutral-300">{entries.length}</span> of{" "}
-            <span className="font-medium text-neutral-300">{totalEntries}</span> entries
+        <div className="flex items-center justify-between px-4 py-4 border-t border-border bg-muted">
+          <div className="text-sm text-muted-foreground">
+            Showing <span className="font-medium text-foreground">{entries.length}</span> of{" "}
+            <span className="font-medium text-foreground">{totalEntries}</span> entries
           </div>
           
           <div className="flex items-center space-x-2">
@@ -482,28 +486,28 @@ export default function CacheEntries() {
               size="sm" 
               onClick={handlePreviousPage}
               disabled={currentPage === 1}
-              className="border-neutral-600 text-neutral-300 hover:bg-neutral-800 hover:text-neutral-200"
+              className="border-neutral-600 text-foreground hover:bg-input hover:text-foreground"
             >
               <ChevronLeft className="h-4 w-4 mr-1" />
               Previous
             </Button>
-            <div className="text-sm text-neutral-400">
-              Page <span className="font-medium text-neutral-300">{currentPage}</span> of{" "}
-              <span className="font-medium text-neutral-300">{totalPages || 1}</span>
+            <div className="text-sm text-muted-foreground">
+              Page <span className="font-medium text-foreground">{currentPage}</span> of{" "}
+              <span className="font-medium text-foreground">{totalPages || 1}</span>
             </div>
             <Button 
               variant="outline" 
               size="sm" 
               onClick={handleNextPage}
               disabled={currentPage >= totalPages}
-              className="border-neutral-600 text-neutral-300 hover:bg-neutral-800 hover:text-neutral-200"
+              className="border-neutral-600 text-foreground hover:bg-input hover:text-foreground"
             >
               Next
               <ChevronRight className="h-4 w-4 ml-1" />
             </Button>
           </div>
         </div>
-      </div>
+      </Card>
     </div>
   )
 } 

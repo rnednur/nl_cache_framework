@@ -12,9 +12,11 @@ import {
   Search,
   SlidersHorizontal,
   Zap,
-  ExternalLink
+  ExternalLink,
+  ClipboardList
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/app/components/ui/card"
+import { PageHeader } from "@/app/components/ui/PageHeader"
 import { Button } from "@/app/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/app/components/ui/select"
 import { Label } from "@/app/components/ui/label"
@@ -68,7 +70,7 @@ function CacheEntryHover({ entryId, children }: CacheEntryHoverProps) {
       
       {isHovering && (
         <div 
-          className="fixed z-[9999] bg-neutral-900 border border-blue-600 rounded-md shadow-lg p-4"
+          className="fixed z-[9999] bg-card border border-primary rounded-md shadow-lg p-4"
           style={{ 
             left: `${position.x}px`, 
             top: `${position.y}px`,
@@ -81,33 +83,33 @@ function CacheEntryHover({ entryId, children }: CacheEntryHoverProps) {
           {loading ? (
             <div className="flex items-center justify-center py-4">
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-400"></div>
-              <span className="ml-2 text-neutral-400 text-sm">Loading...</span>
+              <span className="ml-2 text-muted-foreground text-sm">Loading...</span>
             </div>
           ) : error ? (
             <div className="text-red-400 text-sm py-2">{error}</div>
           ) : entryData ? (
             <div className="space-y-3">
               <div>
-                <div className="text-neutral-400 text-xs mb-1">Query:</div>
-                <div className="text-white text-sm">{entryData.nl_query}</div>
+                <div className="text-muted-foreground text-xs mb-1">Query:</div>
+                <div className="text-foreground text-sm">{entryData.nl_query}</div>
               </div>
               
               <div className="flex gap-4">
                 <div className="flex-1">
-                  <div className="text-neutral-400 text-xs mb-1">Type:</div>
-                  <div className="text-white text-sm capitalize">{entryData.template_type || "N/A"}</div>
+                  <div className="text-muted-foreground text-xs mb-1">Type:</div>
+                  <div className="text-foreground text-sm capitalize">{entryData.template_type || "N/A"}</div>
                 </div>
                 <div className="flex-1">
-                  <div className="text-neutral-400 text-xs mb-1">Created:</div>
-                  <div className="text-white text-sm">
+                  <div className="text-muted-foreground text-xs mb-1">Created:</div>
+                  <div className="text-foreground text-sm">
                     {entryData.created_at ? new Date(entryData.created_at).toLocaleString() : "N/A"}
                   </div>
                 </div>
               </div>
               
               <div>
-                <div className="text-neutral-400 text-xs mb-1">Template:</div>
-                <pre className="text-white text-xs bg-neutral-800 p-2 rounded-md overflow-auto max-h-[100px] whitespace-pre-wrap">{entryData.template}</pre>
+                <div className="text-muted-foreground text-xs mb-1">Template:</div>
+                <pre className="text-foreground text-xs bg-neutral-800 p-2 rounded-md overflow-auto max-h-[100px] whitespace-pre-wrap">{entryData.template}</pre>
               </div>
               
               <div className="pt-2 text-center text-xs text-blue-400">
@@ -115,7 +117,7 @@ function CacheEntryHover({ entryId, children }: CacheEntryHoverProps) {
               </div>
             </div>
           ) : (
-            <div className="text-neutral-400 text-sm py-2">No data available</div>
+            <div className="text-muted-foreground text-sm py-2">No data available</div>
           )}
         </div>
       )}
@@ -129,7 +131,8 @@ export default function UsageLogs() {
   const [catalogValues, setCatalogValues] = useState<CatalogValues>({
     catalog_types: [],
     catalog_subtypes: [],
-    catalog_names: []
+    catalog_names: [],
+    template_types: []
   })
   const [filters, setFilters] = useState({
     catalogType: "all",
@@ -310,26 +313,30 @@ export default function UsageLogs() {
     <TooltipProvider>
       <div className="space-y-8">
         <div className="flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-bold tracking-tight text-neutral-200">Usage Logs</h2>
-            <div className="flex gap-2">
-              <Button 
-                variant="outline" 
-                onClick={() => setShowFilters(!showFilters)}
-                className="border-neutral-700 hover:bg-neutral-800 text-neutral-300"
-              >
-                <SlidersHorizontal className="h-4 w-4 mr-2" />
-                {showFilters ? "Hide Filters" : "Show Filters"}
-              </Button>
-              <Button 
-                onClick={handleDownloadCSV}
-                className="bg-[#3B4BF6] hover:bg-[#2b3bdc] text-white"
-              >
-                <Download className="h-4 w-4 mr-2" />
-                Export CSV
-              </Button>
-            </div>
-          </div>
+          <PageHeader
+            title="Usage Logs"
+            description="Complete cache usage history and analytics"
+            icon={ClipboardList}
+            actions={
+              <div className="flex gap-2">
+                <Button 
+                  variant="outline" 
+                  onClick={() => setShowFilters(!showFilters)}
+                  className="border-border hover:bg-accent text-foreground"
+                >
+                  <SlidersHorizontal className="h-4 w-4 mr-2" />
+                  {showFilters ? "Hide Filters" : "Show Filters"}
+                </Button>
+                <Button 
+                  onClick={handleDownloadCSV}
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Export CSV
+                </Button>
+              </div>
+            }
+          />
           
           {/* Quick filters */}
           <div className="flex flex-wrap gap-4 items-center">
@@ -340,10 +347,10 @@ export default function UsageLogs() {
                     id="success-filter-quick"
                     checked={filters.successOnly}
                     onCheckedChange={(checked) => handleFilterChange("successOnly", checked)}
-                    className="bg-neutral-700 data-[state=checked]:bg-green-600"
+                    className="data-[state=unchecked]:bg-neutral-300 data-[state=checked]:bg-neutral-400"
                   />
                 </div>
-                <Label htmlFor="success-filter-quick" className="text-sm font-medium text-neutral-300">
+                <Label htmlFor="success-filter-quick" className="text-sm font-medium text-foreground">
                   Show only successful queries
                 </Label>
               </div>
@@ -354,30 +361,30 @@ export default function UsageLogs() {
                     id="llm-filter-quick"
                     checked={filters.llmUsedOnly}
                     onCheckedChange={(checked) => handleFilterChange("llmUsedOnly", checked)}
-                    className="bg-neutral-700 data-[state=checked]:bg-purple-600"
+                    className="data-[state=unchecked]:bg-neutral-300 data-[state=checked]:bg-neutral-400"
                   />
                 </div>
-                <Label htmlFor="llm-filter-quick" className="text-sm font-medium text-neutral-300">
+                <Label htmlFor="llm-filter-quick" className="text-sm font-medium text-foreground">
                   Show only LLM-assisted queries
                 </Label>
               </div>
             </div>
             
             <div className="flex items-center gap-3 ml-auto">
-              <Label htmlFor="time-period-quick" className="text-sm font-medium text-neutral-300">Time period:</Label>
+              <Label htmlFor="time-period-quick" className="text-sm font-medium text-foreground">Time period:</Label>
               <Select 
                 value={filters.timePeriod} 
                 onValueChange={(value) => handleFilterChange("timePeriod", value)}
               >
-                <SelectTrigger id="time-period-quick" className="w-40 bg-neutral-800 border-neutral-700 text-neutral-300">
+                <SelectTrigger id="time-period-quick" className="w-40 bg-input border-border text-foreground">
                   <SelectValue placeholder="All time" />
                 </SelectTrigger>
-                <SelectContent className="bg-neutral-800 border-neutral-700 text-neutral-300">
-                  <SelectItem value="all" className="text-neutral-300">All Time</SelectItem>
-                  <SelectItem value="today" className="text-neutral-300">Today</SelectItem>
-                  <SelectItem value="yesterday" className="text-neutral-300">Yesterday</SelectItem>
-                  <SelectItem value="week" className="text-neutral-300">Last 7 days</SelectItem>
-                  <SelectItem value="month" className="text-neutral-300">Last 30 days</SelectItem>
+                <SelectContent className="bg-input border-border text-foreground">
+                  <SelectItem value="all" className="text-foreground">All Time</SelectItem>
+                  <SelectItem value="today" className="text-foreground">Today</SelectItem>
+                  <SelectItem value="yesterday" className="text-foreground">Yesterday</SelectItem>
+                  <SelectItem value="week" className="text-foreground">Last 7 days</SelectItem>
+                  <SelectItem value="month" className="text-foreground">Last 30 days</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -386,13 +393,13 @@ export default function UsageLogs() {
         
         {/* Advanced Filters */}
         {showFilters && (
-          <Card className="bg-neutral-900 border-neutral-700 shadow-sm">
+          <Card className="workflow-card bg-card border-2 border-card-border">
             <CardHeader className="pb-3">
-              <CardTitle className="text-neutral-200 flex items-center gap-2">
+              <CardTitle className="text-foreground flex items-center gap-2">
                 <Filter className="h-5 w-5" />
                 Advanced Filters
               </CardTitle>
-              <CardDescription className="text-neutral-400">
+              <CardDescription className="text-muted-foreground">
                 Filter logs by various criteria
               </CardDescription>
             </CardHeader>
@@ -400,57 +407,57 @@ export default function UsageLogs() {
               <div className="space-y-6">
                 {/* Catalog filters section */}
                 <div>
-                  <h3 className="text-sm font-medium text-neutral-400 mb-3">Catalog Filters</h3>
+                  <h3 className="text-sm font-medium text-muted-foreground mb-3">Catalog Filters</h3>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div>
-                      <Label htmlFor="catalog-type" className="mb-2 block text-sm font-medium text-neutral-300">Catalog Type</Label>
+                      <Label htmlFor="catalog-type" className="mb-2 block text-sm font-medium text-foreground">Catalog Type</Label>
                       <Select 
                         value={filters.catalogType} 
                         onValueChange={(value) => handleFilterChange("catalogType", value)}
                       >
-                        <SelectTrigger id="catalog-type" className="w-full bg-neutral-800 border-neutral-700 text-neutral-300">
+                        <SelectTrigger id="catalog-type" className="w-full bg-input border-border text-foreground">
                           <SelectValue placeholder="Select catalog type" />
                         </SelectTrigger>
-                        <SelectContent className="bg-neutral-800 border-neutral-700 text-neutral-300">
-                          <SelectItem value="all" className="text-neutral-300">All catalog types</SelectItem>
+                        <SelectContent className="bg-input border-border text-foreground">
+                          <SelectItem value="all" className="text-foreground">All catalog types</SelectItem>
                           {catalogValues.catalog_types.map((type) => (
-                            <SelectItem key={type} value={type} className="text-neutral-300">{type}</SelectItem>
+                            <SelectItem key={type} value={type} className="text-foreground">{type}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
                     
                     <div>
-                      <Label htmlFor="catalog-subtype" className="mb-2 block text-sm font-medium text-neutral-300">Catalog Subtype</Label>
+                      <Label htmlFor="catalog-subtype" className="mb-2 block text-sm font-medium text-foreground">Catalog Subtype</Label>
                       <Select 
                         value={filters.catalogSubtype} 
                         onValueChange={(value) => handleFilterChange("catalogSubtype", value)}
                       >
-                        <SelectTrigger id="catalog-subtype" className="w-full bg-neutral-800 border-neutral-700 text-neutral-300">
+                        <SelectTrigger id="catalog-subtype" className="w-full bg-input border-border text-foreground">
                           <SelectValue placeholder="Select catalog subtype" />
                         </SelectTrigger>
-                        <SelectContent className="bg-neutral-800 border-neutral-700 text-neutral-300">
-                          <SelectItem value="all" className="text-neutral-300">All catalog subtypes</SelectItem>
+                        <SelectContent className="bg-input border-border text-foreground">
+                          <SelectItem value="all" className="text-foreground">All catalog subtypes</SelectItem>
                           {catalogValues.catalog_subtypes.map((subtype) => (
-                            <SelectItem key={subtype} value={subtype} className="text-neutral-300">{subtype}</SelectItem>
+                            <SelectItem key={subtype} value={subtype} className="text-foreground">{subtype}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
                     
                     <div>
-                      <Label htmlFor="catalog-name" className="mb-2 block text-sm font-medium text-neutral-300">Catalog Name</Label>
+                      <Label htmlFor="catalog-name" className="mb-2 block text-sm font-medium text-foreground">Catalog Name</Label>
                       <Select 
                         value={filters.catalogName} 
                         onValueChange={(value) => handleFilterChange("catalogName", value)}
                       >
-                        <SelectTrigger id="catalog-name" className="w-full bg-neutral-800 border-neutral-700 text-neutral-300">
+                        <SelectTrigger id="catalog-name" className="w-full bg-input border-border text-foreground">
                           <SelectValue placeholder="Select catalog name" />
                         </SelectTrigger>
-                        <SelectContent className="bg-neutral-800 border-neutral-700 text-neutral-300">
-                          <SelectItem value="all" className="text-neutral-300">All catalog names</SelectItem>
+                        <SelectContent className="bg-input border-border text-foreground">
+                          <SelectItem value="all" className="text-foreground">All catalog names</SelectItem>
                           {catalogValues.catalog_names.map((name) => (
-                            <SelectItem key={name} value={name} className="text-neutral-300">{name}</SelectItem>
+                            <SelectItem key={name} value={name} className="text-foreground">{name}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -460,37 +467,37 @@ export default function UsageLogs() {
                 
                 {/* Time and search filters section */}
                 <div>
-                  <h3 className="text-sm font-medium text-neutral-400 mb-3">Time & Content Filters</h3>
+                  <h3 className="text-sm font-medium text-muted-foreground mb-3">Time & Content Filters</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
-                      <Label htmlFor="time-period" className="mb-2 block text-sm font-medium text-neutral-300">Time Period</Label>
+                      <Label htmlFor="time-period" className="mb-2 block text-sm font-medium text-foreground">Time Period</Label>
                       <Select 
                         value={filters.timePeriod} 
                         onValueChange={(value) => handleFilterChange("timePeriod", value)}
                       >
-                        <SelectTrigger id="time-period" className="w-full bg-neutral-800 border-neutral-700 text-neutral-300">
+                        <SelectTrigger id="time-period" className="w-full bg-input border-border text-foreground">
                           <SelectValue placeholder="Select time period" />
                         </SelectTrigger>
-                        <SelectContent className="bg-neutral-800 border-neutral-700 text-neutral-300">
-                          <SelectItem value="all" className="text-neutral-300">All Time</SelectItem>
-                          <SelectItem value="today" className="text-neutral-300">Today</SelectItem>
-                          <SelectItem value="yesterday" className="text-neutral-300">Yesterday</SelectItem>
-                          <SelectItem value="week" className="text-neutral-300">Last 7 days</SelectItem>
-                          <SelectItem value="month" className="text-neutral-300">Last 30 days</SelectItem>
+                        <SelectContent className="bg-input border-border text-foreground">
+                          <SelectItem value="all" className="text-foreground">All Time</SelectItem>
+                          <SelectItem value="today" className="text-foreground">Today</SelectItem>
+                          <SelectItem value="yesterday" className="text-foreground">Yesterday</SelectItem>
+                          <SelectItem value="week" className="text-foreground">Last 7 days</SelectItem>
+                          <SelectItem value="month" className="text-foreground">Last 30 days</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                     
                     <div>
-                      <Label htmlFor="search" className="mb-2 block text-sm font-medium text-neutral-300">Search Prompt</Label>
+                      <Label htmlFor="search" className="mb-2 block text-sm font-medium text-foreground">Search Prompt</Label>
                       <div className="relative">
                         <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                          <Search className="h-4 w-4 text-neutral-400" />
+                          <Search className="h-4 w-4 text-muted-foreground" />
                         </div>
                         <Input
                           id="search"
                           type="text"
-                          className="pl-10 bg-neutral-800 border-neutral-700 text-neutral-300 placeholder-neutral-500 focus:border-[#3B4BF6] focus:ring-[#3B4BF6]"
+                          className="pl-10 bg-input border-border text-foreground placeholder:text-muted-foreground focus:border-ring focus:ring-ring"
                           placeholder="Search in prompt or error messages"
                           value={filters.searchQuery}
                           onChange={(e) => handleFilterChange("searchQuery", e.target.value)}
@@ -502,7 +509,7 @@ export default function UsageLogs() {
                 
                 {/* Query type filters */}
                 <div>
-                  <h3 className="text-sm font-medium text-neutral-400 mb-3">Query Type Filters</h3>
+                  <h3 className="text-sm font-medium text-muted-foreground mb-3">Query Type Filters</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="flex items-center space-x-2">
                       <div className="flex h-6 items-center">
@@ -510,10 +517,10 @@ export default function UsageLogs() {
                           id="success-filter"
                           checked={filters.successOnly}
                           onCheckedChange={(checked) => handleFilterChange("successOnly", checked)}
-                          className="bg-neutral-700 data-[state=checked]:bg-green-600"
+                          className="data-[state=unchecked]:bg-neutral-300 data-[state=checked]:bg-neutral-400"
                         />
                       </div>
-                      <Label htmlFor="success-filter" className="text-sm font-medium text-neutral-300">
+                      <Label htmlFor="success-filter" className="text-sm font-medium text-foreground">
                         Show only successful queries
                       </Label>
                     </div>
@@ -524,10 +531,10 @@ export default function UsageLogs() {
                           id="llm-filter"
                           checked={filters.llmUsedOnly}
                           onCheckedChange={(checked) => handleFilterChange("llmUsedOnly", checked)}
-                          className="bg-neutral-700 data-[state=checked]:bg-purple-600"
+                          className="data-[state=unchecked]:bg-neutral-300 data-[state=checked]:bg-neutral-400"
                         />
                       </div>
-                      <Label htmlFor="llm-filter" className="text-sm font-medium text-neutral-300">
+                      <Label htmlFor="llm-filter" className="text-sm font-medium text-foreground">
                         Show only LLM-assisted queries
                       </Label>
                     </div>
@@ -535,9 +542,9 @@ export default function UsageLogs() {
                 </div>
                 
                 {/* Page size and reset */}
-                <div className="flex justify-between items-center pt-4 border-t border-neutral-800">
+                <div className="flex justify-between items-center pt-4 border-t border-border">
                   <div>
-                    <Label htmlFor="page-size" className="mr-2 text-sm font-medium text-neutral-300">Items per page:</Label>
+                    <Label htmlFor="page-size" className="mr-2 text-sm font-medium text-foreground">Items per page:</Label>
                     <Select 
                       value={String(pageSize)} 
                       onValueChange={(value) => {
@@ -545,14 +552,14 @@ export default function UsageLogs() {
                         setPage(1)
                       }}
                     >
-                      <SelectTrigger id="page-size" className="w-24 bg-neutral-800 border-neutral-700 text-neutral-300">
+                      <SelectTrigger id="page-size" className="w-24 bg-input border-border text-foreground">
                         <SelectValue placeholder="Page size" />
                       </SelectTrigger>
-                      <SelectContent className="bg-neutral-800 border-neutral-700 text-neutral-300">
-                        <SelectItem value="10" className="text-neutral-300">10</SelectItem>
-                        <SelectItem value="20" className="text-neutral-300">20</SelectItem>
-                        <SelectItem value="50" className="text-neutral-300">50</SelectItem>
-                        <SelectItem value="100" className="text-neutral-300">100</SelectItem>
+                      <SelectContent className="bg-input border-border text-foreground">
+                        <SelectItem value="10" className="text-foreground">10</SelectItem>
+                        <SelectItem value="20" className="text-foreground">20</SelectItem>
+                        <SelectItem value="50" className="text-foreground">50</SelectItem>
+                        <SelectItem value="100" className="text-foreground">100</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -570,7 +577,7 @@ export default function UsageLogs() {
                       setPage(1)
                     }}
                     variant="outline"
-                    className="border-neutral-700 hover:bg-neutral-800 text-neutral-300"
+                    className="border-border hover:bg-accent text-foreground"
                   >
                     Reset Filters
                   </Button>
@@ -580,10 +587,10 @@ export default function UsageLogs() {
           </Card>
         )}
         
-        <Card className="bg-neutral-900 border-neutral-700 shadow-sm">
+        <Card className="bg-card border-border shadow-sm">
           <CardHeader>
-            <CardTitle className="text-neutral-200">Detailed Usage Logs</CardTitle>
-            <CardDescription className="text-neutral-400">
+            <CardTitle className="text-foreground">Detailed Usage Logs</CardTitle>
+            <CardDescription className="text-muted-foreground">
               Complete cache usage history with {totalLogs} total logs
             </CardDescription>
           </CardHeader>
@@ -598,19 +605,19 @@ export default function UsageLogs() {
                   <table className="min-w-full divide-y divide-neutral-700">
                     <thead>
                       <tr>
-                        <th className="px-4 py-3 bg-neutral-800 text-left text-xs font-medium text-neutral-400 uppercase tracking-wider">Time</th>
-                        <th className="px-4 py-3 bg-neutral-800 text-left text-xs font-medium text-neutral-400 uppercase tracking-wider">Status</th>
-                        <th className="px-4 py-3 bg-neutral-800 text-left text-xs font-medium text-neutral-400 uppercase tracking-wider">Prompt</th>
-                        <th className="px-4 py-3 bg-neutral-800 text-left text-xs font-medium text-neutral-400 uppercase tracking-wider">Similarity</th>
-                        <th className="px-4 py-3 bg-neutral-800 text-left text-xs font-medium text-neutral-400 uppercase tracking-wider">Cache Entry ID</th>
-                        <th className="px-4 py-3 bg-neutral-800 text-left text-xs font-medium text-neutral-400 uppercase tracking-wider">LLM Used</th>
-                        <th className="px-4 py-3 bg-neutral-800 text-left text-xs font-medium text-neutral-400 uppercase tracking-wider">Catalog</th>
+                        <th className="px-4 py-3 bg-muted text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Time</th>
+                        <th className="px-4 py-3 bg-muted text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
+                        <th className="px-4 py-3 bg-muted text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Prompt</th>
+                        <th className="px-4 py-3 bg-muted text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Similarity</th>
+                        <th className="px-4 py-3 bg-muted text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Cache Entry ID</th>
+                        <th className="px-4 py-3 bg-muted text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">LLM Used</th>
+                        <th className="px-4 py-3 bg-muted text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Catalog</th>
                       </tr>
                     </thead>
-                    <tbody className="bg-neutral-900 divide-y divide-neutral-800">
+                    <tbody className="bg-card divide-y divide-neutral-800">
                       {usageLogs.map((log) => (
                         <tr key={log.id}>
-                          <td className="px-4 py-3 text-sm text-neutral-300">{formatDate(log.timestamp)}</td>
+                          <td className="px-4 py-3 text-sm text-foreground">{formatDate(log.timestamp)}</td>
                           <td className="px-4 py-3 text-sm">
                             {log.success_status ? (
                               <span className="inline-flex items-center gap-1 text-green-400">
@@ -622,7 +629,7 @@ export default function UsageLogs() {
                                 <XCircle className="h-4 w-4" />
                                 Failed
                                 {log.error_message && (
-                                  <span className="block mt-1 text-xs text-neutral-400">
+                                  <span className="block mt-1 text-xs text-muted-foreground">
                                     {log.error_message.length > 30 
                                       ? `${log.error_message.substring(0, 30)}...` 
                                       : log.error_message}
@@ -631,7 +638,7 @@ export default function UsageLogs() {
                               </span>
                             )}
                           </td>
-                          <td className="px-4 py-3 text-sm text-neutral-300">
+                          <td className="px-4 py-3 text-sm text-foreground">
                             {log.prompt 
                               ? (
                                 <Tooltip>
@@ -649,7 +656,7 @@ export default function UsageLogs() {
                               ) 
                               : '-'}
                           </td>
-                          <td className="px-4 py-3 text-sm text-neutral-300">
+                          <td className="px-4 py-3 text-sm text-foreground">
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <div className="cursor-help">
@@ -684,24 +691,24 @@ export default function UsageLogs() {
                               '-'
                             )}
                           </td>
-                          <td className="px-4 py-3 text-sm text-neutral-300">
+                          <td className="px-4 py-3 text-sm text-foreground">
                             {log.llm_used ? (
                               <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-900 text-purple-300">
                                 <Zap className="h-3 w-3 mr-1" />
                                 Yes
                               </span>
                             ) : (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-neutral-700 text-neutral-300">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-neutral-700 text-foreground">
                                 No
                               </span>
                             )}
                           </td>
-                          <td className="px-4 py-3 text-sm text-neutral-300">
+                          <td className="px-4 py-3 text-sm text-foreground">
                             {log.catalog_type ? (
                               <div className="flex flex-col">
                                 <span className="font-medium">{log.catalog_type}</span>
-                                {log.catalog_subtype && <span className="text-xs text-neutral-400">{log.catalog_subtype}</span>}
-                                {log.catalog_name && <span className="text-xs text-neutral-400">{log.catalog_name}</span>}
+                                {log.catalog_subtype && <span className="text-xs text-muted-foreground">{log.catalog_subtype}</span>}
+                                {log.catalog_name && <span className="text-xs text-muted-foreground">{log.catalog_name}</span>}
                               </div>
                             ) : '-'}
                           </td>
@@ -714,7 +721,7 @@ export default function UsageLogs() {
                 {/* Pagination */}
                 {totalPages > 1 && (
                   <div className="flex items-center justify-between mt-4">
-                    <div className="text-sm text-neutral-400">
+                    <div className="text-sm text-muted-foreground">
                       Showing page {page} of {totalPages} ({usageLogs.length} of {totalLogs} logs)
                     </div>
                     <div className="flex gap-2">
@@ -723,7 +730,7 @@ export default function UsageLogs() {
                         size="sm" 
                         onClick={() => setPage(1)}
                         disabled={page === 1}
-                        className="border-neutral-700 hover:bg-neutral-800 text-neutral-300"
+                        className="border-border hover:bg-accent text-foreground"
                       >
                         First
                       </Button>
@@ -732,7 +739,7 @@ export default function UsageLogs() {
                         size="sm" 
                         onClick={() => setPage(prev => Math.max(prev - 1, 1))}
                         disabled={page === 1}
-                        className="border-neutral-700 hover:bg-neutral-800 text-neutral-300"
+                        className="border-border hover:bg-accent text-foreground"
                       >
                         Previous
                       </Button>
@@ -741,7 +748,7 @@ export default function UsageLogs() {
                         size="sm" 
                         onClick={() => setPage(prev => Math.min(prev + 1, totalPages))}
                         disabled={page === totalPages}
-                        className="border-neutral-700 hover:bg-neutral-800 text-neutral-300"
+                        className="border-border hover:bg-accent text-foreground"
                       >
                         Next
                       </Button>
@@ -750,7 +757,7 @@ export default function UsageLogs() {
                         size="sm" 
                         onClick={() => setPage(totalPages)}
                         disabled={page === totalPages}
-                        className="border-neutral-700 hover:bg-neutral-800 text-neutral-300"
+                        className="border-border hover:bg-accent text-foreground"
                       >
                         Last
                       </Button>
@@ -761,7 +768,7 @@ export default function UsageLogs() {
             ) : (
               <div className="flex flex-col items-center justify-center h-96">
                 <Info className="h-16 w-16 text-neutral-600 mb-4" />
-                <p className="text-neutral-400 text-lg">No usage logs available</p>
+                <p className="text-muted-foreground text-lg">No usage logs available</p>
                 {filters.searchQuery || filters.successOnly || filters.llmUsedOnly || 
                  filters.catalogType !== "all" || filters.catalogSubtype !== "all" || filters.catalogName !== "all" ? (
                   <p className="text-neutral-500 mt-2">Try changing your filter criteria</p>

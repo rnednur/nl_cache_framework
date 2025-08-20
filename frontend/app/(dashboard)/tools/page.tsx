@@ -11,6 +11,7 @@ import {
   CardTitle,
 } from '@/app/components/ui/card'
 import { Button } from '@/app/components/ui/button'
+import { PageHeader } from '@/app/components/ui/PageHeader'
 import { Input } from '@/app/components/ui/input'
 import { Badge } from '@/app/components/ui/badge'
 import {
@@ -23,9 +24,9 @@ import {
 import {
   Search,
   Plus,
+  Wrench,
   Play,
   Settings,
-  Wrench,
   Bot,
   Code,
   Webhook,
@@ -54,7 +55,7 @@ const HEALTH_STATUS_COLOR = {
   healthy: 'bg-green-500',
   degraded: 'bg-yellow-500',
   unhealthy: 'bg-red-500',
-  unknown: 'bg-neutral-500',
+  unknown: 'bg-muted',
 } as const
 
 export default function Tools() {
@@ -180,11 +181,11 @@ export default function Tools() {
   }
 
   const getToolTypeColor = (templateType: string) => {
-    return TOOL_TYPES[templateType as keyof typeof TOOL_TYPES]?.color || 'bg-neutral-500'
+    return TOOL_TYPES[templateType as keyof typeof TOOL_TYPES]?.color || 'bg-muted'
   }
 
   const getHealthStatusColor = (status?: string) => {
-    return HEALTH_STATUS_COLOR[status as keyof typeof HEALTH_STATUS_COLOR] || 'bg-neutral-500'
+    return HEALTH_STATUS_COLOR[status as keyof typeof HEALTH_STATUS_COLOR] || 'bg-muted'
   }
 
   const formatLastTested = (lastTested?: string) => {
@@ -221,39 +222,37 @@ export default function Tools() {
 
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Tool Hub</h1>
-          <p className="text-neutral-400 mt-1">
-            Discover and manage your tools, agents, and functions
-          </p>
-        </div>
-        <Button onClick={() => router.push('/tools/new')} className="gap-2">
-          <Plus className="h-4 w-4" />
-          Add Tool
-        </Button>
-      </div>
+      <PageHeader
+        title="Tool Hub"
+        description="Discover and manage your tools, agents, and functions"
+        icon={Wrench}
+        actions={
+          <Button onClick={() => router.push('/tools/new')} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Add Tool
+          </Button>
+        }
+      />
 
       {/* Filters */}
-      <Card className="bg-neutral-800 border-neutral-700">
+      <Card className="workflow-card bg-card border-2 border-card-border">
         <CardContent className="pt-6">
           <div className="space-y-4">
             {/* Search and Primary Filters */}
             <div className="flex flex-col md:flex-row gap-4">
               <div className="flex-1">
                 <div className="relative">
-                  <Search className="absolute left-3 top-3 h-4 w-4 text-neutral-400" />
+                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                   <Input
                     placeholder="Search tools by name, type, catalog, or capabilities..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10 bg-neutral-900 border-neutral-700"
+                    className="pl-10 bg-card border-border"
                   />
                 </div>
               </div>
               <Select value={selectedType} onValueChange={setSelectedType}>
-                <SelectTrigger className="w-48 bg-neutral-900 border-neutral-700">
+                <SelectTrigger className="w-48 bg-card border-border">
                   <Filter className="h-4 w-4 mr-2" />
                   <SelectValue placeholder="Tool Type" />
                 </SelectTrigger>
@@ -267,7 +266,7 @@ export default function Tools() {
                 </SelectContent>
               </Select>
               <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-                <SelectTrigger className="w-48 bg-neutral-900 border-neutral-700">
+                <SelectTrigger className="w-48 bg-card border-border">
                   <SelectValue placeholder="Health Status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -281,12 +280,12 @@ export default function Tools() {
             </div>
 
             {/* Catalog Filters */}
-            <div className="flex flex-col md:flex-row gap-4 pt-4 border-t border-neutral-700">
-              <div className="text-sm font-medium text-neutral-300 flex items-center min-w-fit">
+            <div className="flex flex-col md:flex-row gap-4 pt-4 border-t border-border">
+              <div className="text-sm font-medium text-foreground flex items-center min-w-fit">
                 Catalog Filters:
               </div>
               <Select value={selectedCatalogType} onValueChange={setSelectedCatalogType}>
-                <SelectTrigger className="w-full md:w-48 bg-neutral-900 border-neutral-700">
+                <SelectTrigger className="w-full md:w-48 bg-card border-border">
                   <SelectValue placeholder="Catalog Type" />
                 </SelectTrigger>
                 <SelectContent>
@@ -297,7 +296,7 @@ export default function Tools() {
                 </SelectContent>
               </Select>
               <Select value={selectedCatalogSubtype} onValueChange={setSelectedCatalogSubtype}>
-                <SelectTrigger className="w-full md:w-48 bg-neutral-900 border-neutral-700">
+                <SelectTrigger className="w-full md:w-48 bg-card border-border">
                   <SelectValue placeholder="Catalog Subtype" />
                 </SelectTrigger>
                 <SelectContent>
@@ -308,7 +307,7 @@ export default function Tools() {
                 </SelectContent>
               </Select>
               <Select value={selectedCatalogName} onValueChange={setSelectedCatalogName}>
-                <SelectTrigger className="w-full md:w-48 bg-neutral-900 border-neutral-700">
+                <SelectTrigger className="w-full md:w-48 bg-card border-border">
                   <SelectValue placeholder="Catalog Name" />
                 </SelectTrigger>
                 <SelectContent>
@@ -322,36 +321,36 @@ export default function Tools() {
 
             {/* Active Filters Summary */}
             {(selectedType !== 'all' || selectedStatus !== 'all' || selectedCatalogType !== 'all' || selectedCatalogSubtype !== 'all' || selectedCatalogName !== 'all' || searchQuery.trim()) && (
-              <div className="flex items-center gap-2 pt-2 border-t border-neutral-700">
-                <span className="text-xs text-neutral-400">Active filters:</span>
+              <div className="flex items-center gap-2 pt-2 border-t border-border">
+                <span className="text-xs text-muted-foreground">Active filters:</span>
                 <div className="flex flex-wrap gap-1">
                   {searchQuery.trim() && (
-                    <Badge variant="secondary" className="text-xs bg-blue-500/20 text-blue-300">
+                    <Badge variant="secondary" className="text-xs bg-blue-600/20 text-blue-400 border border-blue-600/30">
                       Search: "{searchQuery}"
                     </Badge>
                   )}
                   {selectedType !== 'all' && (
-                    <Badge variant="secondary" className="text-xs bg-purple-500/20 text-purple-300">
+                    <Badge variant="secondary" className="text-xs bg-purple-600/20 text-purple-400 border border-purple-600/30">
                       Type: {TOOL_TYPES[selectedType as keyof typeof TOOL_TYPES]?.label || selectedType}
                     </Badge>
                   )}
                   {selectedStatus !== 'all' && (
-                    <Badge variant="secondary" className="text-xs bg-yellow-500/20 text-yellow-300">
+                    <Badge variant="secondary" className="text-xs bg-yellow-600/20 text-yellow-400 border border-yellow-600/30">
                       Status: {selectedStatus}
                     </Badge>
                   )}
                   {selectedCatalogType !== 'all' && (
-                    <Badge variant="secondary" className="text-xs bg-green-500/20 text-green-300">
+                    <Badge variant="secondary" className="text-xs bg-green-600/20 text-green-400 border border-green-600/30">
                       Catalog: {selectedCatalogType}
                     </Badge>
                   )}
                   {selectedCatalogSubtype !== 'all' && (
-                    <Badge variant="secondary" className="text-xs bg-green-500/20 text-green-300">
+                    <Badge variant="secondary" className="text-xs bg-green-600/20 text-green-400 border border-green-600/30">
                       Subtype: {selectedCatalogSubtype}
                     </Badge>
                   )}
                   {selectedCatalogName !== 'all' && (
-                    <Badge variant="secondary" className="text-xs bg-green-500/20 text-green-300">
+                    <Badge variant="secondary" className="text-xs bg-green-600/20 text-green-400 border border-green-600/30">
                       Name: {selectedCatalogName}
                     </Badge>
                   )}
@@ -359,7 +358,7 @@ export default function Tools() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="text-xs text-neutral-400 hover:text-neutral-300 ml-auto"
+                  className="text-xs text-muted-foreground hover:text-foreground ml-auto"
                   onClick={() => {
                     setSearchQuery('')
                     setSelectedType('all')
@@ -379,10 +378,10 @@ export default function Tools() {
 
       {/* Tools Grid */}
       {filteredTools.length === 0 ? (
-        <Card className="bg-neutral-800 border-neutral-700">
+        <Card className="bg-input border-border">
           <CardContent className="text-center py-8">
-            <Wrench className="h-12 w-12 mx-auto text-neutral-400 mb-4" />
-            <p className="text-neutral-400">
+            <Wrench className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+            <p className="text-muted-foreground">
               {tools.length === 0 
                 ? "No tools found. Create your first tool to get started."
                 : "No tools match your current filters."
@@ -404,7 +403,7 @@ export default function Tools() {
           {filteredTools.map((tool) => (
             <Card 
               key={tool.id} 
-              className="cursor-pointer hover:shadow-lg transition-shadow bg-neutral-800 border-neutral-700 hover:border-neutral-600"
+              className="workflow-card cursor-pointer border-2 border-card-border bg-card"
               onClick={() => router.push(`/tools/${tool.id}`)}
             >
               <CardHeader className="pb-3">
@@ -414,10 +413,10 @@ export default function Tools() {
                       {getToolIcon(tool.template_type)}
                     </div>
                     <div>
-                      <CardTitle className="text-base line-clamp-1 text-white">
+                      <CardTitle className="text-base line-clamp-1 text-foreground">
                         {tool.nl_query}
                       </CardTitle>
-                      <CardDescription className="capitalize text-neutral-400">
+                      <CardDescription className="capitalize text-muted-foreground">
                         {TOOL_TYPES[tool.template_type as keyof typeof TOOL_TYPES]?.label || tool.template_type}
                       </CardDescription>
                     </div>
@@ -434,7 +433,7 @@ export default function Tools() {
                 {/* Catalog Information */}
                 {(tool.catalog_type || tool.catalog_subtype || tool.catalog_name) && (
                   <div className="mb-3">
-                    <p className="text-xs text-neutral-400 mb-2">Catalog</p>
+                    <p className="text-xs text-muted-foreground mb-2">Catalog</p>
                     <div className="flex flex-wrap gap-1">
                       {tool.catalog_type && (
                         <Badge variant="outline" className="text-xs border-green-600 text-green-300">
@@ -458,15 +457,15 @@ export default function Tools() {
                 {/* Capabilities */}
                 {tool.tool_capabilities && tool.tool_capabilities.length > 0 && (
                   <div className="mb-3">
-                    <p className="text-xs text-neutral-400 mb-2">Capabilities</p>
+                    <p className="text-xs text-muted-foreground mb-2">Capabilities</p>
                     <div className="flex flex-wrap gap-1">
                       {tool.tool_capabilities.slice(0, 3).map((capability, index) => (
-                        <Badge key={index} variant="secondary" className="text-xs bg-neutral-700 text-neutral-300">
+                        <Badge key={index} variant="secondary" className="text-xs bg-muted/60 text-foreground border border-muted">
                           {capability}
                         </Badge>
                       ))}
                       {tool.tool_capabilities.length > 3 && (
-                        <Badge variant="outline" className="text-xs border-neutral-600 text-neutral-400">
+                        <Badge variant="outline" className="text-xs border-border text-muted-foreground">
                           +{tool.tool_capabilities.length - 3}
                         </Badge>
                       )}
@@ -475,7 +474,7 @@ export default function Tools() {
                 )}
 
                 {/* Last tested */}
-                <div className="flex items-center justify-between text-xs text-neutral-400 mb-3">
+                <div className="flex items-center justify-between text-xs text-muted-foreground mb-3">
                   <span>Last tested: {formatLastTested(tool.last_tested)}</span>
                   <span className="capitalize">{tool.status}</span>
                 </div>
@@ -485,7 +484,7 @@ export default function Tools() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="flex-1 gap-2 border-neutral-600 text-neutral-300 hover:bg-neutral-700"
+                    className="flex-1 gap-2 border-border text-foreground hover:bg-accent"
                     onClick={(e) => {
                       e.stopPropagation()
                       handleToolTest(tool.id)
@@ -497,7 +496,7 @@ export default function Tools() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="border-neutral-600 text-neutral-300 hover:bg-neutral-700"
+                    className="border-border text-foreground hover:bg-accent"
                     onClick={(e) => {
                       e.stopPropagation()
                       router.push(`/tools/${tool.id}/edit`)

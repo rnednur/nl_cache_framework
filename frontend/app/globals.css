@@ -31,6 +31,11 @@
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
     --ring: 222.2 84% 4.9%;
+    
+    /* Enhanced borders for better card definition */
+    --card-border: 220 13% 85%;
+    --card-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+    --card-shadow-hover: 0 4px 6px -1px rgb(0 0 0 / 0.15), 0 2px 4px -2px rgb(0 0 0 / 0.15);
 
     --radius: 0.5rem;
   }
@@ -63,6 +68,11 @@
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
     --ring: 212.7 26.8% 83.9%;
+    
+    /* Enhanced borders for better card definition in dark mode */
+    --card-border: 215 25% 20%;
+    --card-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -2px rgb(0 0 0 / 0.3);
+    --card-shadow-hover: 0 8px 12px -2px rgb(0 0 0 / 0.4), 0 4px 6px -2px rgb(0 0 0 / 0.4);
   }
 }
 
@@ -97,38 +107,58 @@
 /* Import ReactFlow styles */
 @import 'reactflow/dist/style.css';
 
-/* ReactFlow Dark Theme Overrides */
+/* ReactFlow Theme Overrides */
 .react-flow {
-  background-color: rgb(9, 9, 11) !important; /* neutral-950 */
+  background-color: hsl(var(--background)) !important;
 }
 
 .react-flow__background {
-  background-color: rgb(9, 9, 11) !important; /* neutral-950 */
+  background-color: hsl(var(--background)) !important;
 }
 
 .react-flow__minimap {
-  background-color: rgb(38, 38, 38) !important; /* neutral-800 */
+  background-color: hsl(var(--muted)) !important;
+  border: 1px solid hsl(var(--border)) !important;
 }
 
 .react-flow__controls {
-  background-color: rgb(38, 38, 38) !important; /* neutral-800 */
-  border-color: rgb(64, 64, 64) !important; /* neutral-700 */
+  background-color: hsl(var(--card)) !important;
+  border-color: hsl(var(--border)) !important;
 }
 
 .react-flow__controls button {
-  background-color: rgb(38, 38, 38) !important; /* neutral-800 */
-  border-color: rgb(64, 64, 64) !important; /* neutral-700 */
-  color: white !important;
+  background-color: hsl(var(--card)) !important;
+  border-color: hsl(var(--border)) !important;
+  color: hsl(var(--foreground)) !important;
 }
 
 .react-flow__controls button:hover {
-  background-color: rgb(64, 64, 64) !important; /* neutral-700 */
+  background-color: hsl(var(--accent)) !important;
+}
+
+/* Workflow Card Hover Effects */
+.workflow-card {
+  box-shadow: var(--card-shadow);
+  transition: box-shadow 0.2s ease-in-out, transform 0.1s ease-in-out;
+}
+
+.workflow-card:hover {
+  box-shadow: var(--card-shadow-hover);
+  transform: translateY(-1px);
+}
+
+.workflow-card.selected {
+  box-shadow: var(--card-shadow), 0 0 0 2px rgb(34 197 94 / 0.5) !important;
+}
+
+.workflow-card.selected:hover {
+  box-shadow: var(--card-shadow-hover), 0 0 0 2px rgb(34 197 94 / 0.5) !important;
 }
 
 /* Clickable Node Enhancement */
 .react-flow__node.clickable-workflow-node:hover {
-  transform: translateY(-2px) !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), inset 0 2px 0 rgba(255, 255, 255, 0.2) !important;
+  /* Removed transform to avoid conflicts with React Flow positioning */
+  box-shadow: 0 4px 12px hsl(var(--ring) / 0.3), inset 0 2px 0 hsl(var(--accent) / 0.2) !important;
   filter: brightness(1.1) !important;
 }
 
@@ -139,7 +169,7 @@
   top: -8px;
   right: -8px;
   font-size: 12px;
-  background: rgba(0, 0, 0, 0.8);
+  background: hsl(var(--card));
   border-radius: 50%;
   width: 20px;
   height: 20px;
@@ -148,10 +178,10 @@
   justify-content: center;
   opacity: 0.7;
   transition: opacity 0.2s ease-in-out;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid hsl(var(--border));
 }
 
 .react-flow__node.clickable-workflow-node:hover::after {
   opacity: 1;
-  background: rgba(0, 0, 0, 0.9);
+  background: hsl(var(--accent));
 } 
