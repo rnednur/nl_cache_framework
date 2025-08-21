@@ -36,6 +36,8 @@ interface InteractiveWorkflowBuilderProps {
 // Icon mapping for different template types
 const getTemplateIcon = (templateType: string) => {
   const iconMap: Record<string, string> = {
+    duckdb_sql: '⚫🟡',
+    llm_step: '✨',
     sql: '🗄️',
     api: '🌐',
     workflow: '⚡',

@@ -16,6 +16,8 @@ interface NodeDetailModalProps {
 // Icon mapping for different template types
 const getTemplateIcon = (templateType: string) => {
   const iconMap: Record<string, string> = {
+    duckdb_sql: '⚫🟡',
+    llm_step: '✨',
     sql: '🗄️',
     api: '🌐',
     workflow: '⚡',
@@ -32,6 +34,8 @@ const getTemplateIcon = (templateType: string) => {
 
 const getTemplateColor = (templateType: string) => {
   const colorMap: Record<string, string> = {
+    duckdb_sql: '#0891b2',
+    llm_step: '#be185d',
     sql: '#3b82f6',
     api: '#10b981',
     workflow: '#8b5cf6',

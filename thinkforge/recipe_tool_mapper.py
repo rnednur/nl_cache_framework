@@ -462,6 +462,11 @@ class RecipeToolMapper:
             "sql", "url", "workflow", "script", "cli"
         ]
         
+        # If step has a specific template type, prioritize it
+        if step.template_type:
+            relevant_types.insert(0, step.template_type)
+            logger.info(f"Step '{step.description[:50]}...' has specific template type: {step.template_type}")
+        
         # Add specific types based on step type
         type_mappings = self.step_type_mappings.get(step.step_type, [])
         relevant_types.extend(type_mappings)
@@ -756,6 +761,15 @@ class RecipeToolMapper:
                 result['original_similarity'] = result.get('similarity', 0.0)
             
             logger.info(f"SIMPLIFIED SEARCH: Found {len(results)} candidates above 0.4 threshold")
+            
+            # If no results found and step has a specific template type, create a specialized tool
+            if not results and step.template_type:
+                logger.info(f"Creating specialized tool for step with template_type: {step.template_type}")
+                specialized_tool = self._create_specialized_tool(step)
+                if specialized_tool:
+                    results = [specialized_tool]
+                    logger.info(f"Created specialized tool: {specialized_tool.get('nl_query', 'Unknown')}")
+            
             return results
             
         except Exception as e:
@@ -792,3 +806,55 @@ class RecipeToolMapper:
         )
         
         return tool_match
+    
+    def _create_specialized_tool(self, step: ParsedStep) -> Optional[Dict[str, Any]]:
+        """
+        Create a specialized tool for steps with specific template types like 'llm_step' or 'duckdb_sql'.
+        
+        This method creates virtual tools that don't exist in the database but represent
+        specialized workflow components that can be rendered in the frontend.
+        """
+        if not step.template_type:
+            return None
+        
+        # Define specialized tool templates
+        specialized_tools = {
+            'llm_step': {
+                'id': None,  # Virtual tool, no database ID
+                'nl_query': 'LLM Step',
+                'template': 'Process data using Large Language Models (AI/ChatGPT)',
+                'template_type': 'llm_step',
+                'similarity': 1.0,  # Perfect match for specialized type
+                'search_method': 'specialized_tool_creation',
+                'tool_capabilities': ['ai_processing', 'text_analysis', 'natural_language'],
+                'catalog_type': 'workflow',
+                'catalog_subtype': 'interactive',
+                'catalog_name': 'ai_processing'
+            },
+            'duckdb_sql': {
+                'id': None,  # Virtual tool, no database ID
+                'nl_query': 'DuckDB SQL',
+                'template': 'Transform data using SQL analytics with DuckDB',
+                'template_type': 'duckdb_sql',
+                'similarity': 1.0,  # Perfect match for specialized type
+                'search_method': 'specialized_tool_creation',
+                'tool_capabilities': ['data_analysis', 'sql_processing', 'database_operations'],
+                'catalog_type': 'workflow',
+                'catalog_subtype': 'interactive',
+                'catalog_name': 'data_processing'
+            }
+        }
+        
+        # Get the specialized tool template
+        tool_template = specialized_tools.get(step.template_type)
+        if not tool_template:
+            logger.warning(f"No specialized tool template found for template_type: {step.template_type}")
+            return None
+        
+        # Create the specialized tool with step-specific information
+        specialized_tool = tool_template.copy()
+        specialized_tool['nl_query'] = step.description  # Use the actual step description
+        specialized_tool['original_step'] = step.description
+        
+        logger.info(f"Created specialized tool: {specialized_tool['nl_query']} (type: {specialized_tool['template_type']})")
+        return specialized_tool

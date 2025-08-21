@@ -135,6 +135,7 @@ export default function WorkflowBuilder() {
   // Helper functions for template styling (matching InteractiveWorkflowBuilder)
   const getTemplateIcon = (templateType: string): string => {
     const iconMap: Record<string, string> = {
+      duckdb_sql: '⚫🟡',
       sql: '🗄️',
       api: '🌐',
       workflow: '⚡',
@@ -142,7 +143,7 @@ export default function WorkflowBuilder() {
       url: '🔗',
       cli: '💻',
       prompt: '🤖',
-      llm_step: '🧠',
+      llm_step: '✨',
       configuration: '⚙️',
       graphql: '📊',
       nosql: '🍃',
@@ -155,6 +156,7 @@ export default function WorkflowBuilder() {
 
   const getTemplateColor = (templateType: string): string => {
     const colorMap: Record<string, string> = {
+      duckdb_sql: '#0891b2',
       sql: '#3b82f6',
       api: '#10b981',
       workflow: '#8b5cf6',

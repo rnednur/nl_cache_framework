@@ -503,11 +503,20 @@ class Text2SQLController:
                     if field == "embedding":
                         continue
                         
-                    # Convert numpy arrays to lists if encountered
-                    if isinstance(old_val, np.ndarray):
+                    # Convert complex objects to strings for database storage
+                    if isinstance(old_val, (dict, list)):
+                        old_val = json.dumps(old_val, default=str)
+                    elif isinstance(old_val, np.ndarray):
                         old_val = "numpy_array_data"  # Just store a placeholder instead of actual data
-                    if isinstance(new_val, np.ndarray):
+                    elif old_val is not None:
+                        old_val = str(old_val)
+                        
+                    if isinstance(new_val, (dict, list)):
+                        new_val = json.dumps(new_val, default=str)
+                    elif isinstance(new_val, np.ndarray):
                         new_val = "numpy_array_data"  # Just store a placeholder instead of actual data
+                    elif new_val is not None:
+                        new_val = str(new_val)
                         
                     audit_log = CacheAuditLog(
                         cache_entry_id=cache_entry.id,

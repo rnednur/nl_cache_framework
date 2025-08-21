@@ -33,7 +33,26 @@ export interface ParserResult {
 const detectTemplateType = (description: string): string => {
   const desc = description.toLowerCase()
   
-  // SQL patterns
+  // DuckDB SQL patterns (check first for exact toolbox match, then other patterns)
+  if (desc.includes('duckdb sql')) {
+    return 'duckdb_sql'
+  }
+  if (desc.includes('duckdb') || desc.includes('duck db')) {
+    return 'duckdb_sql'
+  }
+  
+  // LLM Step patterns (check first for exact toolbox match, then other patterns)
+  if (desc.includes('llm step')) {
+    return 'llm_step'
+  }
+  if (desc.includes('llmstep') || desc.includes('ai step') || desc.includes('aistep') ||
+      desc.includes('claude') || desc.includes('gpt') ||
+      desc.includes('summarize') || desc.includes('analyze') || desc.includes('generate') ||
+      desc.includes('ai') || desc.includes('openai')) {
+    return 'llm_step'
+  }
+  
+  // SQL patterns (generic database operations)
   if (desc.includes('sql') || desc.includes('select') || desc.includes('query') || 
       desc.includes('database') || desc.includes('table')) {
     return 'sql'
@@ -44,13 +63,6 @@ const detectTemplateType = (description: string): string => {
       desc.includes('fetch') || desc.includes('http') || desc.includes('get') ||
       desc.includes('post') || desc.includes('request')) {
     return 'api'
-  }
-  
-  // LLM patterns
-  if (desc.includes('llm') || desc.includes('claude') || desc.includes('gpt') ||
-      desc.includes('summarize') || desc.includes('analyze') || desc.includes('generate') ||
-      desc.includes('ai') || desc.includes('openai')) {
-    return 'prompt'
   }
   
   // Script patterns
@@ -97,6 +109,8 @@ const extractToolRef = (description: string, type: string): string => {
   
   // Default based on type
   switch (type) {
+    case 'duckdb_sql': return 'duckdb.query'
+    case 'llm_step': return 'llm.process'
     case 'sql': return 'database.query'
     case 'api': return 'http.request'
     case 'script': return 'python.execute'
@@ -343,6 +357,8 @@ export const parseNLWorkflow = (nlDescription: string): ParserResult => {
 // Helper functions for template styling
 const getTemplateIcon = (templateType: string): string => {
   const iconMap: Record<string, string> = {
+    duckdb_sql: '⚫🟡',
+    llm_step: '✨',
     sql: '🗄️',
     api: '🌐',
     workflow: '⚡',
@@ -359,6 +375,8 @@ const getTemplateIcon = (templateType: string): string => {
 
 const getTemplateColor = (templateType: string): string => {
   const colorMap: Record<string, string> = {
+    duckdb_sql: '#0891b2',
+    llm_step: '#be185d',
     sql: '#3b82f6',
     api: '#10b981',
     workflow: '#8b5cf6',

@@ -250,7 +250,7 @@ const WorkflowBuilderComponent: React.FC<WorkflowBuilderProps> = ({
       // Enhanced node creation with comprehensive metadata
       const getTemplateIcon = (templateType: string) => {
         const iconMap: Record<string, string> = {
-          sql: '🗄️', api: '🌐', workflow: '⚡', script: '📜', url: '🔗',
+          duckdb_sql: '⚫🟡', llm_step: '✨', sql: '🗄️', api: '🌐', workflow: '⚡', script: '📜', url: '🔗',
           cli: '💻', prompt: '🤖', configuration: '⚙️', graphql: '📊', nosql: '🍃',
         }
         return iconMap[templateType] || '📋'
@@ -258,7 +258,7 @@ const WorkflowBuilderComponent: React.FC<WorkflowBuilderProps> = ({
 
       const getTemplateColor = (templateType: string) => {
         const colorMap: Record<string, string> = {
-          sql: '#3b82f6', api: '#10b981', workflow: '#8b5cf6', script: '#f59e0b',
+          duckdb_sql: '#0891b2', llm_step: '#be185d', sql: '#3b82f6', api: '#10b981', workflow: '#8b5cf6', script: '#f59e0b',
           url: '#06b6d4', cli: '#6b7280', prompt: '#ec4899', configuration: '#84cc16',
           graphql: '#f97316', nosql: '#14b8a6',
         }

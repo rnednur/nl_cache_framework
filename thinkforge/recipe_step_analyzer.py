@@ -42,6 +42,7 @@ class ParsedStep:
     dependencies: List[str]
     confidence: float
     raw_text: str
+    template_type: Optional[str] = None  # Specific template type like 'llm_step', 'duckdb_sql'
 
 
 @dataclass
@@ -160,8 +161,8 @@ class RecipeStepAnalyzer:
     
     def _normalize_text(self, text: str) -> str:
         """Clean and normalize recipe text."""
-        # Replace multiple whitespace with single space
-        text = re.sub(r'\s+', ' ', text)
+        # Replace multiple whitespace with single space, but preserve newlines
+        text = re.sub(r'[ \t]+', ' ', text)  # Only replace spaces and tabs, not newlines
         
         # Remove excessive punctuation
         text = re.sub(r'[.]{2,}', '.', text)
@@ -200,35 +201,62 @@ class RecipeStepAnalyzer:
         """Split recipe text into individual steps."""
         # Try different splitting strategies
         
-        # Strategy 1: Numbered steps (1. 2. 3.)
-        numbered_steps = re.split(r'\n\s*\d+\.\s*', text)
-        if len(numbered_steps) > 2:
-            return [step.strip() for step in numbered_steps[1:] if step.strip()]
-        
-        # Strategy 2: Bullet points or dashes
-        bullet_steps = re.split(r'\n\s*[-*•]\s*', text)
-        if len(bullet_steps) > 2:
-            return [step.strip() for step in bullet_steps[1:] if step.strip()]
-        
-        # Strategy 3: Line breaks with action verbs
+        # Strategy 1: Simple line-by-line parsing for numbered steps
         lines = text.split('\n')
         steps = []
         current_step = []
         
-        for line in lines:
+        logger.debug(f"Parsing {len(lines)} lines for steps")
+        
+        for i, line in enumerate(lines):
             line = line.strip()
             if not line:
                 continue
-                
-            # Check if line starts with an action verb
-            if self._starts_with_action_verb(line) and current_step:
-                steps.append(' '.join(current_step))
-                current_step = [line]
+            
+            logger.debug(f"Line {i}: '{line}'")
+            
+            # Check if this line starts a new numbered step
+            if re.match(r'^\d+[\.\)]', line):
+                logger.debug(f"Found numbered step start: '{line}'")
+                # If we have a current step, save it
+                if current_step:
+                    step_text = ' '.join(current_step).strip()
+                    steps.append(step_text)
+                    logger.debug(f"Added step: '{step_text}'")
+                # Start new step (remove the number prefix)
+                step_content = re.sub(r'^\d+[\.\)]\s*', '', line)
+                current_step = [step_content] if step_content else []
+                logger.debug(f"Started new step with content: '{step_content}'")
             else:
-                current_step.append(line)
+                # Skip header lines (lines that don't start with numbers and are likely titles)
+                if not re.match(r'^(fullflow|workflow|recipe|subflow)', line.lower()):
+                    # Continue current step
+                    current_step.append(line)
+                    logger.debug(f"Added to current step: '{line}'")
+                else:
+                    logger.debug(f"Skipping header line: '{line}'")
         
+        # Don't forget the last step
         if current_step:
-            steps.append(' '.join(current_step))
+            step_text = ' '.join(current_step).strip()
+            steps.append(step_text)
+            logger.debug(f"Added final step: '{step_text}'")
+        
+        logger.debug(f"Found {len(steps)} steps: {steps}")
+        
+        # If we found numbered steps, return them
+        if len(steps) >= 2:
+            return [step for step in steps if step.strip()]
+        
+        # Strategy 2: Fallback to regex-based splitting
+        numbered_steps = re.split(r'\n\s*\d+[\.\)]\s*', text)
+        if len(numbered_steps) > 2:
+            return [step.strip() for step in numbered_steps[1:] if step.strip()]
+        
+        # Strategy 3: Bullet points or dashes
+        bullet_steps = re.split(r'\n\s*[-*•]\s*', text)
+        if len(bullet_steps) > 2:
+            return [step.strip() for step in bullet_steps[1:] if step.strip()]
         
         # Strategy 4: Sentence-based splitting if no clear structure
         if len(steps) < 2:
@@ -251,6 +279,14 @@ class RecipeStepAnalyzer:
         # Classify step type based on content
         step_type = self._classify_step_type(raw_text, action_verbs)
         
+        # Determine specific template type for specialized steps
+        template_type = None
+        text_lower = raw_text.lower().strip()
+        if text_lower == 'llm step':
+            template_type = 'llm_step'
+        elif text_lower == 'duckdb sql':
+            template_type = 'duckdb_sql'
+        
         # Extract entities and parameters
         entities = self._extract_entities(raw_text)
         parameters = self._extract_parameters(raw_text)
@@ -266,6 +302,7 @@ class RecipeStepAnalyzer:
             name=name,
             description=raw_text.strip(),
             step_type=step_type,
+            template_type=template_type,
             order=order,
             action_verbs=action_verbs,
             entities=entities,
@@ -292,6 +329,12 @@ class RecipeStepAnalyzer:
     def _classify_step_type(self, text: str, action_verbs: List[str]) -> StepType:
         """Classify the type of step based on content."""
         text_lower = text.lower()
+        
+        # Check for specific step type patterns first (highest priority)
+        if text_lower.strip() == 'llm step':
+            return StepType.LLM_PROCESSING
+        if text_lower.strip() == 'duckdb sql':
+            return StepType.TRANSFORM  # DuckDB is for data transformation
         
         # Priority-based classification with scoring
         scores = {
