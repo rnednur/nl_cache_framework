@@ -272,11 +272,11 @@ export default function RecipeDetail() {
   }
 
   const getRecipeTypeColor = (templateType: string) => {
-    return RECIPE_TYPES[templateType as keyof typeof RECIPE_TYPES]?.color || 'bg-neutral-500'
+    return RECIPE_TYPES[templateType as keyof typeof RECIPE_TYPES]?.color || 'bg-muted'
   }
 
   const getComplexityColor = (complexity?: string) => {
-    return COMPLEXITY_COLORS[complexity as keyof typeof COMPLEXITY_COLORS] || 'bg-neutral-500'
+    return COMPLEXITY_COLORS[complexity as keyof typeof COMPLEXITY_COLORS] || 'bg-muted'
   }
 
   const getStepTypeIcon = (stepType: string) => {
@@ -307,7 +307,7 @@ export default function RecipeDetail() {
       'validation': 'bg-red-500',
     }
     
-    return colorMap[stepType.toLowerCase()] || 'bg-neutral-500'
+    return colorMap[stepType.toLowerCase()] || 'bg-muted'
   }
 
   const generateRecipeXML = (recipe: Recipe) => {
@@ -392,7 +392,7 @@ ${tools.map(tool => `    <tool id="${tool.id}">
       </div>
 
       {/* Header */}
-      <div className="bg-card rounded-lg border border-border p-6">
+      <div className="workflow-card bg-card border-2 border-card-border p-6">
         <div className="flex items-start justify-between">
           <div className="flex items-start gap-4">
             <div className={`p-3 rounded-lg ${getRecipeTypeColor(recipe.template_type)} flex-shrink-0`}>
@@ -450,12 +450,12 @@ ${tools.map(tool => `    <tool id="${tool.id}">
                   className={`capitalize ${
                     recipe.status === 'active' ? 'bg-green-600' : 
                     recipe.status === 'pending' ? 'bg-yellow-600' : 
-                    'bg-neutral-600'
+                    'bg-muted'
                   }`}
                 >
                   {recipe.status}
                 </Badge>
-                <span className="text-neutral-500 flex items-center gap-1">
+                <span className="text-muted-foreground flex items-center gap-1">
                   <Clock className="h-3 w-3" />
                   Created {new Date(recipe.created_at).toLocaleDateString()}
                 </span>
@@ -471,7 +471,7 @@ ${tools.map(tool => `    <tool id="${tool.id}">
                 navigator.clipboard.writeText(recipe.id.toString())
                 toast.success('Recipe ID copied to clipboard')
               }}
-              className="gap-2 border-neutral-600 text-muted-foreground hover:bg-accent"
+              className="gap-2 border-border text-muted-foreground hover:bg-accent"
             >
               <Copy className="h-3 w-3" />
             </Button>
@@ -483,14 +483,14 @@ ${tools.map(tool => `    <tool id="${tool.id}">
                 navigator.clipboard.writeText(url)
                 toast.success('Recipe URL copied to clipboard')
               }}
-              className="gap-2 border-neutral-600 text-muted-foreground hover:bg-accent"
+              className="gap-2 border-border text-muted-foreground hover:bg-accent"
             >
               <Share className="h-3 w-3" />
             </Button>
             <Button
               variant="outline"
               onClick={() => router.push(`/recipes/new?edit=${recipe.id}`)}
-              className="gap-2 border-neutral-600 text-foreground hover:bg-neutral-700"
+              className="gap-2 border-border text-foreground hover:bg-accent"
             >
               <Edit className="h-4 w-4" />
               Edit
@@ -498,7 +498,7 @@ ${tools.map(tool => `    <tool id="${tool.id}">
             {recipe.template_type === 'workflow' && (
               <Button
                 onClick={() => handleExecuteWorkflow()}
-                className="gap-2 bg-green-600 hover:bg-green-700"
+                className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground"
               >
                 <Target className="h-4 w-4" />
                 Execute
@@ -510,7 +510,7 @@ ${tools.map(tool => `    <tool id="${tool.id}">
 
       {/* Recipe Overview Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card className="bg-input border-border hover:bg-neutral-750 transition-colors cursor-pointer">
+        <Card className="workflow-card bg-card border-2 border-card-border transition-colors cursor-pointer">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
@@ -526,7 +526,7 @@ ${tools.map(tool => `    <tool id="${tool.id}">
           </CardContent>
         </Card>
         
-        <Card className="bg-input border-border hover:bg-neutral-750 transition-colors cursor-pointer">
+        <Card className="workflow-card bg-card border-2 border-card-border transition-colors cursor-pointer">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
@@ -548,7 +548,7 @@ ${tools.map(tool => `    <tool id="${tool.id}">
           </CardContent>
         </Card>
         
-        <Card className="bg-input border-border hover:bg-neutral-750 transition-colors cursor-pointer">
+        <Card className="workflow-card bg-card border-2 border-card-border transition-colors cursor-pointer">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
@@ -557,7 +557,7 @@ ${tools.map(tool => `    <tool id="${tool.id}">
                 </div>
                 <div className="text-sm text-muted-foreground">Required Tools</div>
                 {tools.length > 0 && (
-                  <div className="text-xs text-neutral-500 mt-1">
+                  <div className="text-xs text-muted-foreground mt-1">
                     {tools.filter(t => t.health_status === 'healthy').length} healthy
                   </div>
                 )}
@@ -569,7 +569,7 @@ ${tools.map(tool => `    <tool id="${tool.id}">
           </CardContent>
         </Card>
         
-        <Card className="bg-input border-border hover:bg-neutral-750 transition-colors cursor-pointer">
+        <Card className="workflow-card bg-card border-2 border-card-border transition-colors cursor-pointer">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
@@ -577,7 +577,7 @@ ${tools.map(tool => `    <tool id="${tool.id}">
                   {new Date(recipe.created_at).toLocaleDateString()}
                 </div>
                 <div className="text-sm text-muted-foreground">Created</div>
-                <div className="text-xs text-neutral-500 mt-1">
+                <div className="text-xs text-muted-foreground mt-1">
                   {Math.floor((Date.now() - new Date(recipe.created_at).getTime()) / (1000 * 60 * 60 * 24))} days ago
                 </div>
               </div>
@@ -593,24 +593,24 @@ ${tools.map(tool => `    <tool id="${tool.id}">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Recipe Steps */}
         <div className="lg:col-span-2">
-          <Card className="bg-input border-border">
+          <Card className="workflow-card bg-card border-2 border-card-border">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+              <CardTitle className="flex items-center gap-2 text-foreground">
                 <Layers className="h-5 w-5" />
                 Recipe Steps
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="text-muted-foreground">
                 Workflow execution steps in order
               </CardDescription>
             </CardHeader>
             <CardContent>
               <Tabs value={stepsTab} onValueChange={(value) => setStepsTab(value as typeof stepsTab)}>
-                <TabsList className="grid w-full grid-cols-2 mb-6 bg-neutral-900 border border-border">
-                  <TabsTrigger value="visual" className="flex items-center gap-2 data-[state=active]:bg-input data-[state=active]:text-green-400 text-muted-foreground">
+                <TabsList className="grid w-full grid-cols-2 mb-6 bg-muted border border-border">
+                  <TabsTrigger value="visual" className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-muted-foreground">
                     <Layers className="h-4 w-4" />
                     Visual Steps
                   </TabsTrigger>
-                  <TabsTrigger value="xml" className="flex items-center gap-2 data-[state=active]:bg-input data-[state=active]:text-green-400 text-muted-foreground">
+                  <TabsTrigger value="xml" className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-muted-foreground">
                     <Code className="h-4 w-4" />
                     XML View
                   </TabsTrigger>
@@ -624,7 +624,7 @@ ${tools.map(tool => `    <tool id="${tool.id}">
                           key={step.id}
                           className="group relative"
                         >
-                          <div className="flex items-start gap-4 p-4 bg-neutral-900 rounded-lg border border-border hover:border-neutral-600 transition-colors">
+                          <div className="flex items-start gap-4 p-4 bg-muted/50 rounded-lg border border-border hover:border-primary/50 transition-colors">
                             <div className="flex-shrink-0 w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-sm font-semibold">
                               {index + 1}
                             </div>
@@ -639,10 +639,10 @@ ${tools.map(tool => `    <tool id="${tool.id}">
                               
                               {step.depends_on && step.depends_on.length > 0 && (
                                 <div className="flex items-center gap-2 mb-2">
-                                  <span className="text-xs text-neutral-500">Depends on:</span>
+                                  <span className="text-xs text-muted-foreground">Depends on:</span>
                                   <div className="flex gap-1">
                                     {step.depends_on.map((dep, i) => (
-                                      <Badge key={i} variant="outline" className="text-xs border-neutral-600 text-muted-foreground">
+                                      <Badge key={i} variant="outline" className="text-xs border-border text-muted-foreground">
                                         #{dep}
                                       </Badge>
                                     ))}
@@ -650,7 +650,7 @@ ${tools.map(tool => `    <tool id="${tool.id}">
                                 </div>
                               )}
                               
-                              <div className="flex items-center gap-3 text-xs text-neutral-500">
+                              <div className="flex items-center gap-3 text-xs text-muted-foreground">
                                 <span>Step {index + 1} of {recipe.recipe_steps?.length}</span>
                                 {step.tool_id && (
                                   <span className="flex items-center gap-1">
@@ -680,7 +680,7 @@ ${tools.map(tool => `    <tool id="${tool.id}">
                           {/* Connection line to next step */}
                           {index < (recipe.recipe_steps?.length || 0) - 1 && (
                             <div className="flex justify-center">
-                              <div className="w-px h-4 bg-neutral-700 mt-2 mb-2"></div>
+                              <div className="w-px h-4 bg-border mt-2 mb-2"></div>
                             </div>
                           )}
                         </div>
@@ -688,9 +688,9 @@ ${tools.map(tool => `    <tool id="${tool.id}">
                     </>
                   ) : (
                     <div className="text-center py-12">
-                      <Layers className="h-12 w-12 text-neutral-600 mx-auto mb-4" />
+                      <Layers className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                       <h3 className="text-lg font-medium text-muted-foreground mb-2">No steps defined</h3>
-                      <p className="text-sm text-neutral-500 mb-4">This workflow doesn't have any steps yet.</p>
+                      <p className="text-sm text-muted-foreground mb-4">This workflow doesn't have any steps yet.</p>
                       <Button
                         onClick={() => router.push(`/recipes/new?edit=${recipe.id}`)}
                         variant="outline"
@@ -721,7 +721,7 @@ ${tools.map(tool => `    <tool id="${tool.id}">
                         Copy XML
                       </Button>
                     </div>
-                    <pre className="bg-neutral-900 border border-border rounded-lg p-4 text-sm text-foreground overflow-x-auto max-h-[600px] overflow-y-auto">
+                    <pre className="bg-muted/30 border border-border rounded-lg p-4 text-sm text-foreground overflow-x-auto max-h-[600px] overflow-y-auto">
                       <code className="language-xml">
                         {generateRecipeXML(recipe)}
                       </code>
@@ -736,7 +736,7 @@ ${tools.map(tool => `    <tool id="${tool.id}">
         {/* Recipe Info & Settings */}
         <div className="space-y-6">
           {/* Recipe Information */}
-          <Card className="bg-input border-border">
+          <Card className="workflow-card bg-card border-2 border-card-border">
             <CardHeader>
               <CardTitle className="text-foreground">Recipe Information</CardTitle>
             </CardHeader>
@@ -759,7 +759,7 @@ ${tools.map(tool => `    <tool id="${tool.id}">
                     className={`capitalize text-white font-medium ${
                       recipe.status === 'active' ? 'bg-green-600 hover:bg-green-700' : 
                       recipe.status === 'pending' ? 'bg-yellow-600 hover:bg-yellow-700' : 
-                      'bg-neutral-600 hover:bg-neutral-700'
+                      'bg-muted hover:bg-muted/80'
                     }`}
                   >
                     {recipe.status}
@@ -781,7 +781,7 @@ ${tools.map(tool => `    <tool id="${tool.id}">
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="h-6 w-6 p-0 text-muted-foreground hover:text-neutral-200 hover:bg-neutral-700"
+                      className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground hover:bg-accent"
                       onClick={() => {
                         navigator.clipboard.writeText(recipe.id.toString())
                         toast.success('ID copied!')
@@ -793,7 +793,7 @@ ${tools.map(tool => `    <tool id="${tool.id}">
                 </div>
               </div>
               
-              <div className="pt-4 border-t border-neutral-600 space-y-3">
+              <div className="pt-4 border-t border-border space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-foreground">Updated</span>
                   <div className="text-right">
@@ -818,7 +818,7 @@ ${tools.map(tool => `    <tool id="${tool.id}">
               </div>
               
               {/* Quick Actions */}
-              <div className="pt-4 border-t border-neutral-600">
+              <div className="pt-4 border-t border-border">
                 <div className="grid grid-cols-2 gap-2">
                   <Button
                     size="sm"
@@ -851,31 +851,31 @@ ${tools.map(tool => `    <tool id="${tool.id}">
           </Card>
 
           {/* Export Settings */}
-          <Card className="bg-input border-border">
+          <Card className="workflow-card bg-card border-2 border-card-border">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-foreground">
                 <Download className="h-4 w-4" />
                 Export Recipe
               </CardTitle>
-              <CardDescription className="text-foreground">
+              <CardDescription className="text-muted-foreground">
                 Export to different workflow formats
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-neutral-200 mb-2">
+                <label className="block text-sm font-medium text-foreground mb-2">
                   Export Format
                 </label>
                 <Select value={selectedFormat} onValueChange={setSelectedFormat}>
-                  <SelectTrigger className="bg-neutral-900 border-neutral-600 text-foreground">
+                  <SelectTrigger className="bg-input border-border text-foreground">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-neutral-900 border-border">
+                  <SelectContent className="bg-popover border-border">
                     {SUPPORTED_FORMATS.map((format) => (
                       <SelectItem 
                         key={format.value} 
                         value={format.value}
-                        className="text-foreground hover:bg-accent focus:bg-input"
+                        className="text-foreground hover:bg-accent focus:bg-accent"
                       >
                         <div>
                           <div className="font-medium text-foreground">{format.label}</div>
@@ -890,7 +890,7 @@ ${tools.map(tool => `    <tool id="${tool.id}">
               <Button
                 onClick={handleExportRecipe}
                 disabled={isExporting}
-                className="w-full gap-2 bg-input border-border text-foreground hover:bg-accent hover:text-accent-foreground"
+                className="w-full gap-2 bg-primary hover:bg-primary/90 text-primary-foreground"
                 variant="outline"
               >
                 {isExporting ? (
@@ -905,13 +905,13 @@ ${tools.map(tool => `    <tool id="${tool.id}">
 
           {/* Required Tools */}
           {tools.length > 0 && (
-            <Card className="bg-input border-border">
+            <Card className="workflow-card bg-card border-2 border-card-border">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2 text-foreground">
                   <Zap className="h-4 w-4" />
                   Required Tools
                 </CardTitle>
-                <CardDescription>
+                <CardDescription className="text-muted-foreground">
                   Tools needed for recipe execution
                 </CardDescription>
               </CardHeader>
@@ -919,7 +919,7 @@ ${tools.map(tool => `    <tool id="${tool.id}">
                 {tools.map((tool) => (
                   <div
                     key={tool.id}
-                    className="flex items-center gap-3 p-3 bg-neutral-900 rounded-lg border border-border cursor-pointer hover:border-neutral-600"
+                    className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg border border-border cursor-pointer hover:border-primary/50"
                     onClick={() => router.push(`/tools/${tool.id}`)}
                   >
                     <div className="flex-1">
@@ -933,7 +933,7 @@ ${tools.map(tool => `    <tool id="${tool.id}">
                             tool.health_status === 'healthy' ? 'bg-green-500' :
                             tool.health_status === 'degraded' ? 'bg-yellow-500' :
                             tool.health_status === 'unhealthy' ? 'bg-red-500' :
-                            'bg-neutral-500'
+                            'bg-muted'
                           }`}
                         />
                       )}
