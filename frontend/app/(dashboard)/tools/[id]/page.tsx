@@ -197,8 +197,8 @@ export default function ToolDetail() {
               {getToolIcon(tool.template_type)}
             </div>
             <div>
-              <h1 className="text-2xl font-semibold text-white">{tool.nl_query}</h1>
-              <p className="text-neutral-400 capitalize">
+              <h1 className="text-2xl font-semibold text-foreground">{tool.nl_query}</h1>
+              <p className="text-muted-foreground capitalize">
                 {TOOL_TYPES[tool.template_type as keyof typeof TOOL_TYPES]?.label || tool.template_type}
               </p>
             </div>
@@ -208,7 +208,7 @@ export default function ToolDetail() {
           <Button
             variant="outline"
             onClick={() => router.push(`/tools/${tool.id}/edit`)}
-            className="gap-2 border-neutral-600 text-neutral-300 hover:bg-neutral-700"
+            className="gap-2 border-border text-muted-foreground hover:bg-accent"
           >
             <Edit className="h-4 w-4" />
             Edit
@@ -230,48 +230,48 @@ export default function ToolDetail() {
 
       {/* Tool Overview */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card className="bg-neutral-800 border-neutral-700">
+        <Card className="workflow-card bg-card border-2 border-card-border">
           <CardContent className="pt-6">
             <div className="text-center">
               <div className="flex justify-center mb-2">
                 {getHealthStatusIcon(tool.health_status)}
               </div>
-              <div className="text-sm text-neutral-400 capitalize">
+              <div className="text-sm text-muted-foreground capitalize">
                 {tool.health_status || 'Unknown'}
               </div>
             </div>
           </CardContent>
         </Card>
         
-        <Card className="bg-neutral-800 border-neutral-700">
+        <Card className="workflow-card bg-card border-2 border-card-border">
           <CardContent className="pt-6">
             <div className="text-center">
-              <div className="text-2xl font-bold text-white mb-1">
+              <div className="text-2xl font-bold text-foreground mb-1">
                 {tool.tool_capabilities?.length || 0}
               </div>
-              <div className="text-sm text-neutral-400">Capabilities</div>
+              <div className="text-sm text-muted-foreground">Capabilities</div>
             </div>
           </CardContent>
         </Card>
         
-        <Card className="bg-neutral-800 border-neutral-700">
+        <Card className="workflow-card bg-card border-2 border-card-border">
           <CardContent className="pt-6">
             <div className="text-center">
-              <div className="text-2xl font-bold text-white mb-1">
+              <div className="text-2xl font-bold text-foreground mb-1">
                 {tool.usage_count || 0}
               </div>
-              <div className="text-sm text-neutral-400">Usage Count</div>
+              <div className="text-sm text-muted-foreground">Usage Count</div>
             </div>
           </CardContent>
         </Card>
         
-        <Card className="bg-neutral-800 border-neutral-700">
+        <Card className="workflow-card bg-card border-2 border-card-border">
           <CardContent className="pt-6">
             <div className="text-center">
-              <div className="text-2xl font-bold text-white mb-1">
+              <div className="text-2xl font-bold text-foreground mb-1">
                 {formatLastTested(tool.last_tested)}
               </div>
-              <div className="text-sm text-neutral-400">Last Tested</div>
+              <div className="text-sm text-muted-foreground">Last Tested</div>
             </div>
           </CardContent>
         </Card>
@@ -283,22 +283,22 @@ export default function ToolDetail() {
         <div className="lg:col-span-2 space-y-6">
           {/* Execution Configuration */}
           {tool.execution_config && Object.keys(tool.execution_config).length > 0 && (
-            <Card className="bg-neutral-800 border-neutral-700">
+            <Card className="workflow-card bg-card border-2 border-card-border">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2 text-foreground">
                   <Globe className="h-5 w-5" />
                   Execution Configuration  
                 </CardTitle>
-                <CardDescription>
+                <CardDescription className="text-muted-foreground">
                   Runtime configuration and endpoint details
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 {tool.execution_config.full_endpoint && (
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-neutral-300">Endpoint URL</label>
-                    <div className="bg-neutral-900 rounded-lg p-3 border border-neutral-600">
-                      <code className="text-sm text-green-400 break-all">
+                    <label className="text-sm font-medium text-foreground">Endpoint URL</label>
+                    <div className="bg-muted/30 rounded-lg p-3 border border-border">
+                      <code className="text-sm text-green-600 break-all">
                         {tool.execution_config.method} {tool.execution_config.full_endpoint}
                       </code>
                     </div>
@@ -307,9 +307,9 @@ export default function ToolDetail() {
 
                 {tool.execution_config.base_url && (
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-neutral-300">Base URL</label>
-                    <div className="bg-neutral-900 rounded-lg p-3 border border-neutral-600">
-                      <code className="text-sm text-blue-400">
+                    <label className="text-sm font-medium text-foreground">Base URL</label>
+                    <div className="bg-muted/30 rounded-lg p-3 border border-border">
+                      <code className="text-sm text-blue-600">
                         {tool.execution_config.base_url}
                       </code>
                     </div>
@@ -319,9 +319,9 @@ export default function ToolDetail() {
                 <div className="grid grid-cols-2 gap-4">
                   {tool.execution_config.timeout && (
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-neutral-300">Timeout</label>
-                      <div className="bg-neutral-900 rounded-lg p-3 border border-neutral-600">
-                        <code className="text-sm text-yellow-400">
+                      <label className="text-sm font-medium text-foreground">Timeout</label>
+                      <div className="bg-muted/30 rounded-lg p-3 border border-border">
+                        <code className="text-sm text-yellow-600">
                           {tool.execution_config.timeout}s
                         </code>
                       </div>
@@ -330,15 +330,15 @@ export default function ToolDetail() {
 
                   {tool.execution_config.method && (
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-neutral-300">Method</label>
-                      <div className="bg-neutral-900 rounded-lg p-3 border border-neutral-600">
+                      <label className="text-sm font-medium text-foreground">Method</label>
+                      <div className="bg-muted/30 rounded-lg p-3 border border-border">
                         <Badge
                           variant="outline"
                           className={`border-0 ${
                             tool.execution_config.method === 'GET' ? 'bg-green-600 text-white' :
                             tool.execution_config.method === 'POST' ? 'bg-blue-600 text-white' :
                             tool.execution_config.method === 'PUT' ? 'bg-orange-600 text-white' :
-                            'bg-neutral-600 text-white'
+                            'bg-muted text-foreground'
                           }`}
                         >
                           {tool.execution_config.method}
@@ -350,9 +350,9 @@ export default function ToolDetail() {
 
                 {tool.execution_config.headers && (
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-neutral-300">Headers</label>
-                    <div className="bg-neutral-900 rounded-lg p-3 border border-neutral-600">
-                      <pre className="text-xs text-neutral-300 overflow-x-auto">
+                    <label className="text-sm font-medium text-foreground">Headers</label>
+                    <div className="bg-muted/30 rounded-lg p-3 border border-border">
+                      <pre className="text-xs text-foreground overflow-x-auto">
                         {JSON.stringify(tool.execution_config.headers, null, 2)}
                       </pre>
                     </div>
@@ -363,19 +363,19 @@ export default function ToolDetail() {
           )}
 
           {/* Template Configuration */}
-          <Card className="bg-neutral-800 border-neutral-700">
+          <Card className="workflow-card bg-card border-2 border-card-border">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+              <CardTitle className="flex items-center gap-2 text-foreground">
                 <Settings className="h-5 w-5" />
                 Template Configuration
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="text-muted-foreground">
                 API schema and template details
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="bg-neutral-900 rounded-lg p-4">
-                <pre className="text-sm text-neutral-300 overflow-x-auto">
+              <div className="bg-muted/30 rounded-lg p-4">
+                <pre className="text-sm text-foreground overflow-x-auto">
                   {JSON.stringify(templateData, null, 2)}
                 </pre>
               </div>
@@ -386,35 +386,35 @@ export default function ToolDetail() {
         {/* Tool Info & Capabilities */}
         <div className="space-y-6">
           {/* Tool Information */}
-          <Card className="bg-neutral-800 border-neutral-700">
+          <Card className="workflow-card bg-card border-2 border-card-border">
             <CardHeader>
-              <CardTitle>Tool Information</CardTitle>
+              <CardTitle className="text-foreground">Tool Information</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-neutral-400">Status</span>
+                <span className="text-sm text-muted-foreground">Status</span>
                 <Badge variant={tool.status === 'active' ? 'default' : 'destructive'} className="capitalize">
                   {tool.status}
                 </Badge>
               </div>
               
               <div className="flex items-center justify-between">
-                <span className="text-sm text-neutral-400">Template</span>
-                <Badge variant="outline" className="border-neutral-600 text-neutral-300">
+                <span className="text-sm text-muted-foreground">Template</span>
+                <Badge variant="outline" className="border-border text-muted-foreground">
                   {tool.is_template ? 'Yes' : 'No'}
                 </Badge>
               </div>
               
               <div className="flex items-center justify-between">
-                <span className="text-sm text-neutral-400">Created</span>
-                <span className="text-sm text-white">
+                <span className="text-sm text-muted-foreground">Created</span>
+                <span className="text-sm text-foreground">
                   {new Date(tool.created_at).toLocaleDateString()}
                 </span>
               </div>
               
               <div className="flex items-center justify-between">
-                <span className="text-sm text-neutral-400">Last Updated</span>
-                <span className="text-sm text-white">
+                <span className="text-sm text-muted-foreground">Last Updated</span>
+                <span className="text-sm text-foreground">
                   {new Date(tool.updated_at).toLocaleDateString()}
                 </span>
               </div>
@@ -423,10 +423,10 @@ export default function ToolDetail() {
 
           {/* Tool Capabilities */}
           {tool.tool_capabilities && tool.tool_capabilities.length > 0 && (
-            <Card className="bg-neutral-800 border-neutral-700">
+            <Card className="workflow-card bg-card border-2 border-card-border">
               <CardHeader>
-                <CardTitle>Capabilities</CardTitle>
-                <CardDescription>
+                <CardTitle className="text-foreground">Capabilities</CardTitle>
+                <CardDescription className="text-muted-foreground">
                   What this tool can do
                 </CardDescription>
               </CardHeader>
@@ -436,7 +436,7 @@ export default function ToolDetail() {
                     <Badge
                       key={index}
                       variant="secondary"
-                      className="bg-neutral-700 text-neutral-300"
+                      className="bg-muted text-muted-foreground"
                     >
                       {capability}
                     </Badge>
@@ -448,10 +448,10 @@ export default function ToolDetail() {
 
           {/* Dependencies */}
           {tool.tool_dependencies && Object.keys(tool.tool_dependencies).length > 0 && (
-            <Card className="bg-neutral-800 border-neutral-700">
+            <Card className="workflow-card bg-card border-2 border-card-border">
               <CardHeader>
-                <CardTitle>Dependencies</CardTitle>
-                <CardDescription>
+                <CardTitle className="text-foreground">Dependencies</CardTitle>
+                <CardDescription className="text-muted-foreground">
                   Required dependencies for this tool
                 </CardDescription>
               </CardHeader>
@@ -459,8 +459,8 @@ export default function ToolDetail() {
                 <div className="space-y-2">
                   {Object.entries(tool.tool_dependencies).map(([key, value]) => (
                     <div key={key} className="flex justify-between">
-                      <span className="text-sm text-neutral-400">{key}</span>
-                      <span className="text-sm text-white">
+                      <span className="text-sm text-muted-foreground">{key}</span>
+                      <span className="text-sm text-foreground">
                         {typeof value === 'string' ? value : JSON.stringify(value)}
                       </span>
                     </div>
