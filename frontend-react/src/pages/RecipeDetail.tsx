@@ -34,7 +34,7 @@ import {
   Loader2,
   ChefHat,
   ListChecks,
-  FileTemplate,
+  FileText,
   Wrench,
   GitBranch,
 } from 'lucide-react'
@@ -83,7 +83,7 @@ interface SupportedFormat {
 const RECIPE_TYPE_ICONS = {
   recipe: ChefHat,
   recipe_step: ListChecks,
-  recipe_template: FileTemplate,
+  recipe_template: FileText,
 } as const
 
 const STEP_TYPE_COLORS = {

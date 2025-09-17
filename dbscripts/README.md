@@ -19,6 +19,13 @@ This directory contains database migration scripts for the ThinkForge NL Cache F
 - **`add_usage_log_columns.py`** - Adds response, considered_entries, and is_confident columns to usage_log table
 - **`add_llm_used_column.py`** - Adds llm_used column to usage_log table
 
+### Hot Commands and Enhanced Spaces
+- **`add_hotcommands_tables.sql`** - Creates the base hot commands and spaces tables
+- **`add_enhanced_spaces_functionality.sql`** - Adds enhanced spaces functionality (templates, scheduling, external storage, access control)
+- **`add_enhanced_spaces_functionality.py`** - Python version of enhanced spaces migration with comprehensive error handling
+- **`verify_enhanced_spaces_migration.py`** - Verification script for enhanced spaces migration
+- **`ENHANCED_SPACES_MIGRATION_GUIDE.md`** - Comprehensive guide for enhanced spaces migration
+
 ## Current Template Type Enum Values
 
 The `template_type` enum currently supports these values:
@@ -84,6 +91,22 @@ chmod +x add_missing_template_types.py
 # Run the migration
 python add_missing_template_types.py
 ```
+
+### Running Enhanced Spaces Migration
+For the enhanced spaces functionality:
+
+```bash
+# Option 1: SQL migration (fast)
+psql -h localhost -U your_user -d mcp_cache_db -v schema_name=public -f add_enhanced_spaces_functionality.sql
+
+# Option 2: Python migration (recommended for production)
+python add_enhanced_spaces_functionality.py
+
+# Verify the migration
+python verify_enhanced_spaces_migration.py
+```
+
+See `ENHANCED_SPACES_MIGRATION_GUIDE.md` for detailed instructions.
 
 ## Migration Best Practices
 

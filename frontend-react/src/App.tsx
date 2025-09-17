@@ -11,6 +11,10 @@ import UsageLogs from "./pages/UsageLogs"
 import Tools from "./pages/Tools"
 import Recipes from "./pages/Recipes"
 import RecipeDetail from "./pages/RecipeDetail"
+import HotCommands from "./pages/HotCommands"
+import Spaces from "./pages/Spaces"
+import CommandBuilder from "./pages/CommandBuilder"
+import CacheExplorer from "./pages/CacheExplorer"
 
 function Placeholder({ title }: { title: string }) {
   return <h1 className="text-3xl font-bold text-white">{title}</h1>
@@ -31,6 +35,10 @@ function App() {
               <Route path="/tools" element={<Tools />} />
               <Route path="/recipes" element={<Recipes />} />
               <Route path="/recipes/:id" element={<RecipeDetail />} />
+              <Route path="/hot-commands" element={<HotCommands />} />
+              <Route path="/spaces" element={<Spaces />} />
+              <Route path="/command-builder" element={<CommandBuilder />} />
+              <Route path="/cache-explorer" element={<CacheExplorer />} />
               <Route path="/analytics" element={<Placeholder title="Analytics" />} />
               <Route path="/settings" element={<Placeholder title="Settings" />} />
               {/* 404 fallthrough can go here */}

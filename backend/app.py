@@ -38,10 +38,20 @@ try:
         Text2SQLEntitySubstitution,
     )
     from thinkforge.models import Text2SQLCache, UsageLog, Base
+    from thinkforge.hotcommands_models import User, HotCommand, CommandExecution, Space, Feedback, SpaceAccess, SpaceType, ContentType, AccessLevel, StorageBackend, ScheduleType
     from thinkforge.recipe_step_analyzer import RecipeStepAnalyzer, ParsedStep
     from thinkforge.recipe_tool_mapper import RecipeToolMapper, StepMapping, ToolMatch
     from thinkforge.confidence_engine import ConfidenceEngine
     from thinkforge.llm_step_processor import LLMStepProcessor, LLMStepResult, create_sample_llm_step_template
+    from thinkforge.spaces_service import ThinkForgeSpacesService, get_spaces_service
+    from schemas.spaces import (
+        SpaceCreate, SpaceUpdate, SpaceResponse, SpaceListResponse,
+        SpaceAccessCreate, SpaceAccessResponse, SpaceShareRequest,
+        TemplateExecuteRequest, SpaceScheduleConfig, SpaceExecutionResult,
+        SpaceContentUpload, SpaceExportRequest, SpaceExportResponse,
+        SpaceAnalytics, SpaceSearchRequest, SpaceTemplate, SpaceBulkOperation,
+        SpaceBulkOperationResult, CacheToSpaceRequest, SpaceFromCacheResponse
+    )
 except ImportError as e:
     print(f"Error importing thinkforge: {e}")
     print("Make sure the framework is installed with: pip install -e .")
@@ -261,6 +271,47 @@ try:
     include_sandbox_routes(app)
 except ImportError as e:
     print(f"Warning: Sandbox API not available: {e}")
+    pass
+
+# Include Hot Commands API routes
+try:
+    from hotcommands_api import create_hotcommands_routes
+    
+    # Create the route functions
+    routes = create_hotcommands_routes()
+    
+    # Add Hot Commands endpoints
+    app.add_api_route("/api/hot-commands/my", routes['get_my_hot_commands'], methods=["GET"], tags=["Hot Commands"])
+    app.add_api_route("/api/hot-commands/public", routes['get_public_hot_commands'], methods=["GET"], tags=["Hot Commands"])
+    app.add_api_route("/api/hot-commands/metadata", routes['get_hot_commands_metadata'], methods=["GET"], tags=["Hot Commands"])
+    app.add_api_route("/api/hot-commands", routes['create_hot_command'], methods=["POST"], tags=["Hot Commands"])
+    app.add_api_route("/api/hot-commands/{command_id}", routes['get_hot_command'], methods=["GET"], tags=["Hot Commands"])
+    app.add_api_route("/api/hot-commands/{command_id}", routes['update_hot_command'], methods=["PUT"], tags=["Hot Commands"])
+    app.add_api_route("/api/hot-commands/{command_id}", routes['delete_hot_command'], methods=["DELETE"], tags=["Hot Commands"])
+    
+    # Command execution endpoints
+    app.add_api_route("/api/execute-command", routes['execute_command'], methods=["POST"], tags=["Command Execution"])
+    app.add_api_route("/api/command-suggestions", routes['get_command_suggestions'], methods=["GET"], tags=["Command Execution"])
+    
+    # Spaces endpoints
+    app.add_api_route("/api/spaces/my", routes['get_my_spaces'], methods=["GET"], tags=["Spaces"])
+    app.add_api_route("/api/spaces", routes['create_space'], methods=["POST"], tags=["Spaces"])
+    
+    # Analytics endpoints
+    app.add_api_route("/api/analytics/dashboard", routes['get_dashboard_stats'], methods=["GET"], tags=["Analytics"])
+    
+    # Cache Entry Integration endpoints
+    app.add_api_route("/api/cache-entries/available", routes['get_available_cache_entries'], methods=["GET"], tags=["Cache Integration"])
+    app.add_api_route("/api/cache-entries/{cache_entry_id}/details", routes['get_cache_entry_details'], methods=["GET"], tags=["Cache Integration"])
+    app.add_api_route("/api/cache-entries/create-command", routes['create_hot_command_from_cache'], methods=["POST"], tags=["Cache Integration"])
+    
+    logger.info("Hot Commands API routes successfully integrated")
+    
+except ImportError as e:
+    logger.warning(f"Hot Commands API not available: {e}")
+    pass
+except Exception as e:
+    logger.error(f"Error integrating Hot Commands API: {e}")
     pass
 
 # Mount static files directory
@@ -2863,6 +2914,595 @@ async def get_llm_step_templates():
     except Exception as e:
         logger.error(f"Error getting LLM step templates: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error getting templates: {str(e)}")
+
+
+# ===============================================================================
+# SPACES API ENDPOINTS - ThinkForge Spaces Management
+# ===============================================================================
+
+@app.get("/v1/spaces", response_model=SpaceListResponse)
+async def list_spaces(
+    skip: int = Query(0, ge=0, description="Number of spaces to skip"),
+    limit: int = Query(50, ge=1, le=100, description="Number of spaces to return"),
+    space_type: Optional[SpaceType] = Query(None, description="Filter by space type"),
+    content_type: Optional[ContentType] = Query(None, description="Filter by content type"),
+    domain: Optional[str] = Query(None, description="Filter by domain"),
+    is_template: Optional[bool] = Query(None, description="Filter by template status"),
+    is_public: Optional[bool] = Query(None, description="Filter by public status"),
+    is_scheduled: Optional[bool] = Query(None, description="Filter by scheduled status"),
+    owner_id: Optional[int] = Query(None, description="Filter by owner ID"),
+    search: Optional[str] = Query(None, description="Search in names and descriptions"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get list of spaces with filtering and pagination.
+    """
+    try:
+        query = db.query(Space).filter(Space.deleted_at.is_(None))
+        
+        # Apply filters
+        if space_type:
+            query = query.filter(Space.space_type == space_type)
+        if content_type:
+            query = query.filter(Space.content_type == content_type)
+        if domain:
+            query = query.filter(Space.domain == domain)
+        if is_template is not None:
+            query = query.filter(Space.is_template == is_template)
+        if is_public is not None:
+            query = query.filter(Space.is_public == is_public)
+        if is_scheduled is not None:
+            query = query.filter(Space.is_scheduled_active == is_scheduled)
+        if owner_id:
+            query = query.filter(Space.owner_id == owner_id)
+        
+        # Search functionality
+        if search:
+            search_filter = or_(
+                Space.name.ilike(f"%{search}%"),
+                Space.display_name.ilike(f"%{search}%"),
+                Space.description.ilike(f"%{search}%")
+            )
+            query = query.filter(search_filter)
+        
+        # Get total count
+        total = query.count()
+        
+        # Apply pagination and ordering
+        spaces = query.order_by(Space.updated_at.desc()).offset(skip).limit(limit).all()
+        
+        return SpaceListResponse(
+            spaces=[SpaceResponse.from_orm(space) for space in spaces],
+            total=total,
+            skip=skip,
+            limit=limit
+        )
+        
+    except Exception as e:
+        logger.error(f"Error listing spaces: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error listing spaces: {str(e)}")
+
+
+@app.post("/v1/spaces", response_model=SpaceResponse, status_code=201)
+async def create_space(
+    space_data: SpaceCreate,
+    user_id: int = Query(..., description="ID of the user creating the space"),
+    db: Session = Depends(get_db)
+):
+    """
+    Create a new space.
+    """
+    try:
+        # Create space object
+        space = Space(
+            owner_id=user_id,
+            name=space_data.name,
+            display_name=space_data.display_name,
+            description=space_data.description,
+            space_type=space_data.space_type,
+            content_type=space_data.content_type,
+            domain=space_data.domain,
+            category=space_data.category,
+            tags=space_data.tags,
+            is_public=space_data.is_public,
+            is_template=space_data.is_template,
+            template_parameters=space_data.template_parameters,
+            template_schema=space_data.template_schema,
+            base_query=space_data.base_query,
+            source_query=space_data.source_query,
+            content_data=space_data.content_data,
+            content_metadata=space_data.content_metadata,
+            storage_backend=space_data.storage_backend,
+            schedule_type=space_data.schedule_type,
+            schedule_config=space_data.schedule_config,
+            shared_with=space_data.shared_with,
+            team_id=space_data.team_id,
+            expires_at=space_data.expires_at,
+            auto_cleanup=space_data.auto_cleanup,
+            retention_days=space_data.retention_days
+        )
+        
+        db.add(space)
+        db.commit()
+        db.refresh(space)
+        
+        # Grant access to shared users if specified
+        if space_data.shared_with:
+            spaces_service = get_spaces_service(db)
+            for shared_user_id in space_data.shared_with:
+                try:
+                    spaces_service.grant_space_access(
+                        space, shared_user_id, AccessLevel.VIEW, user_id
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to grant access to user {shared_user_id}: {e}")
+        
+        logger.info(f"Created space {space.id} for user {user_id}")
+        return SpaceResponse.from_orm(space)
+        
+    except Exception as e:
+        logger.error(f"Error creating space: {str(e)}", exc_info=True)
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error creating space: {str(e)}")
+
+
+@app.get("/v1/spaces/{space_id}", response_model=SpaceResponse)
+async def get_space(
+    space_id: int,
+    user_id: Optional[int] = Query(None, description="ID of the requesting user for access control"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get a specific space by ID.
+    """
+    try:
+        space = db.query(Space).filter(
+            Space.id == space_id,
+            Space.deleted_at.is_(None)
+        ).first()
+        
+        if not space:
+            raise HTTPException(status_code=404, detail="Space not found")
+        
+        # Check access permissions if user_id provided
+        if user_id and not space.can_be_accessed_by(user_id):
+            raise HTTPException(status_code=403, detail="Access denied to this space")
+        
+        # Increment view count
+        space.increment_view_count(user_id)
+        db.commit()
+        
+        return SpaceResponse.from_orm(space)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting space {space_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error getting space: {str(e)}")
+
+
+@app.put("/v1/spaces/{space_id}", response_model=SpaceResponse)
+async def update_space(
+    space_id: int,
+    space_data: SpaceUpdate,
+    user_id: int = Query(..., description="ID of the user updating the space"),
+    db: Session = Depends(get_db)
+):
+    """
+    Update an existing space.
+    """
+    try:
+        space = db.query(Space).filter(
+            Space.id == space_id,
+            Space.deleted_at.is_(None)
+        ).first()
+        
+        if not space:
+            raise HTTPException(status_code=404, detail="Space not found")
+        
+        # Check edit permissions
+        if not space.can_be_accessed_by(user_id, AccessLevel.EDIT):
+            raise HTTPException(status_code=403, detail="Edit access denied")
+        
+        # Update fields
+        for field, value in space_data.dict(exclude_unset=True).items():
+            if hasattr(space, field):
+                setattr(space, field, value)
+        
+        db.commit()
+        db.refresh(space)
+        
+        logger.info(f"Updated space {space_id} by user {user_id}")
+        return SpaceResponse.from_orm(space)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating space {space_id}: {str(e)}", exc_info=True)
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error updating space: {str(e)}")
+
+
+@app.delete("/v1/spaces/{space_id}")
+async def delete_space(
+    space_id: int,
+    user_id: int = Query(..., description="ID of the user deleting the space"),
+    hard_delete: bool = Query(False, description="Permanently delete instead of soft delete"),
+    db: Session = Depends(get_db)
+):
+    """
+    Delete a space (soft delete by default).
+    """
+    try:
+        space = db.query(Space).filter(
+            Space.id == space_id,
+            Space.deleted_at.is_(None)
+        ).first()
+        
+        if not space:
+            raise HTTPException(status_code=404, detail="Space not found")
+        
+        # Check admin permissions
+        if not space.can_be_accessed_by(user_id, AccessLevel.ADMIN):
+            raise HTTPException(status_code=403, detail="Admin access required to delete")
+        
+        if hard_delete:
+            # Hard delete - remove from database
+            db.delete(space)
+        else:
+            # Soft delete - mark as deleted
+            space.deleted_at = func.now()
+        
+        db.commit()
+        
+        logger.info(f"Deleted space {space_id} by user {user_id} (hard={hard_delete})")
+        return {"message": "Space deleted successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting space {space_id}: {str(e)}", exc_info=True)
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error deleting space: {str(e)}")
+
+
+@app.post("/v1/spaces/{space_id}/execute", response_model=SpaceExecutionResult)
+async def execute_space(
+    space_id: int,
+    user_id: int = Query(..., description="ID of the user executing the space"),
+    parameters: Optional[Dict[str, Any]] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Execute a space (regular execution for saved queries).
+    """
+    try:
+        space = db.query(Space).filter(
+            Space.id == space_id,
+            Space.deleted_at.is_(None)
+        ).first()
+        
+        if not space:
+            raise HTTPException(status_code=404, detail="Space not found")
+        
+        # Check view permissions
+        if not space.can_be_accessed_by(user_id):
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        if not space.can_execute():
+            raise HTTPException(status_code=400, detail="Space cannot be executed")
+        
+        # Get spaces service and execute
+        spaces_service = get_spaces_service(db)
+        result = await spaces_service.execute_space(space, user_id)
+        
+        # Record execution
+        space.record_execution(success=True)
+        db.commit()
+        
+        logger.info(f"Executed space {space_id} by user {user_id}")
+        return SpaceExecutionResult(**result)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error executing space {space_id}: {str(e)}", exc_info=True)
+        # Record failed execution
+        if 'space' in locals():
+            space.record_execution(success=False)
+            db.commit()
+        raise HTTPException(status_code=500, detail=f"Error executing space: {str(e)}")
+
+
+@app.post("/v1/spaces/{space_id}/execute-template", response_model=SpaceExecutionResult)
+async def execute_template_space(
+    space_id: int,
+    request: TemplateExecuteRequest,
+    user_id: int = Query(..., description="ID of the user executing the template"),
+    db: Session = Depends(get_db)
+):
+    """
+    Execute a template space with provided parameters.
+    """
+    try:
+        space = db.query(Space).filter(
+            Space.id == space_id,
+            Space.deleted_at.is_(None)
+        ).first()
+        
+        if not space:
+            raise HTTPException(status_code=404, detail="Space not found")
+        
+        # Check view permissions
+        if not space.can_be_accessed_by(user_id):
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        if not space.is_template_space():
+            raise HTTPException(status_code=400, detail="Space is not a template")
+        
+        # Get spaces service and execute template
+        spaces_service = get_spaces_service(db)
+        result = await spaces_service.execute_template(space, request.parameters, user_id)
+        
+        # Save result as new space if requested
+        if request.save_result and request.result_name:
+            result_space = spaces_service.create_space_from_execution(
+                result, request.result_name, user_id,
+                description=f"Result from template execution: {space.name}"
+            )
+            db.add(result_space)
+            result['saved_space_id'] = result_space.id
+        
+        # Record execution
+        space.record_execution(success=True)
+        db.commit()
+        
+        logger.info(f"Executed template space {space_id} by user {user_id}")
+        return SpaceExecutionResult(**result)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error executing template space {space_id}: {str(e)}", exc_info=True)
+        # Record failed execution
+        if 'space' in locals():
+            space.record_execution(success=False)
+            db.commit()
+        raise HTTPException(status_code=500, detail=f"Error executing template: {str(e)}")
+
+
+@app.post("/v1/spaces/{space_id}/share")
+async def share_space(
+    space_id: int,
+    share_request: SpaceShareRequest,
+    user_id: int = Query(..., description="ID of the user sharing the space"),
+    db: Session = Depends(get_db)
+):
+    """
+    Share a space with another user.
+    """
+    try:
+        space = db.query(Space).filter(
+            Space.id == space_id,
+            Space.deleted_at.is_(None)
+        ).first()
+        
+        if not space:
+            raise HTTPException(status_code=404, detail="Space not found")
+        
+        # Check admin permissions
+        if not space.can_be_accessed_by(user_id, AccessLevel.ADMIN):
+            raise HTTPException(status_code=403, detail="Admin access required to share")
+        
+        # Grant access
+        spaces_service = get_spaces_service(db)
+        access = spaces_service.grant_space_access(
+            space, share_request.user_id, share_request.access_level,
+            user_id, share_request.expires_at
+        )
+        
+        logger.info(f"Shared space {space_id} with user {share_request.user_id}")
+        return SpaceAccessResponse.from_orm(access)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error sharing space {space_id}: {str(e)}", exc_info=True)
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error sharing space: {str(e)}")
+
+
+@app.delete("/v1/spaces/{space_id}/share/{user_id}")
+async def revoke_space_access(
+    space_id: int,
+    user_id: int,
+    requester_id: int = Query(..., description="ID of the user revoking access"),
+    db: Session = Depends(get_db)
+):
+    """
+    Revoke access to a space from a user.
+    """
+    try:
+        space = db.query(Space).filter(
+            Space.id == space_id,
+            Space.deleted_at.is_(None)
+        ).first()
+        
+        if not space:
+            raise HTTPException(status_code=404, detail="Space not found")
+        
+        # Check admin permissions
+        if not space.can_be_accessed_by(requester_id, AccessLevel.ADMIN):
+            raise HTTPException(status_code=403, detail="Admin access required")
+        
+        # Revoke access
+        spaces_service = get_spaces_service(db)
+        success = spaces_service.revoke_space_access(space, user_id)
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="Access not found")
+        
+        logger.info(f"Revoked access to space {space_id} from user {user_id}")
+        return {"message": "Access revoked successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error revoking space access: {str(e)}", exc_info=True)
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error revoking access: {str(e)}")
+
+
+@app.get("/v1/spaces/{space_id}/analytics", response_model=SpaceAnalytics)
+async def get_space_analytics(
+    space_id: int,
+    user_id: int = Query(..., description="ID of the requesting user"),
+    days: int = Query(30, ge=1, le=365, description="Number of days for analytics"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get analytics data for a space.
+    """
+    try:
+        space = db.query(Space).filter(
+            Space.id == space_id,
+            Space.deleted_at.is_(None)
+        ).first()
+        
+        if not space:
+            raise HTTPException(status_code=404, detail="Space not found")
+        
+        # Check view permissions
+        if not space.can_be_accessed_by(user_id):
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        # Get analytics
+        spaces_service = get_spaces_service(db)
+        analytics = spaces_service.get_space_analytics(space, days)
+        
+        return SpaceAnalytics(**analytics)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting space analytics: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error getting analytics: {str(e)}")
+
+
+@app.post("/v1/spaces/from-cache", response_model=SpaceFromCacheResponse)
+async def create_space_from_cache(
+    request: CacheToSpaceRequest,
+    user_id: int = Query(..., description="ID of the user creating the space"),
+    db: Session = Depends(get_db)
+):
+    """
+    Create a space from a ThinkForge cache entry.
+    """
+    try:
+        # Get spaces service and create space from cache
+        spaces_service = get_spaces_service(db)
+        space = spaces_service.create_space_from_cache_entry(
+            request.cache_id, request.space_name, user_id,
+            request.display_name, request.description, request.make_template
+        )
+        
+        db.add(space)
+        db.commit()
+        db.refresh(space)
+        
+        # Generate conversion notes
+        conversion_notes = []
+        if space.is_template:
+            conversion_notes.append("Converted to template with extracted parameters")
+        if space.template_parameters:
+            conversion_notes.append(f"Extracted {len(space.template_parameters)} parameters")
+        
+        logger.info(f"Created space {space.id} from cache entry {request.cache_id}")
+        
+        return SpaceFromCacheResponse(
+            space=SpaceResponse.from_orm(space),
+            cache_entry_id=request.cache_id,
+            conversion_notes=conversion_notes,
+            template_created=space.is_template
+        )
+        
+    except Exception as e:
+        logger.error(f"Error creating space from cache: {str(e)}", exc_info=True)
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error creating space from cache: {str(e)}")
+
+
+@app.post("/v1/spaces/search", response_model=SpaceListResponse)
+async def search_spaces(
+    search_request: SpaceSearchRequest,
+    user_id: Optional[int] = Query(None, description="ID of the requesting user"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    db: Session = Depends(get_db)
+):
+    """
+    Advanced space search with multiple filters.
+    """
+    try:
+        query = db.query(Space).filter(Space.deleted_at.is_(None))
+        
+        # Apply search filters
+        if search_request.query:
+            search_filter = or_(
+                Space.name.ilike(f"%{search_request.query}%"),
+                Space.display_name.ilike(f"%{search_request.query}%"),
+                Space.description.ilike(f"%{search_request.query}%")
+            )
+            query = query.filter(search_filter)
+        
+        if search_request.space_types:
+            query = query.filter(Space.space_type.in_(search_request.space_types))
+        
+        if search_request.content_types:
+            query = query.filter(Space.content_type.in_(search_request.content_types))
+        
+        if search_request.domains:
+            query = query.filter(Space.domain.in_(search_request.domains))
+        
+        if search_request.is_template is not None:
+            query = query.filter(Space.is_template == search_request.is_template)
+        
+        if search_request.is_scheduled is not None:
+            query = query.filter(Space.is_scheduled_active == search_request.is_scheduled)
+        
+        if search_request.created_after:
+            query = query.filter(Space.created_at >= search_request.created_after)
+        
+        if search_request.created_before:
+            query = query.filter(Space.created_at <= search_request.created_before)
+        
+        if search_request.owner_ids:
+            query = query.filter(Space.owner_id.in_(search_request.owner_ids))
+        
+        # User-specific filters
+        if user_id:
+            if search_request.my_spaces:
+                query = query.filter(Space.owner_id == user_id)
+            elif search_request.shared_with_me:
+                # TODO: Implement shared_with_me filter using SpaceAccess
+                pass
+        
+        # Get total count
+        total = query.count()
+        
+        # Apply pagination and ordering
+        spaces = query.order_by(Space.updated_at.desc()).offset(skip).limit(limit).all()
+        
+        return SpaceListResponse(
+            spaces=[SpaceResponse.from_orm(space) for space in spaces],
+            total=total,
+            skip=skip,
+            limit=limit
+        )
+        
+    except Exception as e:
+        logger.error(f"Error searching spaces: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error searching spaces: {str(e)}")
 
 
 if __name__ == "__main__":

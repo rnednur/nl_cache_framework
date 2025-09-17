@@ -1380,4 +1380,255 @@ const api = {
   },
 };
 
+  // Hot Commands Cache Integration API methods
+  async getAvailableCacheEntries(params?: {
+    template_type?: string;
+    catalog_type?: string;
+    catalog_subtype?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<Array<{
+    id: number;
+    nl_query: string;
+    template_type: string;
+    catalog_type?: string;
+    catalog_subtype?: string;
+    catalog_name?: string;
+    reasoning_trace?: string;
+    tags?: Record<string, any>;
+    execution_count: number;
+    success_rate: number;
+    complexity_level?: string;
+    health_status?: string;
+    last_executed?: string;
+    created_at: string;
+    updated_at: string;
+    has_hot_command: boolean;
+    hot_command_name?: string;
+    hot_command_id?: number;
+  }>> {
+    try {
+      const queryParams = new URLSearchParams();
+      if (params?.template_type) queryParams.set('template_type', params.template_type);
+      if (params?.catalog_type) queryParams.set('catalog_type', params.catalog_type);
+      if (params?.catalog_subtype) queryParams.set('catalog_subtype', params.catalog_subtype);
+      if (params?.limit) queryParams.set('limit', params.limit.toString());
+      if (params?.offset) queryParams.set('offset', params.offset.toString());
+
+      const response = await fetch(`${API_BASE}/api/cache-entries/available?${queryParams}`);
+      if (!response.ok) throw new Error('Failed to fetch cache entries');
+      return response.json();
+    } catch (error) {
+      console.error('Error fetching available cache entries:', error);
+      throw error;
+    }
+  },
+
+  async getCacheEntryDetails(id: number): Promise<{
+    id: number;
+    nl_query: string;
+    template: string;
+    template_type: string;
+    is_template: boolean;
+    entity_replacements?: Record<string, any>;
+    reasoning_trace?: string;
+    tags?: Record<string, any>;
+    catalog_type?: string;
+    catalog_subtype?: string;
+    catalog_name?: string;
+    status: string;
+    tool_capabilities?: string[];
+    execution_config?: Record<string, any>;
+    health_status?: string;
+    recipe_steps?: any[];
+    required_tools?: number[];
+    execution_time_estimate?: number;
+    complexity_level?: string;
+    success_rate?: number;
+    last_executed?: string;
+    execution_count?: number;
+    created_at: string;
+    updated_at: string;
+    has_hot_command: boolean;
+    hot_command?: any;
+  }> {
+    try {
+      const response = await fetch(`${API_BASE}/api/cache-entries/${id}/details`);
+      if (!response.ok) throw new Error('Failed to fetch cache entry details');
+      return response.json();
+    } catch (error) {
+      console.error('Error fetching cache entry details:', error);
+      throw error;
+    }
+  },
+
+  async createHotCommandFromCache(request: {
+    cache_entry_id: number;
+    command_name: string;
+    display_name?: string;
+    description?: string;
+    is_public?: boolean;
+    tags?: string[];
+  }): Promise<{
+    id: number;
+    command_name: string;
+    display_name?: string;
+    description?: string;
+    query_text: string;
+    query_type: string;
+    cache_entry_id?: number;
+    source_template_type?: string;
+    source_reasoning?: string;
+    source_execution_stats?: Record<string, any>;
+    created_at: string;
+    updated_at: string;
+  }> {
+    try {
+      const response = await fetch(`${API_BASE}/api/cache-entries/create-command`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request),
+      });
+      if (!response.ok) throw new Error('Failed to create hot command from cache entry');
+      return response.json();
+    } catch (error) {
+      console.error('Error creating hot command from cache:', error);
+      throw error;
+    }
+  },
+
+  // Hot Commands management
+  async getMyHotCommands(params?: {
+    domain?: string;
+    category?: string;
+    status?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<Array<{
+    id: number;
+    command_name: string;
+    display_name?: string;
+    description?: string;
+    query_text: string;
+    query_type: string;
+    domain?: string;
+    category?: string;
+    tags: string[];
+    status: string;
+    is_public: boolean;
+    usage_count: number;
+    success_rate: number;
+    rating: number;
+    cache_entry_id?: number;
+    source_template_type?: string;
+    source_execution_stats?: Record<string, any>;
+    created_at: string;
+    updated_at: string;
+  }>> {
+    try {
+      const queryParams = new URLSearchParams();
+      if (params?.domain) queryParams.set('domain', params.domain);
+      if (params?.category) queryParams.set('category', params.category);
+      if (params?.status) queryParams.set('status', params.status);
+      if (params?.limit) queryParams.set('limit', params.limit.toString());
+      if (params?.offset) queryParams.set('offset', params.offset.toString());
+
+      const response = await fetch(`${API_BASE}/api/hot-commands/my?${queryParams}`);
+      if (!response.ok) throw new Error('Failed to fetch hot commands');
+      return response.json();
+    } catch (error) {
+      console.error('Error fetching hot commands:', error);
+      throw error;
+    }
+  },
+
+  async getPublicHotCommands(params?: {
+    domain?: string;
+    category?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<Array<{
+    id: number;
+    command_name: string;
+    display_name?: string;
+    description?: string;
+    query_text: string;
+    query_type: string;
+    domain?: string;
+    category?: string;
+    tags: string[];
+    status: string;
+    is_public: boolean;
+    usage_count: number;
+    success_rate: number;
+    rating: number;
+    cache_entry_id?: number;
+    source_template_type?: string;
+    created_at: string;
+    updated_at: string;
+  }>> {
+    try {
+      const queryParams = new URLSearchParams();
+      if (params?.domain) queryParams.set('domain', params.domain);
+      if (params?.category) queryParams.set('category', params.category);
+      if (params?.limit) queryParams.set('limit', params.limit.toString());
+      if (params?.offset) queryParams.set('offset', params.offset.toString());
+
+      const response = await fetch(`${API_BASE}/api/hot-commands/public?${queryParams}`);
+      if (!response.ok) throw new Error('Failed to fetch public hot commands');
+      return response.json();
+    } catch (error) {
+      console.error('Error fetching public hot commands:', error);
+      throw error;
+    }
+  },
+
+  async getHotCommandsDashboardStats(): Promise<{
+    total_commands: number;
+    total_executions: number;
+    avg_success_rate: number;
+    recent_activity: Array<{
+      command_name: string;
+      execution_count: number;
+      last_executed: string;
+    }>;
+    popular_commands: Array<{
+      id: number;
+      command_name: string;
+      usage_count: number;
+      success_rate: number;
+    }>;
+    domains_used: Array<{
+      domain: string;
+      count: number;
+    }>;
+  }> {
+    try {
+      const response = await fetch(`${API_BASE}/api/analytics/dashboard`);
+      if (!response.ok) throw new Error('Failed to fetch dashboard stats');
+      return response.json();
+    } catch (error) {
+      console.error('Error fetching dashboard stats:', error);
+      throw error;
+    }
+  },
+
+  async getHotCommandsMetadata(): Promise<{
+    domains: string[];
+    categories: string[];
+    tags: string[];
+    query_types: string[];
+    template_types: string[];
+  }> {
+    try {
+      const response = await fetch(`${API_BASE}/api/hot-commands/metadata`);
+      if (!response.ok) throw new Error('Failed to fetch hot commands metadata');
+      return response.json();
+    } catch (error) {
+      console.error('Error fetching hot commands metadata:', error);
+      throw error;
+    }
+  },
+};
+
 export default api; 

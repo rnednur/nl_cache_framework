@@ -9,7 +9,11 @@ import {
   FileText, 
   Grid, 
   Settings,
-  Sparkles
+  Sparkles,
+  Zap,
+  Search,
+  Share2,
+  Users
 } from "lucide-react"
 import { cn } from "../lib/utils"
 
@@ -25,9 +29,14 @@ const navItems = [
     icon: <Database className="h-5 w-5" />
   },
   {
-    name: "Templates",
-    href: "/templates",
-    icon: <Code className="h-5 w-5" />
+    name: "Cache Explorer",
+    href: "/cache-explorer",
+    icon: <Search className="h-5 w-5" />
+  },
+  {
+    name: "Hot Commands",
+    href: "/hot-commands",
+    icon: <Zap className="h-5 w-5" />
   },
   {
     name: "Complete Test",
@@ -35,9 +44,9 @@ const navItems = [
     icon: <Sparkles className="h-5 w-5" />
   },
   {
-    name: "Documentation",
-    href: "/documentation",
-    icon: <FileText className="h-5 w-5" />
+    name: "Spaces",
+    href: "/spaces",
+    icon: <Share2 className="h-5 w-5" />
   },
   {
     name: "Statistics",

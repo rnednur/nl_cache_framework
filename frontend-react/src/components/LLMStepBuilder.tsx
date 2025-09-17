@@ -412,7 +412,7 @@ export function LLMStepBuilder({ onSave, onTest, initialData, readOnly = false }
                       placeholder="Parameter name (e.g., issue_text)"
                       value={newParameter}
                       onChange={(e) => setNewParameter(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && addParameter()}
+                      onKeyDown={(e) => e.key === 'Enter' && addParameter()}
                     />
                     <Button onClick={addParameter} size="sm" variant="outline">
                       <Plus size={16} />

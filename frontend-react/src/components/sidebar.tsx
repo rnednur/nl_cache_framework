@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom"
-import { LayoutDashboard, Database, TestTube, Upload, Menu, Settings, Clock, Wrench, ChefHat } from "lucide-react"
+import { LayoutDashboard, Database, TestTube, Upload, Menu, Settings, Clock, Wrench, ChefHat, Command, Share2, Plus, BarChart3, Search } from "lucide-react"
 import { cn } from "../lib/utils"
 import { Button } from "./ui/button"
 import { useState } from "react"
@@ -85,6 +85,34 @@ export function Sidebar() {
               active={location.pathname === "/recipes"}
               collapsed={collapsed}
             />
+            <NavItem
+              to="/hot-commands"
+              icon={<Command className="h-4 w-4" />}
+              label="Hot Commands"
+              active={location.pathname === "/hot-commands"}
+              collapsed={collapsed}
+            />
+            <NavItem
+              to="/spaces"
+              icon={<Share2 className="h-4 w-4" />}
+              label="Spaces"
+              active={location.pathname === "/spaces"}
+              collapsed={collapsed}
+            />
+            <NavItem
+              to="/command-builder"
+              icon={<Plus className="h-4 w-4" />}
+              label="Command Builder"
+              active={location.pathname === "/command-builder"}
+              collapsed={collapsed}
+            />
+            <NavItem
+              to="/cache-explorer"
+              icon={<Search className="h-4 w-4" />}
+              label="Cache Explorer"
+              active={location.pathname === "/cache-explorer"}
+              collapsed={collapsed}
+            />
           </ul>
         </div>
 
@@ -95,6 +123,13 @@ export function Sidebar() {
               icon={<Clock className="h-4 w-4" />}
               label="Usage Logs"
               active={location.pathname === "/usage-logs"}
+              collapsed={collapsed}
+            />
+            <NavItem
+              to="/analytics"
+              icon={<BarChart3 className="h-4 w-4" />}
+              label="Analytics"
+              active={location.pathname === "/analytics"}
               collapsed={collapsed}
             />
           </ul>

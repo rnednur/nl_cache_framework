@@ -326,7 +326,7 @@ export default function NewTool() {
                 onChange={(e) => setNewCapability(e.target.value)}
                 placeholder="Enter a capability..."
                 className="bg-input border-border"
-                onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addCapability())}
+                onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addCapability())}
               />
               <Button
                 type="button"

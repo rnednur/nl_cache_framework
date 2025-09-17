@@ -25,18 +25,25 @@ The framework includes recipe analysis capabilities that parse natural language 
 - `thinkforge/recipe_step_analyzer.py` - Natural language recipe parsing
 - `thinkforge/recipe_tool_mapper.py` - Recipe step to tool mapping via similarity
 - `thinkforge/confidence_engine.py` - Tool matching confidence scoring
+- `thinkforge/hotcommands_controller.py` - Hot commands functionality
+- `thinkforge/spaces_service.py` - Collaborative spaces management
+- `thinkforge/llm_step_processor.py` - LLM-powered step processing
+- `thinkforge/execution_engine.py` - Template execution and orchestration
 
 ## Development Commands
 
 ### Backend Development
 ```bash
-# Install backend dependencies
+# Install backend dependencies and setup
 cd backend && pip install -r requirements.txt
 
 # Install thinkforge package in development mode (from root)
 pip install -e .
 
-# Run backend server
+# Start backend server (recommended)
+cd backend && bash start.sh
+
+# Alternative: Run backend server directly
 python backend/app.py
 # or with uvicorn for development with auto-reload
 uvicorn backend.app:app --host 0.0.0.0 --port 8000 --reload
@@ -106,11 +113,14 @@ docker run -p 8000:8000 thinkforge-backend
 
 - **usage_log**: Analytics tracking with cache hits/misses, similarity scores, LLM usage
 - **cache_audit_log**: Field-level change history with user attribution
+- **hotcommands**: Custom user commands and shortcuts
+- **spaces**: Collaborative workspaces with access control
+- **users**: User management and authentication
 
 ### Template Types
 The system supports these template types (defined in `TemplateType` enum):
 - **Core Types**: `sql`, `url`, `api`, `workflow`, `graphql`, `regex`, `script`, `nosql`, `cli`
-- **AI/LLM Types**: `prompt`, `reasoning_steps`, `dsl`
+- **AI/LLM Types**: `prompt`, `reasoning_steps`, `dsl`, `llm_step`
 - **Tool Types**: `mcp_tool`, `agent`, `function` (for tool registry)
 - **Recipe Types**: `recipe`, `recipe_step`, `recipe_template` (for workflow compilation)
 - **Other**: `configuration`
@@ -132,6 +142,16 @@ The system supports these template types (defined in `TemplateType` enum):
 - `POST /v1/recipes/{id}/compile` - Compile recipes to workflow formats (Langchain, Langflow, etc.)
 - `POST /v1/workflows/generate` - Generate workflows from natural language using LLM
 - `GET /v1/cache/compatible` - Get cache entries compatible as workflow steps
+
+### Hot Commands & Spaces Endpoints
+- `GET/POST/PUT/DELETE /v1/hotcommands[/{id}]` - Manage custom user commands
+- `POST /v1/hotcommands/{id}/execute` - Execute hot commands
+- `GET/POST/PUT/DELETE /v1/spaces[/{id}]` - Manage collaborative spaces
+- `POST /v1/spaces/{id}/share` - Share spaces with other users
+
+### LLM Integration Endpoints
+- `POST /v1/llm/process-step` - Process individual steps with LLM
+- `POST /v1/llm/enhance-template` - Enhance templates with LLM reasoning
 
 ## Configuration
 
@@ -155,6 +175,7 @@ OPENROUTER_MODEL=google/gemini-pro
 PORT=8000
 DB_SCHEMA=public
 USE_PG_VECTOR=false
+DEBUG=true
 ```
 
 ## Development Workflow
@@ -185,8 +206,9 @@ USE_PG_VECTOR=false
 - Uses React Router for navigation
 - Tailwind CSS + Radix UI components
 - Chart.js/Recharts for analytics visualizations
-- Key pages: Cache management, Test completion, Usage logs, Statistics
+- Key pages: Cache management, Test completion, Usage logs, Statistics, Hot Commands, Spaces
 - API client in `src/services/api.ts`
+- Theme provider with dark/light mode support
 
 ### Legacy Next.js App (`frontend/`)
 - Preserved for reference, similar functionality
@@ -197,7 +219,7 @@ USE_PG_VECTOR=false
 - Unit tests focus on controller logic and similarity computations
 - Integration tests cover API endpoints and database operations  
 - Manual testing via frontend test completion interface
-- No specific test framework configured - uses standard Python unittest
+- Test runner script: `tests/run_tests.py`
 
 ## Recipe Analysis Architecture
 
@@ -232,6 +254,33 @@ USE_PG_VECTOR=false
 - `tool_dependencies`: JSON object defining required dependencies
 - `health_status`: Current operational status (healthy/degraded/unhealthy/unknown)
 
+## Hot Commands System
+
+### Purpose & Architecture
+- Custom user-defined commands and shortcuts for frequently used operations
+- Stored in `hotcommands` table with execution templates and metadata
+- Supports templating with variable substitution
+- Integration with ThinkForge similarity search for command discovery
+
+### Command Types
+- Direct SQL queries with parameter substitution
+- API calls with dynamic endpoints and payloads
+- Multi-step workflows combining multiple operations
+- Shell commands with safety restrictions
+
+## Spaces System
+
+### Collaborative Features
+- Shared workspaces for teams and projects
+- Access control with role-based permissions (owner, editor, viewer)
+- Template sharing and collaboration
+- Space-specific analytics and usage tracking
+
+### Storage Backends
+- Local filesystem storage
+- Cloud storage (S3, GCS, Azure Blob)
+- Space-specific configuration and templates
+
 ## Important Notes
 
 - The project has both `frontend/` (Next.js, legacy) and `frontend-react/` (current Vite-based)
@@ -242,8 +291,15 @@ USE_PG_VECTOR=false
 - Usage logging tracks performance metrics and user patterns
 - Recipe analysis uses real similarity search against database tools
 - Execution config enables actual tool invocation with proper parameters
+- Hot commands provide user customization and workflow automation
+- Spaces enable team collaboration and shared template libraries
 
 ## Troubleshooting
+
+### Backend Issues
+- If database connection fails, check PostgreSQL service and environment variables
+- If embeddings fail to generate, verify sentence-transformers model availability
+- For LLM integration issues, verify OPENROUTER_API_KEY is set correctly
 
 ### Recipe Analysis Issues
 - If recipe analysis shows "0 tools available", check that catalog filtering uses OR logic not strict equality
@@ -251,7 +307,13 @@ USE_PG_VECTOR=false
 - Verify tool type matching includes broad types (function, api, mcp_tool, agent, sql, url, workflow, script, cli)
 - Check that semantic search preserves original query context instead of transforming to keywords
 
-### Frontend Catalog Dropdowns
+### Frontend Issues
 - CatalogSelect component should support hierarchical filtering with catalogType/catalogSubtype props
 - API calls should use query parameters for filtering: `/v1/catalog/values?catalog_type=X&catalog_subtype=Y`
 - Dropdown cascading should clear child selections when parent values change
+- For development server issues, try clearing Vite cache: `./clear_vite_cache.sh`
+
+### Testing Issues
+- Run database initialization before tests: `python dbscripts/init_schema.py`
+- Ensure all dependencies installed: `pip install -r backend/requirements.txt`
+- For frontend tests, ensure Node.js dependencies: `cd frontend-react && npm install`

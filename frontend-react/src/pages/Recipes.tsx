@@ -25,7 +25,7 @@ import {
   Settings,
   ChefHat,
   ListChecks,
-  FileTemplate,
+  FileText,
   Clock,
   Filter,
   Loader2,
@@ -62,7 +62,7 @@ interface Recipe {
 const RECIPE_TYPES = {
   recipe: { label: 'Complete Recipe', icon: ChefHat, color: 'bg-purple-500' },
   recipe_step: { label: 'Recipe Step', icon: ListChecks, color: 'bg-blue-500' },
-  recipe_template: { label: 'Recipe Template', icon: FileTemplate, color: 'bg-green-500' },
+  recipe_template: { label: 'Recipe Template', icon: FileText, color: 'bg-green-500' },
 } as const
 
 const COMPLEXITY_COLORS = {
